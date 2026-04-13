@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "archilles-lector"
+version = "0.1.0"
+description = "PDF -> Markdown converter for scholarly prose. Part of the Archilles family."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "Tom Rauchenwald" }]
+dependencies = [
+    "pymupdf4llm>=0.0.17",
+    "pymupdf>=1.24",
+]
+
+[project.scripts]
+lector = "lector.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
