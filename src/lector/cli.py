@@ -60,9 +60,11 @@ def main(argv: list[str] | None = None) -> int:
         from lector.reflow.prepared import convert_file
         audit = convert_file(args.src, args.out)
         print(f"Geschrieben: {args.out}", file=sys.stderr)
+        audit_path = args.out.with_suffix(args.out.suffix + ".audit.txt")
+        if not audit and audit_path.exists():
+            audit_path.unlink()
         if audit:
             total = sum(len(v) for v in audit.values())
-            audit_path = args.out.with_suffix(args.out.suffix + ".audit.txt")
             lines = [
                 f"# Fußnoten-Audit für {args.out}",
                 f"# {total} FN-Definition(en) ohne Marker im Body auf {len(audit)} Seite(n);",
