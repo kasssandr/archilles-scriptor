@@ -653,9 +653,18 @@ def main(src_dir: str, out_path: str, fmt: str | None = None) -> None:
         fmt = "md" if out_path.lower().endswith(".md") else "txt"
     print(f"Ausgabeformat: {fmt}", file=sys.stderr)
 
+    raw_texts = [f.read_text(encoding="utf-8", errors="replace") for f in files]
+
+    # Kolumnentitel und Fußzeilen seitenweit entfernen, bevor parse_page läuft.
+    from lector.reflow.running_elements import strip_running_elements
+    cleaned, headers, footers = strip_running_elements(raw_texts)
+    if headers:
+        print(f"Running-Header entfernt ({len(headers)}): {headers[:3]}", file=sys.stderr)
+    if footers:
+        print(f"Running-Footer entfernt ({len(footers)}): {footers[:3]}", file=sys.stderr)
+
     pages: list[Page] = []
-    for f in files:
-        text = f.read_text(encoding="utf-8", errors="replace")
+    for text in cleaned:
         pg = parse_page(text)
         if pg is not None:
             pages.append(pg)

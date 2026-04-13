@@ -35,6 +35,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="directory for intermediate page TXTs (default: <out>_pages next to output)",
     )
+
+    pr = sub.add_parser(
+        "prepared",
+        help="single prepared TXT (---/-- separators, (N) footnote markers) -> Markdown",
+    )
+    pr.add_argument("src", type=Path, help="prepared TXT file")
+    pr.add_argument("--out", type=Path, required=True, help="output .md file")
     return p
 
 
@@ -49,6 +56,23 @@ def main(argv: list[str] | None = None) -> int:
         pipeline.reflow(args.src, args.out, args.format)
     elif args.cmd == "all":
         pipeline.run_all(args.pdf, args.out, args.format, args.pages_dir)
+    elif args.cmd == "prepared":
+        from lector.reflow.prepared import convert_file
+        audit = convert_file(args.src, args.out)
+        print(f"Geschrieben: {args.out}", file=sys.stderr)
+        if audit:
+            total = sum(len(v) for v in audit.values())
+            audit_path = args.out.with_suffix(args.out.suffix + ".audit.txt")
+            lines = [
+                f"# Fußnoten-Audit für {args.out}",
+                f"# {total} FN-Definition(en) ohne Marker im Body auf {len(audit)} Seite(n);",
+                f"# an die jeweils letzte sichtbare Seite als hanging reference angehängt.",
+                "",
+            ]
+            for pn in sorted(audit):
+                lines.append(f"S. {pn}: FN {', '.join(audit[pn])}")
+            audit_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            print(f"Audit: {total} unverankerte FNs → {audit_path}", file=sys.stderr)
     else:  # pragma: no cover
         parser.error(f"unknown command {args.cmd!r}")
     return 0
