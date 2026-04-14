@@ -656,7 +656,7 @@ def main(src_dir: str, out_path: str, fmt: str | None = None) -> None:
     raw_texts = [f.read_text(encoding="utf-8", errors="replace") for f in files]
 
     # Kolumnentitel und Fußzeilen seitenweit entfernen, bevor parse_page läuft.
-    from lector.reflow.running_elements import strip_running_elements
+    from scriptor.reflow.running_elements import strip_running_elements
     cleaned, headers, footers = strip_running_elements(raw_texts)
     if headers:
         print(f"Running-Header entfernt ({len(headers)}): {headers[:3]}", file=sys.stderr)

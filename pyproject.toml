@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "archilles-lector"
+name = "archilles-scriptor"
 version = "0.1.0"
 description = "PDF -> Markdown converter for scholarly prose. Part of the Archilles family."
 readme = "README.md"
@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-lector = "lector.cli:main"
+scriptor = "scriptor.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

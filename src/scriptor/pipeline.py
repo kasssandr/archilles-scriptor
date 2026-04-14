@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lector.extract import pymupdf_backend
-from lector.reflow.core import main as reflow_main
+from scriptor.extract import pymupdf_backend
+from scriptor.reflow.core import main as reflow_main
 
 
 def extract(pdf_path: str | Path, out_dir: str | Path) -> list[Path]:

@@ -1,4 +1,4 @@
-# archilles-lector
+# archilles-scriptor
 
 PDF → Markdown converter for scholarly prose. Subproject of the Archilles family.
 
@@ -20,30 +20,32 @@ PDF → extract (pymupdf4llm) → per-page TXT → reflow → Markdown
 ## CLI
 
 ```bash
-lector extract input.pdf --out build/pages/   # PDF -> per-page TXT
-lector reflow  build/pages/ --out book.md     # TXT dir -> Markdown
-lector all     input.pdf --out book.md        # one-shot
+scriptor extract input.pdf --out build/pages/   # PDF -> per-page TXT
+scriptor reflow  build/pages/ --out book.md     # TXT dir -> Markdown
+scriptor all     input.pdf --out book.md        # one-shot
 ```
 
 ## Layout
 
 ```
-src/lector/
+src/scriptor/
   cli.py                # argparse dispatcher
   pipeline.py           # end-to-end orchestration
   extract/
     pymupdf_backend.py  # primary text extraction
     ocr_backend.py      # stub, deferred
   reflow/
-    core.py             # main reflow algorithm
-    calibration.py      # line-length threshold detection
-    footnotes.py        # marker substitution, audit, rescue
-    regions.py          # frontmatter / main / entries / raw mode
-    markdown.py         # MD rendering (Pandoc footnotes, headings)
+    core.py             # main reflow algorithm (monolithic; split planned)
+    prepared.py         # prepared-markup single-file path
     running_elements.py # header/footer detection (adapted from Archilles)
 skills/pdf-text-reflow/  # in-repo copy of the Claude skill
 tests/fixtures/          # golden files
 ```
+
+> **Planned:** `core.py` to be split into `calibration.py` (line-length
+> threshold), `footnotes.py` (marker substitution, audit, rescue),
+> `regions.py` (frontmatter / main / entries / raw mode) and `markdown.py`
+> (MD rendering). Not yet implemented.
 
 ## Related
 

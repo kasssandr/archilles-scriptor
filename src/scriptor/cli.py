@@ -1,4 +1,4 @@
-"""``lector`` CLI — subcommands ``extract``, ``reflow``, ``all``."""
+"""``scriptor`` CLI — subcommands ``extract``, ``reflow``, ``all``."""
 
 from __future__ import annotations
 
@@ -6,12 +6,12 @@ import argparse
 import sys
 from pathlib import Path
 
-from lector import pipeline
+from scriptor import pipeline
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="lector",
+        prog="scriptor",
         description="PDF -> Markdown converter for scholarly prose.",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "all":
         pipeline.run_all(args.pdf, args.out, args.format, args.pages_dir)
     elif args.cmd == "prepared":
-        from lector.reflow.prepared import convert_file
+        from scriptor.reflow.prepared import convert_file
         audit = convert_file(args.src, args.out)
         print(f"Geschrieben: {args.out}", file=sys.stderr)
         audit_path = args.out.with_suffix(args.out.suffix + ".audit.txt")

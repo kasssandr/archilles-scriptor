@@ -4,7 +4,7 @@ Adapted from ``archilles/src/extractors/pdf_extractor.py`` (methods
 ``_detect_running_headers`` / ``_detect_running_footers`` and helpers).
 Refactored from PDFExtractor methods into module-level functions that
 operate on a list of plain page texts, so they can be called from
-``lector``'s pipeline without pulling in the Archilles class hierarchy.
+``scriptor``'s pipeline without pulling in the Archilles class hierarchy.
 
 Used after extraction but before ``parse_page`` — we strip the repeating
 Kolumnentitel from each raw page text so the reflow stage sees only

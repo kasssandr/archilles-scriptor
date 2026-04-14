@@ -1,4 +1,4 @@
-from lector.reflow.core import (
+from scriptor.reflow.core import (
     Page,
     parse_page,
     assign_modes,
