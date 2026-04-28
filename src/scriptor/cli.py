@@ -42,6 +42,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pr.add_argument("src", type=Path, help="prepared TXT file")
     pr.add_argument("--out", type=Path, required=True, help="output .md file")
+
+    cl = sub.add_parser(
+        "clippings",
+        help=(
+            "Cambridge-Core / JSTOR / Traditio Markdown clipping (inline number markers + "
+            "<sup>N</sup> defs) -> Pandoc-footnote Markdown sidecar"
+        ),
+    )
+    cl.add_argument("src", type=Path, help="clipping .md file")
+    cl.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="output .md file (default: <src-stem>.pandoc.md alongside the input)",
+    )
+    cl.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report what would change (counts, missing/extra markers) without writing",
+    )
     return p
 
 
@@ -75,6 +95,30 @@ def main(argv: list[str] | None = None) -> int:
                 lines.append(f"S. {pn}: FN {', '.join(audit[pn])}")
             audit_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
             print(f"Audit: {total} unverankerte FNs → {audit_path}", file=sys.stderr)
+    elif args.cmd == "clippings":
+        from scriptor.clippings import convert_file as clippings_convert
+        result = clippings_convert(args.src, args.out, dry_run=args.dry_run)
+        verb = "Würde schreiben" if args.dry_run else "Geschrieben"
+        out_target = args.out or args.src.with_suffix(".pandoc.md")
+        print(
+            f"{verb}: {out_target}  "
+            f"({result.converted_in_body}/{result.total_fn_defs} FN-Marker im Body verlinkt)",
+            file=sys.stderr,
+        )
+        if result.missing_in_body:
+            joined = ", ".join(str(n) for n in result.missing_in_body)
+            print(
+                f"  ⚠ Fehlende Marker im Body: {joined}",
+                file=sys.stderr,
+            )
+        if result.extra_in_body:
+            joined = ", ".join(str(n) for n in result.extra_in_body)
+            print(
+                f"  ⚠ Übrige Marker (>{result.total_fn_defs}): {joined}",
+                file=sys.stderr,
+            )
+        if result.ok:
+            print("  ✓ Alle FN-Definitionen 1:1 im Body verlinkt.", file=sys.stderr)
     else:  # pragma: no cover
         parser.error(f"unknown command {args.cmd!r}")
     return 0
