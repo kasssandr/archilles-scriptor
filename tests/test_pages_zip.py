@@ -35,6 +35,16 @@ def test_is_page_file_skips_non_txt_and_artifacts():
     assert is_page_file("metadata.txt") is False
 
 
+def test_is_page_file_marc_token_boundary():
+    # Real page files containing "marc" as a substring are kept.
+    assert is_page_file("bismarck_0001.txt") is True
+    assert is_page_file("marcus_012.txt") is True
+    assert is_page_file("marc-bloch_03.txt") is True
+    # Genuine MARC catalog sidecars are still dropped.
+    assert is_page_file("book_marc.txt") is False
+    assert is_page_file("marc.txt") is False
+
+
 def test_decode_bytes_utf8_fast_path():
     text, used_fallback = decode_bytes("Köln — Anmerkung".encode("utf-8"))
     assert text == "Köln — Anmerkung"

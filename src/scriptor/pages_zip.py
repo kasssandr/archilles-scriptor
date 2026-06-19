@@ -26,7 +26,7 @@ from charset_normalizer import from_bytes
 _SKIP_PATH_RE = re.compile(r"__MACOSX|\.DS_Store", re.IGNORECASE)
 # Filename-level junk — matched against the base name only.
 _SKIP_NAME_RE = re.compile(
-    r"(__ia_thumb|_thumb|metadata|^_meta|scandata|marc)",
+    r"(__ia_thumb|_thumb|metadata|^_meta|scandata|(?:^|[._-])marc\.txt$)",
     re.IGNORECASE,
 )
 
