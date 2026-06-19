@@ -68,15 +68,15 @@ def decode_bytes(data: bytes) -> tuple[str, bool]:
 
 
 def _iter_members(src: Path) -> list[tuple[str, bytes]]:
-    """Yield (member_name, raw_bytes) for every regular file in a zip or dir."""
+    """Return a list of (member_name, raw_bytes) for every regular file in a zip or dir."""
     if src.is_dir():
         out: list[tuple[str, bytes]] = []
-        for p in sorted(src.rglob("*")):
+        for p in src.rglob("*"):
             if p.is_file():
                 out.append((p.relative_to(src).as_posix(), p.read_bytes()))
         return out
     with zipfile.ZipFile(src) as zf:
-        out = []
+        out: list[tuple[str, bytes]] = []
         for info in zf.infolist():
             if info.is_dir():
                 continue

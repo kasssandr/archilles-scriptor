@@ -1,6 +1,9 @@
 import zipfile
 from pathlib import Path
 
+import pytest
+
+from scriptor.cli import main as cli_main
 from scriptor.pages_zip import natural_sort_key, is_page_file, decode_bytes, collect_page_texts, convert, PagesZipResult
 
 
@@ -52,7 +55,8 @@ def test_decode_bytes_utf8_fast_path():
 
 
 def test_decode_bytes_latin1_fallback():
-    # 0xFC is 'ü' in latin-1 but invalid as a standalone UTF-8 byte.
+    # 0xDF is 'ß' in latin-1; as a UTF-8 lead byte it expects a 10xxxxxx continuation,
+    # but 'n' (0x6E) fails that, so the bytes are invalid UTF-8.
     raw = "Fußnote".encode("latin-1")
     text, used_fallback = decode_bytes(raw)
     assert "Fu" in text and "note" in text
@@ -92,6 +96,8 @@ def test_collect_from_directory(tmp_path):
     (d / "00000001.txt").write_text("a", encoding="utf-8")
     pages, skipped, fallbacks = collect_page_texts(d)
     assert [text for _, text in pages] == ["a", "b"]
+    assert skipped == []
+    assert fallbacks == 0
 
 
 def test_collect_counts_encoding_fallbacks(tmp_path):
@@ -101,6 +107,15 @@ def test_collect_counts_encoding_fallbacks(tmp_path):
     )
     pages, skipped, fallbacks = collect_page_texts(zip_path)
     assert fallbacks == 1
+
+
+def test_collect_ignores_zip_directory_entries(tmp_path):
+    zip_path = tmp_path / "book.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("book/", b"")            # explicit directory entry
+        zf.writestr("book/page_1.txt", b"one")
+    pages, skipped, fallbacks = collect_page_texts(zip_path)
+    assert [t for _, t in pages] == ["one"]
 
 
 def test_convert_writes_zero_padded_pages(tmp_path):
@@ -128,14 +143,9 @@ def test_convert_dry_run_writes_nothing(tmp_path):
 
 
 def test_convert_requires_pages_dir_when_not_dry_run(tmp_path):
-    import pytest
-
     zip_path = _make_zip(tmp_path, {"0001.txt": b"a"})
     with pytest.raises(ValueError):
         convert(zip_path, None, dry_run=False)
-
-
-from scriptor.cli import main as cli_main
 
 
 def _make_reflowable_zip(tmp_path: Path) -> Path:
