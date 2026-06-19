@@ -1,4 +1,7 @@
-from scriptor.pages_zip import natural_sort_key, is_page_file, decode_bytes
+import zipfile
+from pathlib import Path
+
+from scriptor.pages_zip import natural_sort_key, is_page_file, decode_bytes, collect_page_texts
 
 
 def test_natural_sort_orders_page_9_before_page_10():
@@ -44,3 +47,47 @@ def test_decode_bytes_latin1_fallback():
     text, used_fallback = decode_bytes(raw)
     assert "Fu" in text and "note" in text
     assert used_fallback is True
+
+
+def _make_zip(tmp_path: Path, members: dict[str, bytes]) -> Path:
+    zip_path = tmp_path / "book.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        for name, data in members.items():
+            zf.writestr(name, data)
+    return zip_path
+
+
+def test_collect_orders_pages_and_drops_artifacts(tmp_path):
+    zip_path = _make_zip(
+        tmp_path,
+        {
+            "book/page_10.txt": b"ten",
+            "book/page_2.txt": b"two",
+            "book/page_1.txt": b"one",
+            "book/__ia_thumb.jpg": b"\xff\xd8\xff",
+            "book/book_djvu.xml": b"<xml/>",
+        },
+    )
+    pages, skipped, fallbacks = collect_page_texts(zip_path)
+    assert [text for _, text in pages] == ["one", "two", "ten"]
+    assert any("thumb" in s for s in skipped)
+    assert any(".xml" in s for s in skipped)
+    assert fallbacks == 0
+
+
+def test_collect_from_directory(tmp_path):
+    d = tmp_path / "pages"
+    d.mkdir()
+    (d / "00000002.txt").write_text("b", encoding="utf-8")
+    (d / "00000001.txt").write_text("a", encoding="utf-8")
+    pages, skipped, fallbacks = collect_page_texts(d)
+    assert [text for _, text in pages] == ["a", "b"]
+
+
+def test_collect_counts_encoding_fallbacks(tmp_path):
+    zip_path = _make_zip(
+        tmp_path,
+        {"0001.txt": "Fußnote".encode("latin-1"), "0002.txt": b"plain"},
+    )
+    pages, skipped, fallbacks = collect_page_texts(zip_path)
+    assert fallbacks == 1

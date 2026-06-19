@@ -16,6 +16,8 @@ empty pages on its own.
 from __future__ import annotations
 
 import re
+import zipfile
+from pathlib import Path
 
 from charset_normalizer import from_bytes
 
@@ -62,3 +64,44 @@ def decode_bytes(data: bytes) -> tuple[str, bool]:
         if best is not None:
             return str(best), True
         return data.decode("latin-1"), True
+
+
+def _iter_members(src: Path) -> list[tuple[str, bytes]]:
+    """Yield (member_name, raw_bytes) for every regular file in a zip or dir."""
+    if src.is_dir():
+        out: list[tuple[str, bytes]] = []
+        for p in sorted(src.rglob("*")):
+            if p.is_file():
+                out.append((p.relative_to(src).as_posix(), p.read_bytes()))
+        return out
+    with zipfile.ZipFile(src) as zf:
+        out = []
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            out.append((info.filename, zf.read(info)))
+        return out
+
+
+def collect_page_texts(src: Path) -> tuple[list[tuple[str, str]], list[str], int]:
+    """Collect ordered (name, text) page pairs from a zip or directory.
+
+    Returns (pages, skipped_names, encoding_fallbacks) where ``pages`` is
+    sorted into natural page order and filtered to text pages only.
+    """
+    members = _iter_members(Path(src))
+    kept_raw: list[tuple[str, bytes]] = []
+    skipped: list[str] = []
+    for name, data in members:
+        if is_page_file(name):
+            kept_raw.append((name, data))
+        else:
+            skipped.append(name)
+    kept_raw.sort(key=lambda nb: natural_sort_key(nb[0]))
+    pages: list[tuple[str, str]] = []
+    fallbacks = 0
+    for name, data in kept_raw:
+        text, used_fallback = decode_bytes(data)
+        fallbacks += int(used_fallback)
+        pages.append((name, text))
+    return pages, skipped, fallbacks
