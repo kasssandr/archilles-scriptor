@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import re
 
-# Archive members that are never a text page. Matched against the base name.
+# Directory-level junk — checked against the full archive member path.
+_SKIP_PATH_RE = re.compile(r"__MACOSX|\.DS_Store", re.IGNORECASE)
+# Filename-level junk — matched against the base name only.
 _SKIP_NAME_RE = re.compile(
-    r"(__ia_thumb|_thumb|metadata|^_meta|scandata|marc|__MACOSX|\.DS_Store)",
+    r"(__ia_thumb|_thumb|metadata|^_meta|scandata|marc)",
     re.IGNORECASE,
 )
 
@@ -36,6 +38,8 @@ def is_page_file(name: str) -> bool:
     base = name.rsplit("/", 1)[-1]
     if not base.lower().endswith(".txt"):
         return False
-    if _SKIP_NAME_RE.search(name):
+    if _SKIP_PATH_RE.search(name):
+        return False
+    if _SKIP_NAME_RE.search(base):
         return False
     return True
