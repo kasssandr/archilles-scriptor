@@ -1,4 +1,4 @@
-from scriptor.pages_zip import natural_sort_key, is_page_file
+from scriptor.pages_zip import natural_sort_key, is_page_file, decode_bytes
 
 
 def test_natural_sort_orders_page_9_before_page_10():
@@ -30,3 +30,17 @@ def test_is_page_file_skips_non_txt_and_artifacts():
     assert is_page_file("__ia_thumb.jpg") is False
     assert is_page_file("__MACOSX/._00000001.txt") is False
     assert is_page_file("metadata.txt") is False
+
+
+def test_decode_bytes_utf8_fast_path():
+    text, used_fallback = decode_bytes("Köln — Anmerkung".encode("utf-8"))
+    assert text == "Köln — Anmerkung"
+    assert used_fallback is False
+
+
+def test_decode_bytes_latin1_fallback():
+    # 0xFC is 'ü' in latin-1 but invalid as a standalone UTF-8 byte.
+    raw = "Fußnote".encode("latin-1")
+    text, used_fallback = decode_bytes(raw)
+    assert "Fu" in text and "note" in text
+    assert used_fallback is True

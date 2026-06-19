@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import re
 
+from charset_normalizer import from_bytes
+
 # Directory-level junk — checked against the full archive member path.
 _SKIP_PATH_RE = re.compile(r"__MACOSX|\.DS_Store", re.IGNORECASE)
 # Filename-level junk — matched against the base name only.
@@ -43,3 +45,20 @@ def is_page_file(name: str) -> bool:
     if _SKIP_NAME_RE.search(base):
         return False
     return True
+
+
+def decode_bytes(data: bytes) -> tuple[str, bool]:
+    """Decode page bytes. Returns (text, used_fallback).
+
+    UTF-8 first (the common case, fast path); on failure fall back to
+    charset_normalizer's best guess, and finally latin-1 (which never
+    raises). ``used_fallback`` is True whenever the bytes were not valid
+    UTF-8, so the caller can report how many pages needed guessing.
+    """
+    try:
+        return data.decode("utf-8"), False
+    except UnicodeDecodeError:
+        best = from_bytes(data).best()
+        if best is not None:
+            return str(best), True
+        return data.decode("latin-1"), True
