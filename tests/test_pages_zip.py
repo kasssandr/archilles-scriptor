@@ -1,7 +1,7 @@
 import zipfile
 from pathlib import Path
 
-from scriptor.pages_zip import natural_sort_key, is_page_file, decode_bytes, collect_page_texts
+from scriptor.pages_zip import natural_sort_key, is_page_file, decode_bytes, collect_page_texts, convert, PagesZipResult
 
 
 def test_natural_sort_orders_page_9_before_page_10():
@@ -91,3 +91,35 @@ def test_collect_counts_encoding_fallbacks(tmp_path):
     )
     pages, skipped, fallbacks = collect_page_texts(zip_path)
     assert fallbacks == 1
+
+
+def test_convert_writes_zero_padded_pages(tmp_path):
+    zip_path = _make_zip(
+        tmp_path,
+        {"page_2.txt": b"two", "page_1.txt": b"one", "cover.jpg": b"\xff"},
+    )
+    out_dir = tmp_path / "out_pages"
+    result = convert(zip_path, out_dir)
+    assert isinstance(result, PagesZipResult)
+    assert (out_dir / "00000001.txt").read_text(encoding="utf-8") == "one"
+    assert (out_dir / "00000002.txt").read_text(encoding="utf-8") == "two"
+    assert result.pages_dir == out_dir
+    assert len(result.kept) == 2
+    assert any("cover" in s for s in result.skipped)
+
+
+def test_convert_dry_run_writes_nothing(tmp_path):
+    zip_path = _make_zip(tmp_path, {"0001.txt": b"a", "0002.txt": b"b"})
+    result = convert(zip_path, None, dry_run=True)
+    assert result.pages_dir is None
+    assert len(result.kept) == 2
+    # No pages dir created anywhere under tmp_path.
+    assert list(tmp_path.glob("*_pages")) == []
+
+
+def test_convert_requires_pages_dir_when_not_dry_run(tmp_path):
+    import pytest
+
+    zip_path = _make_zip(tmp_path, {"0001.txt": b"a"})
+    with pytest.raises(ValueError):
+        convert(zip_path, None, dry_run=False)

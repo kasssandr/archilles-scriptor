@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 import zipfile
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from charset_normalizer import from_bytes
@@ -105,3 +106,44 @@ def collect_page_texts(src: Path) -> tuple[list[tuple[str, str]], list[str], int
         fallbacks += int(used_fallback)
         pages.append((name, text))
     return pages, skipped, fallbacks
+
+
+@dataclass
+class PagesZipResult:
+    kept: list[str] = field(default_factory=list)     # original names, in page order
+    skipped: list[str] = field(default_factory=list)  # names dropped as non-pages
+    pages_dir: Path | None = None                     # where renumbered TXT was written (None on dry-run)
+    encoding_fallbacks: int = 0                        # pages not decoded as UTF-8
+
+
+def write_pages(texts: list[str], out_dir: Path) -> list[Path]:
+    """Write page texts as zero-padded 00000001.txt … into out_dir."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for i, text in enumerate(texts, start=1):
+        path = out_dir / f"{i:08d}.txt"
+        path.write_text(text, encoding="utf-8")
+        written.append(path)
+    return written
+
+
+def convert(src: Path, pages_dir: Path | None, dry_run: bool = False) -> PagesZipResult:
+    """Collect, order and renumber a zip/dir of per-page TXT into pages_dir.
+
+    On ``dry_run`` nothing is written; the result still reports kept/skipped
+    classification so a new archive can be inspected before committing.
+    """
+    pages, skipped, fallbacks = collect_page_texts(Path(src))
+    result = PagesZipResult(
+        kept=[name for name, _ in pages],
+        skipped=skipped,
+        encoding_fallbacks=fallbacks,
+    )
+    if dry_run:
+        return result
+    if pages_dir is None:
+        raise ValueError("pages_dir is required unless dry_run=True")
+    pages_dir = Path(pages_dir)
+    write_pages([text for _, text in pages], pages_dir)
+    result.pages_dir = pages_dir
+    return result
