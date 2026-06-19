@@ -12,3 +12,5 @@ dist/
 # local PoC scratch
 scratch/
 tmp/
+# subagent-driven-development scratch (briefs, reports, ledger, diffs)
+.superpowers/
