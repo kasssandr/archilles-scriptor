@@ -123,3 +123,46 @@ def test_convert_requires_pages_dir_when_not_dry_run(tmp_path):
     zip_path = _make_zip(tmp_path, {"0001.txt": b"a"})
     with pytest.raises(ValueError):
         convert(zip_path, None, dry_run=False)
+
+
+from scriptor.cli import main as cli_main
+
+
+def _make_reflowable_zip(tmp_path: Path) -> Path:
+    # Two minimal pages with a numeric page-number line so the reflow
+    # produces non-empty output.
+    return _make_zip(
+        tmp_path,
+        {
+            "p_1.txt": "Erster Absatz der ersten Seite.\n1\n".encode("utf-8"),
+            "p_2.txt": "Zweiter Absatz der zweiten Seite.\n2\n".encode("utf-8"),
+        },
+    )
+
+
+def test_cli_split_only_writes_pages_dir(tmp_path):
+    zip_path = _make_reflowable_zip(tmp_path)
+    pages_dir = tmp_path / "pages"
+    rc = cli_main(["pages-zip", str(zip_path), "--pages-dir", str(pages_dir)])
+    assert rc == 0
+    assert (pages_dir / "00000001.txt").exists()
+    assert (pages_dir / "00000002.txt").exists()
+
+
+def test_cli_with_out_produces_markdown(tmp_path):
+    zip_path = _make_reflowable_zip(tmp_path)
+    out_md = tmp_path / "book.md"
+    rc = cli_main(
+        ["pages-zip", str(zip_path), "--out", str(out_md), "--pages-dir", str(tmp_path / "pages")]
+    )
+    assert rc == 0
+    assert out_md.exists()
+    assert out_md.read_text(encoding="utf-8").strip() != ""
+
+
+def test_cli_dry_run_writes_nothing(tmp_path):
+    zip_path = _make_reflowable_zip(tmp_path)
+    rc = cli_main(["pages-zip", str(zip_path), "--dry-run"])
+    assert rc == 0
+    assert list(tmp_path.glob("*_pages")) == []
+    assert not (tmp_path / "book.md").exists()

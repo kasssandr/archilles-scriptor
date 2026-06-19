@@ -62,6 +62,30 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="report what would change (counts, missing/extra markers) without writing",
     )
+
+    pz = sub.add_parser(
+        "pages-zip",
+        help="ZIP/Verzeichnis mit Einzelseiten-TXT (Internet Archive u. ä.) -> Per-Seite-TXT (optional gereflowt)",
+    )
+    pz.add_argument("src", type=Path, help="ZIP-Archiv oder Verzeichnis mit Seiten-TXT")
+    pz.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="gereflowte Ausgabe (.md/.txt). Ohne --out wird nur das Per-Seite-TXT-Verzeichnis geschrieben",
+    )
+    pz.add_argument(
+        "--pages-dir",
+        type=Path,
+        default=None,
+        help="Zielverzeichnis für die renummerierten Seiten-TXT (Default: <out|src>_pages)",
+    )
+    pz.add_argument("--format", choices=["md", "txt"], default=None)
+    pz.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Datei-Klassifikation (übernommen/übersprungen) berichten, ohne zu schreiben",
+    )
     return p
 
 
@@ -119,6 +143,34 @@ def main(argv: list[str] | None = None) -> int:
             )
         if result.ok:
             print("  ✓ Alle FN-Definitionen 1:1 im Body verlinkt.", file=sys.stderr)
+    elif args.cmd == "pages-zip":
+        from scriptor.pages_zip import convert as pages_zip_convert
+
+        if args.dry_run:
+            result = pages_zip_convert(args.src, None, dry_run=True)
+            print(
+                f"Würde {len(result.kept)} Seiten übernehmen, {len(result.skipped)} überspringen.",
+                file=sys.stderr,
+            )
+            if result.skipped:
+                shown = ", ".join(result.skipped[:10])
+                more = " …" if len(result.skipped) > 10 else ""
+                print(f"  Übersprungen: {shown}{more}", file=sys.stderr)
+            return 0
+
+        pages_dir = args.pages_dir
+        if pages_dir is None:
+            base = args.out if args.out is not None else args.src
+            pages_dir = base.parent / f"{base.stem}_pages"
+        result = pages_zip_convert(args.src, pages_dir, dry_run=False)
+        print(
+            f"{len(result.kept)} Seiten → {pages_dir}  "
+            f"({len(result.skipped)} übersprungen, {result.encoding_fallbacks} Encoding-Fallbacks)",
+            file=sys.stderr,
+        )
+        if args.out is not None:
+            pipeline.reflow(pages_dir, args.out, args.format)
+            print(f"Reflow geschrieben: {args.out}", file=sys.stderr)
     else:  # pragma: no cover
         parser.error(f"unknown command {args.cmd!r}")
     return 0

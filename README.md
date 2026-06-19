@@ -19,7 +19,8 @@ journal portals such as Cambridge Core / JSTOR / Traditio.
 PDF → extract (pymupdf4llm) → per-page TXT → reflow → Markdown
                                                       ▲
 hand-prepared TXT ──────────────────────────────────── │   (prepared)
-clippings (Cambridge Core / JSTOR style) .md ───────── ┘   (clippings)
+clippings (Cambridge Core / JSTOR style) .md ───────── ┤   (clippings)
+ZIP/dir of per-page TXT (Internet Archive) ─────────── ┘   (pages-zip)
 ```
 
 Each input form has its own subcommand; they all converge on Pandoc-style
@@ -48,6 +49,11 @@ scriptor prepared prepared_input.txt --out book.md
 scriptor clippings input.md                                 # writes input.pandoc.md
 scriptor clippings input.md --out output.md
 scriptor clippings input.md --dry-run                       # preview without writing
+
+# 6) ZIP/Verzeichnis mit Einzelseiten-TXT (Internet Archive) → Markdown
+scriptor pages-zip book.zip --out book.md            # split + reflow in einem
+scriptor pages-zip book.zip --pages-dir build/pages/ # nur entpacken/renummerieren
+scriptor pages-zip book.zip --dry-run                # Datei-Klassifikation prüfen
 ```
 
 ## Input formats
@@ -114,9 +120,10 @@ needs to repair before the conversion is complete.
 
 ```
 src/scriptor/
-  cli.py                # argparse dispatcher (extract / reflow / all / prepared / clippings)
+  cli.py                # argparse dispatcher (extract / reflow / all / prepared / clippings / pages-zip)
   pipeline.py           # end-to-end orchestration for the PDF path
   clippings.py          # journal-clipping single-file path
+  pages_zip.py          # ZIP/dir of per-page TXT (Internet Archive) -> pages dir
   extract/
     pymupdf_backend.py  # primary text extraction
     ocr_backend.py      # stub, deferred
