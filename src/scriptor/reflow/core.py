@@ -467,8 +467,11 @@ def render_main(
     fmt: str,
     state: dict,
     audit: dict[int, list[int]],
+    annotator=None,
 ) -> list[str]:
     paras, fns, levels = reconstruct_body(pages, threshold, audit)
+    if annotator is not None:
+        paras = [annotator.annotate(p, f) for p, f in zip(paras, fns)]
     if fmt == "md":
         return [
             format_paragraph_md(p, f, lvl, state)
@@ -555,7 +558,7 @@ def render_entries(pages: list[Page], start_re: re.Pattern[str]) -> list[str]:
 
 
 def render_book(
-    pages: list[Page], threshold: int, fmt: str = "txt"
+    pages: list[Page], threshold: int, fmt: str = "txt", annotator=None
 ) -> tuple[str, dict[int, list[int]]]:
     """Pages in Quellreihenfolge nach Modus gruppieren und passend rendern.
 
@@ -574,7 +577,7 @@ def render_book(
         group = pages[i:j]
 
         if mode == "main":
-            out_blocks.extend(render_main(group, threshold, fmt, state, audit))
+            out_blocks.extend(render_main(group, threshold, fmt, state, audit, annotator))
         elif mode in ("frontmatter", "raw"):
             out_blocks.extend(render_frontmatter(group))
         elif mode == "toc":
@@ -629,9 +632,22 @@ def main(src_dir: str, out_path: str, fmt: str | None = None) -> None:
     print(f"Kalibrierung (nur main): Schwellwert ≤ {threshold} Zeichen", file=sys.stderr)
     print(f"  Top-Zeilenlängen: {hist.most_common(5)}", file=sys.stderr)
 
-    output, audit = render_book(pages, threshold, fmt)
-    Path(out_path).write_text(output, encoding="utf-8")
+    clean_output, audit = render_book(pages, threshold, fmt)
+    Path(out_path).write_text(clean_output, encoding="utf-8")
     print(f"Geschrieben: {out_path}", file=sys.stderr)
+
+    # Annotierter Master (immer, Option 3) — zweiter Render mit Annotator.
+    from scriptor.reflow.confidence import Annotator
+    annotator = Annotator()
+    review_output, _ = render_book(pages, threshold, fmt, annotator=annotator)
+    op = Path(out_path)
+    review_path = op.with_name(f"{op.stem}.review{op.suffix}")
+    review_path.write_text(review_output, encoding="utf-8")
+    print(
+        f"Annotierter Master: {review_path}  "
+        f"({len(annotator.annotations)} unsichere FN)",
+        file=sys.stderr,
+    )
 
     # Audit-Sidecar: Seiten mit nicht verankerten FN-Defs
     if audit:

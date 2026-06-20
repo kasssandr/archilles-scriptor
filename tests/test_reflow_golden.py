@@ -15,6 +15,8 @@ from scriptor.reflow.core import main as reflow_main
 
 FIXTURE = Path(__file__).parent / "fixtures" / "reflow_golden"
 PAGES = FIXTURE / "pages"
+CONF = Path(__file__).parent / "fixtures" / "reflow_confidence"
+CONF_PAGES = CONF / "pages"
 
 
 def _audit_body(text: str) -> list[str]:
@@ -44,3 +46,30 @@ def test_reflow_txt_matches_golden(tmp_path):
     assert _audit_body((tmp_path / "out.txt.audit.txt").read_text(encoding="utf-8")) == _audit_body(
         (FIXTURE / "expected.txt.audit.txt").read_text(encoding="utf-8")
     )
+
+
+def test_reflow_md_clean_still_byte_identical(tmp_path):
+    # book.md must not change when the confidence layer is present.
+    out = tmp_path / "out.md"
+    reflow_main(str(PAGES), str(out), "md")
+    assert out.read_text(encoding="utf-8") == (
+        FIXTURE / "expected.md"
+    ).read_text(encoding="utf-8")
+
+
+def test_reflow_writes_review_master(tmp_path):
+    out = tmp_path / "out.md"
+    reflow_main(str(PAGES), str(out), "md")
+    review = (tmp_path / "out.review.md").read_text(encoding="utf-8")
+    assert review == (FIXTURE / "expected.review.md").read_text(encoding="utf-8")
+    # FN 2 is unclaimed on page 2 and gets flagged (class depends on prose).
+    import re as _re
+    assert _re.search(r"\[\?\??FN:2", review)
+
+
+def test_reflow_confidence_fixture_has_vorgeschlagen_flag(tmp_path):
+    out = tmp_path / "out.md"
+    reflow_main(str(CONF_PAGES), str(out), "md")
+    review = (tmp_path / "out.review.md").read_text(encoding="utf-8")
+    assert review == (CONF / "expected.review.md").read_text(encoding="utf-8")
+    assert "Werk&[?FN:6|&]" in review
