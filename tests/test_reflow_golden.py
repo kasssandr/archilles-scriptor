@@ -54,14 +54,16 @@ def test_reflow_md_clean_still_byte_identical(tmp_path):
     ).read_text(encoding="utf-8")
 
 
-def test_reflow_writes_review_master(tmp_path):
+def test_reflow_review_master_leaves_unbounded_fn_unflagged(tmp_path):
+    # FN 2 is unclaimed on page 2 but is NOT an interior gap — page 2's
+    # paragraph has no recognised markers bounding it — so the confidence layer
+    # conservatively leaves it unflagged. The review master then equals the
+    # clean output for this fixture.
     out = tmp_path / "out.md"
     reflow_main(str(PAGES), str(out), "md")
     review = (tmp_path / "out.review.md").read_text(encoding="utf-8")
     assert review == (FIXTURE / "expected.review.md").read_text(encoding="utf-8")
-    # FN 2 is unclaimed on page 2 and gets flagged (class depends on prose).
-    import re as _re
-    assert _re.search(r"\[\?\??FN:2", review)
+    assert "[?FN" not in review
 
 
 def test_reflow_confidence_fixture_has_vorgeschlagen_flag(tmp_path):

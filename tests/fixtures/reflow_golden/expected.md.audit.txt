@@ -1,4 +1,6 @@
 # Fußnoten-Confidence-Audit für tests/fixtures/reflow_golden/expected.md
-# 2 Seiten, 1 sichere FN, 1 unsichere, davon 0 mit Mehrfachkandidaten.
+# 2 Seiten, 2 sichere FN, 0 unsichere, davon 0 mit Mehrfachkandidaten.
+# Konvention: Flag-Nummern sind seitenlokal (wie am Scan); [^N] sind
+# dokumentweit. Geflaggt wird nur an Sequenzlücken zwischen erkannten
+# Markern; wortendige Einzelbuchstaben (z. B. l/i für FN 1) können Fehlflags sein.
 
-S. 2: FN 2 [vorgeschlagen]  →  z:0.8 (glyph-in-table+attached+before-space)

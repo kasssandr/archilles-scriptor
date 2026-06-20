@@ -21,16 +21,19 @@ SNIPPET_RADIUS = 30
 # OCR confusion table: a single footnote digit -> glyphs it is commonly
 # misread as when set as a small superscript. Data, not logic — tune freely.
 OCR_CONFUSION: dict[int, set[str]] = {
-    1: {"l", "I", "i", "ı", "|", "!", "j", "/"},
-    2: {"z", "Z", "?", "²"},
+    1: {"l", "I", "i", "ı", "j"},
+    2: {"z", "Z", "²"},
     3: {"B", "8", "³"},
     4: {"A", "ı", "'", "⁴"},
     5: {"S", "⁵"},
     6: {"b", "G", "&", "⁶"},
-    7: {"T", "/", "⁷"},
+    7: {"T", "⁷"},
     8: {"B", "&", "⁸"},
     9: {"g", "q", "⁹"},
 }
+# Bare sentence punctuation (! ? / |) was removed above: at a marker position
+# every "!" became a FN-1 candidate, every "?" a FN-2 candidate, etc. — pure
+# review-master noise. Letters/superscripts only.
 
 # A footnote marker is followed by a break (whitespace / end / closing or
 # sentence punctuation) and attaches on its left to a word end, a sentence end
@@ -164,9 +167,10 @@ def annotate_paragraph(
     """Insert uncertainty flags for unclaimed footnotes in one paragraph.
 
     A footnote ``num`` in ``fns`` is *unclaimed* when ``[num]`` is absent from
-    ``para``. For each, search the interval between the nearest present
-    markers around ``num`` for confusion glyphs, classify, and insert flag(s).
-    Returns the annotated paragraph and the annotations found.
+    ``para``. Only unclaimed footnotes that form an *interior gap* — bounded by
+    a present marker both below and above (number order) — are considered; the
+    interval between those two markers is searched for confusion glyphs,
+    classified, and flagged. Returns the annotated paragraph and annotations.
     """
     present = _present_markers(para)
     annotations: list[FootnoteAnnotation] = []
@@ -175,12 +179,19 @@ def annotate_paragraph(
     for num in sorted(fns):
         if num in present:
             continue  # claimed — not uncertain
-        lowers = [pos for n, pos in present.items() if n < num]
-        uppers = [pos for n, pos in present.items() if n > num]
-        start = max(lowers) if lowers else 0
-        end = min(uppers) if uppers else len(para)
+        # Only flag a missing marker that is a genuine *interior gap* in the
+        # recognised sequence — bounded by a confidently placed marker both
+        # below and above it (number order). Edge gaps and paragraphs without a
+        # coherent sequence are left unflagged; the hanging-reference rescue
+        # still preserves the footnote text. Keeps flagging conservative: only
+        # where the logic is sure a marker is missing between two known ones.
+        lower_n = max((n for n in present if n < num), default=None)
+        upper_n = min((n for n in present if n > num), default=None)
+        if lower_n is None or upper_n is None:
+            continue
+        start, end = present[lower_n], present[upper_n]
         if end < start:
-            start, end = 0, len(para)
+            continue
         cands = find_candidates(para[start:end], start, num, T)
         klasse = classify(cands, T)
         page = _page_of(para, start)
@@ -234,6 +245,9 @@ def render_audit(
         f"# Fußnoten-Confidence-Audit für {out_path}",
         f"# {page_count} Seiten, {secure} sichere FN, {uncertain} unsichere, "
         f"davon {multi} mit Mehrfachkandidaten.",
+        "# Konvention: Flag-Nummern sind seitenlokal (wie am Scan); [^N] sind",
+        "# dokumentweit. Geflaggt wird nur an Sequenzlücken zwischen erkannten",
+        "# Markern; wortendige Einzelbuchstaben (z. B. l/i für FN 1) können Fehlflags sein.",
         "",
     ]
     for a in sorted(annotations, key=lambda x: (x.page, x.fn_num)):

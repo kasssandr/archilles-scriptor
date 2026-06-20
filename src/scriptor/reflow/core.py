@@ -632,7 +632,7 @@ def main(src_dir: str, out_path: str, fmt: str | None = None) -> None:
     print(f"Kalibrierung (nur main): Schwellwert ≤ {threshold} Zeichen", file=sys.stderr)
     print(f"  Top-Zeilenlängen: {hist.most_common(5)}", file=sys.stderr)
 
-    clean_output, audit = render_book(pages, threshold, fmt)
+    clean_output, _ = render_book(pages, threshold, fmt)
     Path(out_path).write_text(clean_output, encoding="utf-8")
     print(f"Geschrieben: {out_path}", file=sys.stderr)
 

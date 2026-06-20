@@ -1,6 +1,6 @@
 [S. 1] Der erste Absatz nennt eine Quelle [^1] und laeuft mit einem getrennten Wort weiter bis zum Satzende.
 
-[S. 2] Der zweite Absatz[?FN:2|z] steht auf der Folgeseite und verweist nicht zurueck. [^2]
+[S. 2] Der zweite Absatz steht auf der Folgeseite und verweist nicht zurueck. [^2]
 
 [^1]: Erste Fussnote, gehoert zu Marker eins.
 

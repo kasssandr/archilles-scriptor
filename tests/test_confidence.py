@@ -71,19 +71,20 @@ def test_annotate_vorgeschlagen_single_candidate():
 
 
 def test_annotate_orphan_no_candidate():
-    # OCR_CONFUSION[8] = {B, &, ⁸}; this para contains none of them.
-    para = "Hier steht nur Prosa ohne Marke."
-    out, anns = annotate_paragraph(para, {8: "acht"})
+    # FN 8 is an interior gap (bounded by [7] and [9]) but no OCR_CONFUSION[8]
+    # glyph ({B, &, ⁸}) sits in the interval -> orphan.
+    para = "Hier [7] steht nur Prosa ohne Marke [9] danach."
+    out, anns = annotate_paragraph(para, {7: "sieben", 8: "acht", 9: "neun"})
     assert out.endswith("[?FN:8]")
     assert anns[0].klasse == "orphan" and anns[0].candidates == []
 
 
 def test_annotate_geraten_distributes_flags():
-    # Two "&" glyphs (OCR_CONFUSION[6]) at WORD ENDS -> two candidates ->
-    # geraten, one flag per candidate position. (Mid-word glyphs are filtered
-    # by the marker-position rule, so the candidates must sit at word ends.)
-    para = "alpha Werk& beta Buch& ende"
-    out, anns = annotate_paragraph(para, {6: "sechs"})
+    # FN 6 is an interior gap (bounded by [5] and [7]); two "&" glyphs
+    # (OCR_CONFUSION[6]) at WORD ENDS in the interval -> two candidates ->
+    # geraten, one flag per candidate position.
+    para = "Anfang [5] Werk& und Buch& Ende [7] Schluss."
+    out, anns = annotate_paragraph(para, {5: "fuenf", 6: "sechs", 7: "sieben"})
     assert anns[0].klasse == "geraten"
     assert out.count("[??FN:6|&:") == 2
 
@@ -95,9 +96,11 @@ def test_annotate_claimed_footnote_gets_no_flag():
 
 
 def test_annotator_accumulates():
+    # FN 2 is an interior gap (bounded by [1] and [3]) in each paragraph, so
+    # each call contributes one annotation.
     a = Annotator()
-    a.annotate("Ein Absatz ohne Zeichen.", {2: "zwei"})
-    a.annotate("Noch einer ohne Zeichen.", {2: "zwei"})
+    a.annotate("Vorn [1] der Absatz Zeichen [3] danach.", {1: "x", 2: "y", 3: "z"})
+    a.annotate("Auch [1] hier ein Absatz Text [3] Ende.", {1: "x", 2: "y", 3: "z"})
     assert len(a.annotations) == 2
 
 
