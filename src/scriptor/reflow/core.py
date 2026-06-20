@@ -649,25 +649,18 @@ def main(src_dir: str, out_path: str, fmt: str | None = None) -> None:
         file=sys.stderr,
     )
 
-    # Audit-Sidecar: Seiten mit nicht verankerten FN-Defs
-    if audit:
-        total = sum(len(v) for v in audit.values())
-        audit_path = Path(out_path).with_suffix(Path(out_path).suffix + ".audit.txt")
-        lines = [
-            f"# Fußnoten-Audit für {out_path}",
-            f"# {total} nicht im Body verankerte Fußnoten auf {len(audit)} Seiten.",
-            f"# Diese wurden am jeweiligen Seitenende als hanging reference angehängt;",
-            f"# die Ursache ist meistens ein OCR-Fehler am Marker (hochgestellte Zahl).",
-            "",
-        ]
-        for page_num in sorted(audit):
-            nums = ", ".join(str(n) for n in audit[page_num])
-            lines.append(f"S. {page_num}: FN {nums}")
-        audit_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        print(
-            f"Audit: {total} unverankerte FNs auf {len(audit)} Seiten → {audit_path}",
-            file=sys.stderr,
-        )
+    # Erweitertes Audit-Sidecar aus den Annotationen + Lauf-Zusammenfassung.
+    from scriptor.reflow.confidence import render_audit
+    total_fn_defs = sum(len(p.footnotes) for p in pages)
+    audit_text = render_audit(
+        annotator.annotations, total_fn_defs, len(pages), out_path
+    )
+    audit_path = op.with_suffix(op.suffix + ".audit.txt")
+    audit_path.write_text(audit_text, encoding="utf-8")
+    print(
+        f"Audit: {len(annotator.annotations)} unsichere FN → {audit_path}",
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,4 @@
+# Fußnoten-Confidence-Audit für tests/fixtures/reflow_golden/expected.md
+# 2 Seiten, 1 sichere FN, 1 unsichere, davon 1 mit Mehrfachkandidaten.
+
+S. 2: FN 2 [geraten]  →  z:0.9 (glyph-in-table+glued-to-word+before-punct/space), z:0.4 (glyph-in-table), z:0.4 (glyph-in-table)

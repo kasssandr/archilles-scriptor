@@ -43,9 +43,6 @@ def test_reflow_txt_matches_golden(tmp_path):
     assert out.read_text(encoding="utf-8") == (
         FIXTURE / "expected.txt"
     ).read_text(encoding="utf-8")
-    assert _audit_body((tmp_path / "out.txt.audit.txt").read_text(encoding="utf-8")) == _audit_body(
-        (FIXTURE / "expected.txt.audit.txt").read_text(encoding="utf-8")
-    )
 
 
 def test_reflow_md_clean_still_byte_identical(tmp_path):

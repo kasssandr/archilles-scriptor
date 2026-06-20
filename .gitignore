@@ -9,8 +9,11 @@ dist/
 .mypy_cache/
 .ruff_cache/
 *.audit.txt
+!tests/fixtures/**/*.audit.txt
 # local PoC scratch
 scratch/
 tmp/
 # subagent-driven-development scratch (briefs, reports, ledger, diffs)
 .superpowers/
+# local test corpora (large IA ZIPs / extracted book dirs)
+Test-ZIPs/

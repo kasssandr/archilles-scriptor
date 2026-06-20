@@ -187,3 +187,29 @@ class Annotator:
         out, anns = annotate_paragraph(para, fns, self.T)
         self.annotations.extend(anns)
         return out
+
+
+def render_audit(
+    annotations: list[FootnoteAnnotation],
+    total_fn_defs: int,
+    page_count: int,
+    out_path: str,
+) -> str:
+    """Build the extended audit sidecar text: a run summary plus one block per
+    uncertain footnote with its candidates and reasons."""
+    uncertain = len(annotations)
+    secure = max(total_fn_defs - uncertain, 0)
+    multi = sum(1 for a in annotations if len(a.candidates) > 1)
+    lines = [
+        f"# Fußnoten-Confidence-Audit für {out_path}",
+        f"# {page_count} Seiten, {secure} sichere FN, {uncertain} unsichere, "
+        f"davon {multi} mit Mehrfachkandidaten.",
+        "",
+    ]
+    for a in sorted(annotations, key=lambda x: (x.page, x.fn_num)):
+        if a.candidates:
+            cand = ", ".join(f"{c.char}:{c.confidence:.1f} ({c.reason})" for c in a.candidates)
+        else:
+            cand = "kein Kandidat — hanging reference am Absatzende"
+        lines.append(f"S. {a.page}: FN {a.fn_num} [{a.klasse}]  →  {cand}")
+    return "\n".join(lines) + "\n"

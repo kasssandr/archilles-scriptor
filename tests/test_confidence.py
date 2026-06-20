@@ -8,6 +8,7 @@ from scriptor.reflow.confidence import (
     classify,
     annotate_paragraph,
     Annotator,
+    render_audit,
 )
 
 
@@ -95,3 +96,17 @@ def test_annotator_accumulates():
     a.annotate("Ein Absatz ohne Zeichen.", {2: "zwei"})
     a.annotate("Noch einer ohne Zeichen.", {2: "zwei"})
     assert len(a.annotations) == 2
+
+
+def test_render_audit_has_summary_and_per_flag_lines():
+    anns = [
+        FootnoteAnnotation(6, 12, "vorgeschlagen", [Candidate("&", 0.9, "glued", (20, 21))]),
+        FootnoteAnnotation(2, 5, "orphan", []),
+    ]
+    text = render_audit(anns, total_fn_defs=8, page_count=3, out_path="book.md")
+    assert "3 Seiten" in text
+    assert "6 sichere" in text   # 8 defs - 2 unsichere = 6 sicher
+    assert "2 unsichere" in text
+    assert "S. 12: FN 6 [vorgeschlagen]" in text
+    assert "&:0.9" in text
+    assert "S. 5: FN 2 [orphan]" in text
