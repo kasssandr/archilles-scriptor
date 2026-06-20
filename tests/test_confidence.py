@@ -6,6 +6,8 @@ from scriptor.reflow.confidence import (
     score_candidate,
     find_candidates,
     classify,
+    annotate_paragraph,
+    Annotator,
 )
 
 
@@ -50,3 +52,46 @@ def test_dataclasses_have_expected_fields():
     c = Candidate("A", 0.7, "glued", (2, 3))
     a = FootnoteAnnotation(4, 12, "vorgeschlagen", [c])
     assert a.scope == "page" and a.candidates[0].char == "A"
+
+
+def test_annotate_vorgeschlagen_single_candidate():
+    # FN 5,7 present as [5]/[7]; FN 6 unclaimed; "&" (in OCR_CONFUSION[6])
+    # is the only candidate in the [5]..[7] interval. NB: avoid words with
+    # 'b'/'G' there — they are also OCR_CONFUSION[6] glyphs (e.g. "sieBtens").
+    para = "Erstens [5] dann das Werk& und hinten [7] Schluss."
+    fns = {5: "fuenf", 6: "sechs", 7: "sieben"}
+    out, anns = annotate_paragraph(para, fns)
+    assert "Werk&[?FN:6|&]" in out
+    assert "[5]" in out and "[7]" in out  # present markers untouched
+    assert len(anns) == 1
+    assert anns[0].fn_num == 6 and anns[0].klasse == "vorgeschlagen"
+
+
+def test_annotate_orphan_no_candidate():
+    # OCR_CONFUSION[8] = {B, &, ⁸}; this para contains none of them.
+    para = "Hier steht nur Prosa ohne Marke."
+    out, anns = annotate_paragraph(para, {8: "acht"})
+    assert out.endswith("[?FN:8]")
+    assert anns[0].klasse == "orphan" and anns[0].candidates == []
+
+
+def test_annotate_geraten_distributes_flags():
+    # Two "b" glyphs (OCR_CONFUSION[6]) -> two candidates -> geraten,
+    # one flag per candidate position.
+    para = "alpha bravo charlie bingo ende"
+    out, anns = annotate_paragraph(para, {6: "sechs"})
+    assert anns[0].klasse == "geraten"
+    assert out.count("[??FN:6|b:") == 2
+
+
+def test_annotate_claimed_footnote_gets_no_flag():
+    para = "Wort [4] mehr Text."
+    out, anns = annotate_paragraph(para, {4: "vier"})
+    assert out == para and anns == []
+
+
+def test_annotator_accumulates():
+    a = Annotator()
+    a.annotate("Ein Absatz ohne Zeichen.", {2: "zwei"})
+    a.annotate("Noch einer ohne Zeichen.", {2: "zwei"})
+    assert len(a.annotations) == 2

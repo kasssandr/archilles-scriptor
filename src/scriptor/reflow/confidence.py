@@ -106,3 +106,84 @@ def classify(candidates: list[Candidate], T: float = T_DEFAULT) -> str:
     if len(candidates) == 1 and candidates[0].confidence >= T:
         return "vorgeschlagen"
     return "geraten"
+
+
+# Page marker "[S. NN]" — to attribute a candidate to its page.
+_PAGE_MARKER_RE = re.compile(r"\[S\. (\d+)\]")
+
+
+def _present_markers(para: str) -> dict[int, int]:
+    """Present footnote number -> its start offset in the paragraph."""
+    return {int(m.group(1)): m.start() for m in PLACED_MARKER_RE.finditer(para)}
+
+
+def _page_of(para: str, offset: int) -> int:
+    """Page number from the nearest [S. NN] marker at or before ``offset``."""
+    page = -1
+    for m in _PAGE_MARKER_RE.finditer(para):
+        if m.start() <= offset:
+            page = int(m.group(1))
+        else:
+            break
+    return page
+
+
+def annotate_paragraph(
+    para: str, fns: dict[int, str], T: float = T_DEFAULT
+) -> tuple[str, list[FootnoteAnnotation]]:
+    """Insert uncertainty flags for unclaimed footnotes in one paragraph.
+
+    A footnote ``num`` in ``fns`` is *unclaimed* when ``[num]`` is absent from
+    ``para``. For each, search the interval between the nearest present
+    markers around ``num`` for confusion glyphs, classify, and insert flag(s).
+    Returns the annotated paragraph and the annotations found.
+    """
+    present = _present_markers(para)
+    annotations: list[FootnoteAnnotation] = []
+    insertions: list[tuple[int, str]] = []  # (offset, flag) — applied right-to-left
+
+    for num in sorted(fns):
+        if num in present:
+            continue  # claimed — not uncertain
+        lowers = [pos for n, pos in present.items() if n < num]
+        uppers = [pos for n, pos in present.items() if n > num]
+        start = max(lowers) if lowers else 0
+        end = min(uppers) if uppers else len(para)
+        if end < start:
+            start, end = 0, len(para)
+        cands = find_candidates(para[start:end], start, num, T)
+        klasse = classify(cands, T)
+        page = _page_of(para, start)
+
+        if klasse == "orphan":
+            annotations.append(FootnoteAnnotation(num, page, "orphan", []))
+            insertions.append((len(para), f" [?FN:{num}]"))
+        elif klasse == "vorgeschlagen":
+            c = cands[0]
+            annotations.append(FootnoteAnnotation(num, page, "vorgeschlagen", [c]))
+            insertions.append((c.span[1], f"[?FN:{num}|{c.char}]"))
+        else:  # geraten — one flag per candidate, at its own position
+            annotations.append(FootnoteAnnotation(num, page, "geraten", cands))
+            for c in cands:
+                insertions.append(
+                    (c.span[1], f"[??FN:{num}|{c.char}:{c.confidence:.1f}]")
+                )
+
+    out = para
+    for offset, flag in sorted(insertions, key=lambda x: x[0], reverse=True):
+        out = out[:offset] + flag + out[offset:]
+    return out, annotations
+
+
+class Annotator:
+    """Stateful wrapper that annotates paragraphs and accumulates annotations
+    across a whole render run."""
+
+    def __init__(self, T: float = T_DEFAULT) -> None:
+        self.T = T
+        self.annotations: list[FootnoteAnnotation] = []
+
+    def annotate(self, para: str, fns: dict[int, str]) -> str:
+        out, anns = annotate_paragraph(para, fns, self.T)
+        self.annotations.extend(anns)
+        return out
