@@ -30,6 +30,54 @@ PAGENUM_RE = re.compile(r"^\d{1,4}$")
 # FOOTNOTE_RE, PLACED_MARKER_RE, SUPERSCRIPT_DIGITS und substitute_markers
 # leben jetzt in footnotes.py (oben importiert).
 
+# Page number with an adjacent running-head title: digits at the very start
+# or very end of the line, with a running-head-like (mostly uppercase) text on
+# the other side. Conservative — distinguishes "146 WILHELM HEIL" (page) from
+# "1990 war ein gutes Jahr" (body).
+_NUM_HEAD_LEAD = re.compile(r"^(\d{1,4})\s+(.+)$")
+_NUM_HEAD_TRAIL = re.compile(r"^(.+?)\s+(\d{1,4})$")
+
+
+def _is_running_head_like(text: str) -> bool:
+    """True if ``text`` looks like a running header/footer (mostly uppercase
+    letters, few lowercase) rather than ordinary prose."""
+    letters = [c for c in text if c.isalpha()]
+    if len(letters) < 2:
+        return False
+    upper = sum(1 for c in letters if c.isupper())
+    return upper / len(letters) >= 0.7
+
+
+def detect_page_number(line: str) -> int | None:
+    """Detect a page number on a single line, conservatively.
+
+    Accepts a pure-digit line, or a line whose edge digit-run is paired with a
+    running-head-like title ("146 WILHELM HEIL"). Returns None for ordinary
+    prose (e.g. a leading year) and implausible numbers — the safe fallback is
+    to report no page number rather than guess wrong.
+    """
+    s = line.strip()
+    if not s:
+        return None
+
+    def _plausible(n: int) -> bool:
+        return 1 <= n <= 9999
+
+    if PAGENUM_RE.match(s):
+        n = int(s)
+        return n if _plausible(n) else None
+
+    for rx, num_group, text_group in (
+        (_NUM_HEAD_LEAD, 1, 2),
+        (_NUM_HEAD_TRAIL, 2, 1),
+    ):
+        m = rx.match(s)
+        if m and _is_running_head_like(m.group(text_group)):
+            n = int(m.group(num_group))
+            if _plausible(n):
+                return n
+    return None
+
 
 @dataclass
 class Page:
