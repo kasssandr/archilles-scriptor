@@ -81,10 +81,12 @@ def detect_page_number(line: str) -> int | None:
 
 @dataclass
 class Page:
-    num: int                              # Seitenzahl laut Datei
+    num: int                              # finale Seitenzahl (nach reconcile)
     body_lines: list[str]                 # rohe Body-Zeilen
     footnotes: dict[int, str] = field(default_factory=dict)  # nr → Text
-    mode: str = "main"                    # frontmatter | toc | main | entries-versal | entries-cap
+    mode: str = "main"                    # frontmatter | toc | main | entries-* | raw
+    num_top: int = -1                     # Seitenzahl-Kandidat oben (-1 = keiner)
+    num_bottom: int = -1                  # Seitenzahl-Kandidat unten (-1 = keiner)
 
 
 # ----------------------------------------------------------------------
@@ -100,11 +102,21 @@ def parse_page(text: str) -> Page | None:
     if not lines:
         return None
 
-    # Seitenzahl: letzte Zeile, wenn sie reine Ziffern ist
-    page_num = -1
-    if PAGENUM_RE.match(lines[-1].strip()):
-        page_num = int(lines[-1].strip())
-        lines.pop()
+    # Seitenzahl-Kandidaten an erster UND letzter nicht-leerer Zeile sammeln.
+    # Die Auswahl (oben vs. unten) trifft reconcile_page_numbers global.
+    num_top = -1
+    num_bottom = -1
+    if lines:
+        nb = detect_page_number(lines[-1])
+        if nb is not None:
+            num_bottom = nb
+            lines.pop()
+    if lines:
+        nt = detect_page_number(lines[0])
+        if nt is not None:
+            num_top = nt
+            lines.pop(0)
+    page_num = -1  # vorläufig; reconcile_page_numbers setzt p.num endgültig
 
     # Fußnoten-Block: ab erster Zeile, die mit "NN)" beginnt — sofern danach
     # nur noch Fußnoten/Fortsetzungen folgen.
@@ -146,7 +158,60 @@ def parse_page(text: str) -> Page | None:
     # Footnote-Marker im Body durch [NN] ersetzen (in-place auf body_lines)
     body_lines = substitute_markers(body_lines, footnotes)
 
-    return Page(num=page_num, body_lines=body_lines, footnotes=footnotes)
+    return Page(
+        num=page_num,
+        body_lines=body_lines,
+        footnotes=footnotes,
+        num_top=num_top,
+        num_bottom=num_bottom,
+    )
+
+
+def _sequence_score(nums: list[int]) -> int:
+    """Count adjacent +1 steps among the non-missing entries (in order).
+    A higher score means the column forms a more consistent running pagination."""
+    score = 0
+    prev = None
+    for n in nums:
+        if n < 0:
+            prev = None
+            continue
+        if prev is not None and n == prev + 1:
+            score += 1
+        prev = n
+    return score
+
+
+def reconcile_page_numbers(pages: list[Page]) -> str:
+    """Choose, globally, whether the book paginates at the top or the bottom,
+    and set each page's ``num`` from the winning column.
+
+    The winner is the column whose candidates form the longer consistent
+    ascending run (sequence variant). Safe fallback: on a tie or no signal,
+    prefer the bottom column (the historical behaviour), else leave ``num`` at
+    -1 — never invent a number.
+    """
+    top = [p.num_top for p in pages]
+    bottom = [p.num_bottom for p in pages]
+    top_score = _sequence_score(top)
+    bottom_score = _sequence_score(bottom)
+    has_top = any(n >= 0 for n in top)
+    has_bottom = any(n >= 0 for n in bottom)
+
+    if not has_top and not has_bottom:
+        return "none"
+    if top_score > bottom_score:
+        chosen, col = top, "top"
+    elif bottom_score > top_score:
+        chosen, col = bottom, "bottom"
+    else:  # tie — prefer whichever column actually has numbers, bottom first
+        if has_bottom:
+            chosen, col = bottom, "bottom"
+        else:
+            chosen, col = top, "top"
+    for p, n in zip(pages, chosen):
+        p.num = n
+    return col
 
 
 # ----------------------------------------------------------------------
@@ -671,6 +736,9 @@ def main(src_dir: str, out_path: str, fmt: str | None = None) -> None:
         pg = parse_page(text)
         if pg is not None:
             pages.append(pg)
+
+    page_col = reconcile_page_numbers(pages)
+    print(f"Seitenzahl-Spalte: {page_col}", file=sys.stderr)
 
     assign_modes(pages)
     mode_counts = Counter(p.mode for p in pages)
