@@ -55,6 +55,14 @@ def detect_page_number(line: str) -> int | None:
     running-head-like title ("146 WILHELM HEIL"). Returns None for ordinary
     prose (e.g. a leading year) and implausible numbers — the safe fallback is
     to report no page number rather than guess wrong.
+
+    Note: the head-paired branch ("146 WILHELM HEIL") is a *fallback* for inputs
+    where running-element removal does not fire. In the full pipeline
+    ``strip_running_elements`` runs before ``parse_page`` and usually removes a
+    recurring running head — page number and all — so head-embedded page numbers
+    are typically gone before this sees them (they are then simply not
+    recovered, never recovered wrong). It still helps short documents/articles
+    where the head does not recur enough to be detected as a running element.
     """
     s = line.strip()
     if not s:
