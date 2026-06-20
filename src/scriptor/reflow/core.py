@@ -256,6 +256,10 @@ def dehyphenate_join(lines: list[str]) -> str:
 # 3) Kalibrierung: Zeilenlängen-Schwellwert für Absatzenden bestimmen
 # ----------------------------------------------------------------------
 
+# Sane fallback threshold when the main-page histogram is empty/degenerate —
+# better to under-break paragraphs than to return 0 (which breaks at every line).
+CALIB_FALLBACK_MIN = 40
+
 # ----------------------------------------------------------------------
 # Region-/Modus-Erkennung
 # ----------------------------------------------------------------------
@@ -363,7 +367,7 @@ def calibrate_threshold(pages: list[Page], peak_fraction: float = 0.25) -> tuple
                 lengths[len(ln)] += 1
 
     if not lengths:
-        return 0, lengths
+        return CALIB_FALLBACK_MIN, lengths
 
     mode_len, mode_count = lengths.most_common(1)[0]
     cutoff = mode_count * peak_fraction

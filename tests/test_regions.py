@@ -1,4 +1,4 @@
-from scriptor.reflow.core import detect_page_number, parse_page, reconcile_page_numbers, Page, estimate_body_width, is_prose_page, assign_modes
+from scriptor.reflow.core import detect_page_number, parse_page, reconcile_page_numbers, Page, estimate_body_width, is_prose_page, assign_modes, calibrate_threshold, CALIB_FALLBACK_MIN
 
 
 def test_pure_digit_line_is_page_number():
@@ -42,6 +42,11 @@ def test_parse_page_records_top_number_with_head():
     assert not any("WILHELM HEIL" in ln for ln in pg.body_lines)
 
 
+def test_parse_page_single_line_is_bottom_only():
+    pg = parse_page("146")
+    assert pg.num_bottom == 146 and pg.num_top == -1
+
+
 def test_reconcile_picks_bottom_sequence():
     pages = [Page(-1, ["a"], {}), Page(-1, ["b"], {}), Page(-1, ["c"], {})]
     pages[0].num_bottom, pages[1].num_bottom, pages[2].num_bottom = 10, 11, 12
@@ -75,6 +80,10 @@ def test_estimate_body_width_finds_dominant():
     assert estimate_body_width(pages) == 70
 
 
+def test_estimate_body_width_empty_corpus():
+    assert estimate_body_width([]) == 0
+
+
 def test_is_prose_page_true_for_full_text():
     pages = [_prose_page(70, 20)]
     w = estimate_body_width(pages)
@@ -86,6 +95,10 @@ def test_is_prose_page_false_for_short_list():
     w = 70
     short = Page(-1, ["VII", "Mahnung zur Tugend", "Ein kurzes Kapitel"], {})
     assert is_prose_page(short, w) is False
+
+
+def test_is_prose_page_false_for_zero_width():
+    assert is_prose_page(_prose_page(70, 12), 0) is False
 
 
 def test_assign_modes_promotes_prose_without_page1():
@@ -103,3 +116,17 @@ def test_assign_modes_keeps_page1_fallback():
     p1 = Page(1, ["Kurzer Anfang."], {})
     assign_modes([fm, p1])
     assert p1.mode == "main"
+
+
+def test_calibrate_fallback_on_empty_histogram():
+    # No main pages at all -> must not return 0 (which would suppress all
+    # paragraph breaks); a sane positive fallback is required.
+    pages = [Page(-1, ["kurz"], {}, mode="frontmatter")]
+    threshold, hist = calibrate_threshold(pages)
+    assert threshold >= CALIB_FALLBACK_MIN
+
+
+def test_calibrate_normal_still_works():
+    pages = [Page(-1, ["x" * 70 for _ in range(20)], {}, mode="main")]
+    threshold, hist = calibrate_threshold(pages)
+    assert threshold > 0 and hist
