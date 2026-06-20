@@ -12,28 +12,30 @@ from scriptor.reflow.confidence import (
 )
 
 
-def test_score_glued_before_space_is_high():
+def test_score_attached_before_space():
+    # word-end marker: glued to a letter (+0.3) and a space follows (+0.1).
     score, reason = score_candidate("k", " ")
-    assert score == 0.9 and "glued-to-word" in reason
+    assert score == 0.8 and "attached" in reason and "before-space" in reason
 
 
 def test_score_isolated_is_low():
     score, _ = score_candidate(" ", " ")
-    assert score == 0.6  # 0.4 base + 0.2 (right is space); not glued
+    assert score == 0.5  # 0.4 base + 0.1 (right is space); not attached
 
 
 def test_score_before_closing_punct():
+    # attached (+0.3) and a closing/sentence punct follows (+0.2) -> strong.
     score, reason = score_candidate("k", ".")
-    assert score == 0.9 and "before-punct/space" in reason
+    assert score == 0.9 and "before-close-punct" in reason
 
 
 def test_find_candidates_locates_table_glyph():
-    # "&" is in OCR_CONFUSION[6]; appears once, glued to "Werk".
+    # "&" is in OCR_CONFUSION[6]; appears once at a word end (space follows).
     cands = find_candidates("dann Werk& mehr", 0, 6)
     assert len(cands) == 1
     assert cands[0].char == "&"
     assert cands[0].span == (9, 10)
-    assert cands[0].confidence == 0.9
+    assert cands[0].confidence == 0.8
 
 
 def test_find_candidates_empty_when_no_glyph():
@@ -77,12 +79,13 @@ def test_annotate_orphan_no_candidate():
 
 
 def test_annotate_geraten_distributes_flags():
-    # Two "b" glyphs (OCR_CONFUSION[6]) -> two candidates -> geraten,
-    # one flag per candidate position.
-    para = "alpha bravo charlie bingo ende"
+    # Two "&" glyphs (OCR_CONFUSION[6]) at WORD ENDS -> two candidates ->
+    # geraten, one flag per candidate position. (Mid-word glyphs are filtered
+    # by the marker-position rule, so the candidates must sit at word ends.)
+    para = "alpha Werk& beta Buch& ende"
     out, anns = annotate_paragraph(para, {6: "sechs"})
     assert anns[0].klasse == "geraten"
-    assert out.count("[??FN:6|b:") == 2
+    assert out.count("[??FN:6|&:") == 2
 
 
 def test_annotate_claimed_footnote_gets_no_flag():

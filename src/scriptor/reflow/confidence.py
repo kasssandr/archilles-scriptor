@@ -32,8 +32,31 @@ OCR_CONFUSION: dict[int, set[str]] = {
     9: {"g", "q", "⁹"},
 }
 
-# Sentence-ending / closing punctuation that may follow a real marker.
+# A footnote marker is followed by a break (whitespace / end / closing or
+# sentence punctuation) and attaches on its left to a word end, a sentence end
+# (period or closing quote), or an opening paren ("(1)"). _PUNCT_AFTER is what
+# may FOLLOW a marker; _ATTACH_BEFORE the non-letter chars that may precede one.
 _PUNCT_AFTER = set('.,;:!?»“"’\')]')
+_ATTACH_BEFORE = set('.!?»“"’\')(')
+
+
+def _is_marker_position(left: str, right: str) -> bool:
+    """True if a glyph with these neighbours sits where a real footnote marker
+    can — i.e. a break follows it. A glyph wedged between two letters (mid-word)
+    is never a marker; this hard filter stops the layer from flagging every
+    'i'/'l' inside ordinary words."""
+    return right == "" or right.isspace() or right in _PUNCT_AFTER
+
+
+# Structural markers in a reconstructed paragraph that must NOT yield
+# candidates: page markers "[S. NN]" and footnote markers "[n]"/"[^n]".
+_MARKER_SPAN_RE = re.compile(r"\[S\. \d+\]|\[\^?\d{1,3}\]")
+
+
+def _mask_markers(text: str) -> str:
+    """Blank out structural markers (same length) so the candidate search never
+    matches a glyph inside e.g. the 'S' of '[S. 2]' or a footnote marker."""
+    return _MARKER_SPAN_RE.sub(lambda m: " " * (m.end() - m.start()), text)
 
 
 @dataclass
@@ -62,12 +85,15 @@ def score_candidate(left: str, right: str) -> tuple[float, str]:
     """
     score = 0.4
     reasons = ["glyph-in-table"]
-    if left and left.isalpha():
+    if left.isalpha() or left in _ATTACH_BEFORE:
         score += 0.3
-        reasons.append("glued-to-word")
-    if right == "" or right.isspace() or right in _PUNCT_AFTER:
+        reasons.append("attached")
+    if right in _PUNCT_AFTER:
         score += 0.2
-        reasons.append("before-punct/space")
+        reasons.append("before-close-punct")
+    elif right == "" or right.isspace():
+        score += 0.1
+        reasons.append("before-space")
     return round(min(score, 1.0), 2), "+".join(reasons)
 
 
@@ -81,20 +107,24 @@ def find_candidates(
     used here — classification by threshold happens in ``classify``.
     """
     glyphs = OCR_CONFUSION.get(num, set())
+    masked = _mask_markers(interval)
     out: list[Candidate] = []
-    for i, ch in enumerate(interval):
-        if ch in glyphs:
-            left = interval[i - 1] if i > 0 else ""
-            right = interval[i + 1] if i + 1 < len(interval) else ""
-            score, reason = score_candidate(left, right)
-            out.append(
-                Candidate(
-                    char=ch,
-                    confidence=score,
-                    reason=reason,
-                    span=(base_offset + i, base_offset + i + 1),
-                )
+    for i, ch in enumerate(masked):
+        if ch not in glyphs:
+            continue
+        left = masked[i - 1] if i > 0 else ""
+        right = masked[i + 1] if i + 1 < len(masked) else ""
+        if not _is_marker_position(left, right):
+            continue  # mid-word — never a real marker
+        score, reason = score_candidate(left, right)
+        out.append(
+            Candidate(
+                char=ch,
+                confidence=score,
+                reason=reason,
+                span=(base_offset + i, base_offset + i + 1),
             )
+        )
     out.sort(key=lambda c: c.confidence, reverse=True)
     return out
 
