@@ -273,18 +273,56 @@ HEADING_TRIGGERS = [
 ]
 
 
+# Prose-Klassifikator: eine Seite gilt als Fließtext, wenn mindestens
+# PROSE_MIN_LINES nicht-leere Body-Zeilen existieren und ein hinreichender
+# Anteil davon nahe der dominanten Body-Breite liegt (± PROSE_BAND).
+PROSE_MIN_LINES = 5
+PROSE_BAND = 0.30          # ±30 % der dominanten Breite gilt als "volle Zeile"
+PROSE_FRACTION = 0.5       # so viel Anteil voller Zeilen macht eine Prosaseite
+
+
+def estimate_body_width(pages: list[Page]) -> int:
+    """Dominante Body-Zeilenbreite über alle Seiten (häufigste Länge)."""
+    lengths: Counter[int] = Counter()
+    for p in pages:
+        for ln in p.body_lines:
+            if ln.strip():
+                lengths[len(ln.rstrip())] += 1
+    if not lengths:
+        return 0
+    return lengths.most_common(1)[0][0]
+
+
+def is_prose_page(
+    page: Page,
+    width: int,
+    *,
+    min_lines: int = PROSE_MIN_LINES,
+    band: float = PROSE_BAND,
+) -> bool:
+    """True, wenn die Seite überwiegend aus Zeilen nahe ``width`` besteht."""
+    if width <= 0:
+        return False
+    body = [len(ln.rstrip()) for ln in page.body_lines if ln.strip()]
+    if len(body) < min_lines:
+        return False
+    lo = width * (1 - band)
+    full = sum(1 for n in body if n >= lo)
+    return full / len(body) >= PROSE_FRACTION
+
+
 def assign_modes(pages: list[Page]) -> None:
     """Setzt p.mode für jede Seite anhand erkannter Region-Übergänge.
 
-    Startmodus = 'frontmatter'. Wechsel:
-      - Heading-Trigger (erste Body-Zeile matcht ein Pattern) → entsprechender Modus
-      - Im Modus 'frontmatter' oder 'toc': sobald eine Seite mit Buchnr 1 auftaucht
-        und kein Heading-Trigger vorlag → 'main'
+    Startmodus 'frontmatter'. Heading-Trigger schalten nach toc/entries/raw.
+    Der Übergang frontmatter→main ist hybrid: er feuert bei der ersten Seite,
+    die wie Fließtext aussieht (is_prose_page) ODER die Buchseite 1 trägt — so
+    werden Bände ohne arab.-1-Trigger (Snell) korrekt erkannt, ohne das
+    bisherige Verhalten zu verlieren (sicherer Fallback).
     """
+    width = estimate_body_width(pages)
     mode = "frontmatter"
     for p in pages:
-        # OCR kann Spalten in falscher Reihenfolge ausgeben — Heading kann
-        # einige Zeilen verschoben sein. Wir prüfen die ersten 10 nicht-leeren.
         candidates = [ln.strip() for ln in p.body_lines if ln.strip()][:10]
         triggered = False
         for line in candidates:
@@ -295,8 +333,9 @@ def assign_modes(pages: list[Page]) -> None:
                     break
             if triggered:
                 break
-        if not triggered and mode in ("frontmatter", "toc") and p.num == 1:
-            mode = "main"
+        if not triggered and mode in ("frontmatter", "toc"):
+            if is_prose_page(p, width) or p.num == 1:
+                mode = "main"
         p.mode = mode
 
 
