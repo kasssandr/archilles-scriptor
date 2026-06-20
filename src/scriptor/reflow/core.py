@@ -17,20 +17,18 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from scriptor.reflow.footnotes import (
+    FOOTNOTE_RE,
+    PLACED_MARKER_RE,
+    SUPERSCRIPT_DIGITS,
+    substitute_markers,
+)
+
 # --- Konfiguration ---
 INDENT = "    "                # Einrückung der Fußnoten am Absatzende
-FOOTNOTE_RE = re.compile(r"^(\d{1,3})\)\s?(.*)$")
 PAGENUM_RE = re.compile(r"^\d{1,4}$")
-# Marker im fertigen Body: bereits durch [NN] ersetzt — wird beim Reflow erkannt.
-PLACED_MARKER_RE = re.compile(r"\[(\d{1,3})\]")
-
-# OCR liefert Fußnotenmarker oft als Unicode-Superscripts. Vor der
-# Marker-Erkennung normalisieren wir diese in ASCII-Ziffern.
-SUPERSCRIPT_DIGITS = str.maketrans({
-    "\u2070": "0", "\u00b9": "1", "\u00b2": "2", "\u00b3": "3",
-    "\u2074": "4", "\u2075": "5", "\u2076": "6", "\u2077": "7",
-    "\u2078": "8", "\u2079": "9",
-})
+# FOOTNOTE_RE, PLACED_MARKER_RE, SUPERSCRIPT_DIGITS und substitute_markers
+# leben jetzt in footnotes.py (oben importiert).
 
 
 @dataclass
@@ -101,52 +99,6 @@ def parse_page(text: str) -> Page | None:
     body_lines = substitute_markers(body_lines, footnotes)
 
     return Page(num=page_num, body_lines=body_lines, footnotes=footnotes)
-
-
-def substitute_markers(body_lines: list[str], footnotes: dict[int, str]) -> list[str]:
-    """
-    Ersetzt Fußnoten-Marker im Body durch '[NN]'. Zwei-Pass-Verfahren:
-
-      Pass 1 (sicher): NN direkt an ein Wort/Punktuationszeichen geklebt.
-                       — z.B. 'wort64', 'sagte"64', 'Annalen-/64' (nach dehyph.)
-      Pass 2 (Fallback): NN durch Leerzeichen vom vorigen Token getrennt.
-                       — z.B. 'geführt" 30.'
-
-    Jede Fußnotennummer wird nur einmal verbraucht (sequentiell). Wenn beide
-    Pässe einen Marker für dasselbe NN finden würden, gewinnt Pass 1.
-    Falsche Treffer auf Zahlen im Fließtext werden weitgehend vermieden,
-    weil nur Nummern aus dem footnotes-Set überhaupt als Kandidaten gelten.
-    """
-    if not footnotes or not body_lines:
-        return body_lines
-
-    # Body als ein String mit Trennern verarbeiten — Newlines sind \S-frei,
-    # also bleiben Wortgrenzen erhalten. Nach Substitution wieder splitten.
-    SEP = "\n"
-    body = SEP.join(body_lines)
-    consumed: set[int] = set()
-
-    # Pass 1: angeklebt
-    for num in sorted(footnotes.keys()):
-        if num in consumed:
-            continue
-        pat = re.compile(rf"(?<=\S){num}(?=$|[^\w])", re.MULTILINE)
-        new_body, n = pat.subn(f" [{num}]", body, count=1)
-        if n > 0:
-            body = new_body
-            consumed.add(num)
-
-    # Pass 2: durch Whitespace abgesetzt — nur für noch nicht konsumierte Nummern
-    for num in sorted(footnotes.keys()):
-        if num in consumed:
-            continue
-        pat = re.compile(rf"(?<=\s){num}(?=$|[^\w])", re.MULTILINE)
-        new_body, n = pat.subn(f"[{num}]", body, count=1)
-        if n > 0:
-            body = new_body
-            consumed.add(num)
-
-    return body.split(SEP)
 
 
 # ----------------------------------------------------------------------
