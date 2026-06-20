@@ -32,6 +32,29 @@ def _normalize_header_line(line: str) -> str:
     return normalized
 
 
+# When a running header/footer is stripped, an edge page number embedded in it
+# ("146 WILHELM HEIL" / "WILHELM HEIL 147") must survive so downstream
+# page-number detection (parse_page) still sees it. We keep only the bare number
+# in place of the removed running element — never invent one. This mirrors the
+# leading/trailing-digit handling in _normalize_header_line: the module already
+# treats an edge digit-run in a running element as a page number.
+_LEAD_PAGE_NUM = re.compile(r"^(\d{1,4})\s+\S")
+_TRAIL_PAGE_NUM = re.compile(r"\S\s+(\d{1,4})$")
+
+
+def _extract_edge_page_number(line: str) -> str | None:
+    """Return the leading/trailing page-number digits of a header/footer line,
+    or None if the line carries no edge number."""
+    s = line.strip()
+    m = _LEAD_PAGE_NUM.match(s)
+    if m:
+        return m.group(1)
+    m = _TRAIL_PAGE_NUM.search(s)
+    if m:
+        return m.group(1)
+    return None
+
+
 def detect_running_headers(
     pages_text: list[str],
     min_occurrences: int = 3,
@@ -93,6 +116,11 @@ def remove_running_headers(
                         break
             if not is_header:
                 cleaned_lines.append(line)
+            else:
+                # Titel entfernen, aber eine eingebettete Seitenzahl bewahren.
+                page_num = _extract_edge_page_number(line)
+                if page_num is not None:
+                    cleaned_lines.append(page_num)
         cleaned_pages.append("\n".join(cleaned_lines))
     return cleaned_pages
 
@@ -159,9 +187,15 @@ def remove_running_footers(
                     if _strings_are_similar(normalized, footer, similarity_threshold):
                         footer_indices.add(idx)
                         break
-        cleaned_lines = [
-            line for idx, line in enumerate(lines) if idx not in footer_indices
-        ]
+        cleaned_lines: list[str] = []
+        for idx, line in enumerate(lines):
+            if idx in footer_indices:
+                # Fußtitel entfernen, aber eine eingebettete Seitenzahl bewahren.
+                page_num = _extract_edge_page_number(line)
+                if page_num is not None:
+                    cleaned_lines.append(page_num)
+                continue
+            cleaned_lines.append(line)
         cleaned_pages.append("\n".join(cleaned_lines))
     return cleaned_pages
 

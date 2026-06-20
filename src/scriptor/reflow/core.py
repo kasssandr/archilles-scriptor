@@ -438,7 +438,7 @@ def reconstruct_body(
     pending_page_marker: str | None = None     # noch nicht eingefügter [S. NN]
 
     def end_paragraph(level: int = 0):
-        nonlocal cur_chunks, cur_fn, pending_hyphen, pending_page_marker
+        nonlocal cur_chunks, cur_fn, pending_hyphen
         text = "".join(cur_chunks).strip()
         text = re.sub(r"[ \t]+", " ", text)
         if text:
@@ -448,7 +448,11 @@ def reconstruct_body(
         cur_chunks = []
         cur_fn = {}
         pending_hyphen = False
-        pending_page_marker = None
+        # pending_page_marker NICHT zurücksetzen: ein noch nicht platzierter
+        # Seitenmarker (z. B. weil die erste Body-Zeile nach dem entfernten
+        # Kolumnentitel leer ist) muss bis zum ersten Wort erhalten bleiben.
+        # Er wird ausschließlich von flush_page_marker konsumiert bzw. zu
+        # Beginn jeder Seite neu gesetzt (überschrieben).
 
     def flush_page_marker():
         nonlocal pending_page_marker
