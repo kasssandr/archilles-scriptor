@@ -19,6 +19,11 @@ def test_score_isolated_is_low():
     assert score == 0.6  # 0.4 base + 0.2 (right is space); not glued
 
 
+def test_score_before_closing_punct():
+    score, reason = score_candidate("k", ".")
+    assert score == 0.9 and "before-punct/space" in reason
+
+
 def test_find_candidates_locates_table_glyph():
     # "&" is in OCR_CONFUSION[6]; appears once, glued to "Werk".
     cands = find_candidates("dann Werk& mehr", 0, 6)

@@ -77,7 +77,8 @@ def find_candidates(
     """Search ``interval`` for glyphs that could be the lost marker ``num``.
 
     ``base_offset`` maps interval positions back into the paragraph. Result
-    is ordered best-first.
+    is ordered best-first. ``T`` is accepted for signature uniformity but not
+    used here — classification by threshold happens in ``classify``.
     """
     glyphs = OCR_CONFUSION.get(num, set())
     out: list[Candidate] = []
