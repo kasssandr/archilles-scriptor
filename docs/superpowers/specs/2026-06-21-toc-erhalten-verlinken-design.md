@@ -203,6 +203,12 @@ Eigenschaften:
 Pandoc-Span-Syntax `[…]{#id}` ist zulässig, da das Deliverable Pandoc-Markdown
 ist (`.pandoc.md`, cli.py:133) und Pandoc-Footnotes bereits genutzt werden.
 
+> **Smoke-Test bestätigt (2026-06-21, pandoc 3.10):** Echtes Pipeline-Markdown
+> → HTML rendert `[S. NN]{#p-NN}` zu `<span id="p-NN">` und `[Titel](#p-NN)` zu
+> `<a href="#p-NN">`; jeder Link trifft sein Anker-Ziel, Hierarchie bleibt
+> erhalten, keine ID-Kollision, keine pandoc-Warnung. Die seiten-basierte
+> Verlinkung funktioniert real in HTML/EPUB.
+
 ## Modulinteraktion (Zusammenfassung)
 
 ```
