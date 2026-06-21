@@ -140,3 +140,40 @@ def test_inject_anchors_missing_marker_is_noop():
     doc = "a [S. 15] b"
     out = inject_page_anchors(doc, {77})
     assert out == doc
+
+
+from scriptor.reflow.toc import detect_trailing_toc
+
+
+def _prose(n=8, w=60):
+    return Page(200, ["x" * w for _ in range(n)], {}, mode="main")
+
+
+def _toc_like():
+    return Page(300, [
+        "Anhang A .......... 201",
+        "Anhang B .......... 215",
+        "Register .......... 240",
+        "Nachwort .......... 255",
+    ], {}, mode="main")
+
+
+def test_detect_trailing_toc_flips_end_block():
+    pages = [_prose(), _prose(), _toc_like(), _toc_like()]
+    detect_trailing_toc(pages)
+    assert [p.mode for p in pages] == ["main", "main", "toc", "toc"]
+
+
+def test_detect_trailing_toc_stops_at_nontoc():
+    pages = [_toc_like(), _prose(), _toc_like()]
+    detect_trailing_toc(pages)
+    # Nur der zusammenhaengende Endblock; das mittlere prose stoppt den Lauf.
+    assert [p.mode for p in pages] == ["main", "main", "toc"]
+
+
+def test_detect_trailing_toc_ignores_non_main():
+    reg = _toc_like()
+    reg.mode = "raw"
+    pages = [_prose(), reg]
+    detect_trailing_toc(pages)
+    assert [p.mode for p in pages] == ["main", "raw"]
