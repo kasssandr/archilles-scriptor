@@ -336,7 +336,7 @@ def assign_modes(pages: list[Page]) -> None:
     werden Bände ohne arab.-1-Trigger (Snell) korrekt erkannt, ohne das
     bisherige Verhalten zu verlieren (sicherer Fallback).
     """
-    from scriptor.reflow.toc import is_toc_page, detect_trailing_toc
+    from scriptor.reflow.toc import is_toc_page
     width = estimate_body_width(pages)
     mode = "frontmatter"
     for p in pages:
@@ -356,7 +356,6 @@ def assign_modes(pages: list[Page]) -> None:
             elif mode in ("frontmatter", "toc") and (is_prose_page(p, width) or p.num == 1):
                 mode = "main"
         p.mode = mode
-    detect_trailing_toc(pages)
 
 
 def calibrate_threshold(pages: list[Page], peak_fraction: float = 0.25) -> tuple[int, Counter[int]]:

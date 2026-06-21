@@ -123,6 +123,14 @@ TOC-artige Seiten (per `is_toc_page` oder End-Heading-Treffer) von `main` →
 `toc` umklassifiziert, bis eine nicht-TOC-artige Seite den Lauf beendet.
 Deckt die dt./frz./ital. Tradition des TOC am Bandende ab.
 
+> **NACHTRAG (nach Schluss-Review, 2026-06-21): (c) wurde wieder entfernt.**
+> Der heading-lose Trailing-Pass stützte sich allein auf `is_toc_page` und
+> klassifizierte numerische Back-Matter (engl. Index/Chronologie ohne
+> `raw`-Trigger) fälschlich als TOC — mit geratenen Links, was dem
+> Confidence-Leitprinzip widerspricht. Entscheidung: Trailing-Erkennung ganz
+> entfernt; TOC wird nur noch in der Frontmatter-Phase (a/b) erkannt. End-TOC
+> bleibt offene Nacharbeit (nur mit Heading-Bestätigung wieder einführbar).
+
 ### Confidence-Gate (`parse_toc`)
 
 Pro `toc`-Seitengruppe werden Einträge zeilenweise geparst. Eine Zeile ist

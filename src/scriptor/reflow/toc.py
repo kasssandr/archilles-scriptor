@@ -135,15 +135,3 @@ def inject_page_anchors(doc: str, targets: set[int]) -> str:
         return m.group(0)
 
     return _PAGE_MARKER_RE.sub(repl, doc)
-
-
-def detect_trailing_toc(pages: list[Page]) -> None:
-    """Schaltet einen zusammenhaengenden TOC-Block am Dokumentende von
-    ``main`` auf ``toc`` (frz./ital./dt. Tradition: TOC hinten)."""
-    i = len(pages) - 1
-    flip: list[int] = []
-    while i >= 0 and pages[i].mode == "main" and is_toc_page(pages[i]):
-        flip.append(i)
-        i -= 1
-    for idx in flip:
-        pages[idx].mode = "toc"
