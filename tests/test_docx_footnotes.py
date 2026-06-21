@@ -1,6 +1,6 @@
 from docx_helpers import doc_xml, para_xml, run_xml
 from scriptor.docx.document import Document
-from scriptor.docx.footnotes import collect, assign, bind, ATTACHED_STYLE
+from scriptor.docx.footnotes import collect, assign, bind, ATTACHED_INDENT
 
 
 def _doc(*paras):
@@ -72,7 +72,7 @@ def test_bind_attaches_definition_after_reference():
     assert texts[0].startswith("a")
     assert texts[1] == "8.) Source eight."
     assert texts[2] == "filler"
-    assert doc.paragraphs[1].style_name == ATTACHED_STYLE
+    assert doc.paragraphs[1].left_indent == ATTACHED_INDENT
     assert report.attached == [(8, 0)]
     assert report.orphan_defs == [] and report.orphan_refs == []
 
@@ -112,15 +112,15 @@ def test_bind_is_idempotent():
     doc1 = Document.from_document_xml(src)
     bind(doc1)
     texts1 = [p.text for p in doc1.paragraphs]
-    styles1 = [p.style_name for p in doc1.paragraphs]
+    indents1 = [p.left_indent for p in doc1.paragraphs]
 
     doc2 = Document.from_document_xml(doc1.to_document_xml())
     rep2 = bind(doc2)
     texts2 = [p.text for p in doc2.paragraphs]
-    styles2 = [p.style_name for p in doc2.paragraphs]
+    indents2 = [p.left_indent for p in doc2.paragraphs]
 
     # Strukturell unverändert (robuster als byte-Vergleich):
     assert texts2 == texts1             # keine doppelten Defs/Flags
-    assert styles2 == styles1
+    assert indents2 == indents1         # keine doppelte Einrückung
     assert rep2.attached == []          # nichts erneut angehängt
     assert [n for n, _ in rep2.orphan_refs] == [9]  # bleibt korrekt gemeldet

@@ -56,6 +56,20 @@ class Paragraph:
         st = ppr.find(qn("pStyle"))
         return st.get(qn("val")) if st is not None else None
 
+    @property
+    def left_indent(self) -> int | None:
+        """Linke Einrückung in Twips (``w:ind/@w:left``) oder None."""
+        ppr = self.elem.find(qn("pPr"))
+        if ppr is None:
+            return None
+        ind = ppr.find(qn("ind"))
+        if ind is None:
+            return None
+        val = ind.get(qn("left"))
+        if val is None or not val.lstrip("-").isdigit():
+            return None
+        return int(val)
+
 
 class Document:
     def __init__(self, root: etree._Element, others: dict[str, bytes] | None = None) -> None:
@@ -102,18 +116,31 @@ def _get_or_make_ppr(p: etree._Element) -> etree._Element:
     return ppr
 
 
-def mark_attached(para: Paragraph, style: str, indent_twips: int = 720) -> None:
-    """Setzt pStyle + linke Einrückung — kennzeichnet eine angehängte Definition
-    (zugleich Idempotenz-Marker)."""
+# CT_PPr-Schema: Kind-Elemente, die NACH <w:ind> stehen müssen. <w:ind> wird
+# unmittelbar vor dem ersten solchen Element eingefügt — sonst (z. B. ind nach
+# rPr) verwirft Word das Dokument als beschädigt und repariert es mit Datenverlust.
+_PPR_AFTER_IND = {
+    "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc",
+    "textDirection", "textAlignment", "textboxTightWrap", "outlineLvl",
+    "divId", "cnfStyle", "rPr", "sectPr", "pPrChange",
+}
+
+
+def mark_attached(para: Paragraph, indent_twips: int = 720) -> None:
+    """Rückt den Absatz links ein — kennzeichnet eine angehängte Definition und
+    dient zugleich als Idempotenz-Marker. Fügt ``w:ind`` schema-konform ein;
+    pStyle und Runs bleiben unangetastet. Idempotent (höchstens ein ``w:ind``)."""
     ppr = _get_or_make_ppr(para.elem)
-    st = ppr.find(qn("pStyle"))
-    if st is None:
-        st = etree.Element(qn("pStyle"))
-        ppr.insert(0, st)  # pStyle vor ind (Schema-Reihenfolge)
-    st.set(qn("val"), style)
     ind = ppr.find(qn("ind"))
     if ind is None:
-        ind = etree.SubElement(ppr, qn("ind"))
+        ind = etree.Element(qn("ind"))
+        anchor = next(
+            (c for c in ppr if c.tag.rsplit("}", 1)[-1] in _PPR_AFTER_IND), None
+        )
+        if anchor is not None:
+            anchor.addprevious(ind)
+        else:
+            ppr.append(ind)
     ind.set(qn("left"), str(indent_twips))
 
 

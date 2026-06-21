@@ -43,16 +43,31 @@ def test_load_from_minimal_docx(tmp_path):
     assert doc.paragraphs[0].text == "Hello"
 
 
-def test_mark_attached_sets_style_and_indent():
+def test_mark_attached_indents_without_breaking_schema_order():
+    # pPr mit rPr am Ende (wie echte Absätze): ind MUSS vor rPr landen, sonst
+    # verletzt es die OOXML-Schema-Reihenfolge -> Word repariert -> Datenverlust.
+    doc = Document.from_document_xml(doc_xml(
+        '<w:p><w:pPr><w:pStyle w:val="Normal"/><w:rPr><w:i/></w:rPr></w:pPr>'
+        '<w:r><w:rPr><w:rStyle w:val="0Text"/></w:rPr><w:t>8.) Titel</w:t></w:r></w:p>'
+    ))
+    para = doc.paragraphs[0]
+    mark_attached(para)
+    assert para.left_indent == 720
+    ppr = para.elem.find(qn("pPr"))
+    kids = [k.tag.split("}")[1] for k in ppr]
+    assert kids.index("ind") < kids.index("rPr"), kids
+    # Originaler Absatzstil bleibt unangetastet (kein dangling FootnoteAttached)
+    assert para.style_name == "Normal"
+
+
+def test_mark_attached_idempotent_single_ind():
     doc = Document.from_document_xml(doc_xml(para_xml(text="8.) Source.")))
     para = doc.paragraphs[0]
-    mark_attached(para, "FootnoteAttached")
-    assert para.style_name == "FootnoteAttached"
+    mark_attached(para)
+    mark_attached(para)  # zweiter Lauf darf kein zweites ind erzeugen
     ppr = para.elem.find(qn("pPr"))
-    assert ppr.find(qn("ind")).get(qn("left")) == "720"
-    # pStyle muss vor ind stehen (Schema-Reihenfolge)
-    kids = [k.tag for k in ppr]
-    assert kids.index(qn("pStyle")) < kids.index(qn("ind"))
+    assert len(ppr.findall(qn("ind"))) == 1
+    assert para.left_indent == 720
 
 
 def test_move_after_reorders_and_preserves_order():

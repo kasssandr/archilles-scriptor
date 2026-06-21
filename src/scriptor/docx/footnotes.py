@@ -14,7 +14,8 @@ from scriptor.docx.document import (
 # Lose Fußnoten-Definition: "N.) Text" oder "N) Text" (schließende Klammer
 # zwingend; "N." ohne Klammer sind TOC-/Kapitelzeilen und werden ausgeschlossen).
 FN_DEF_RE = re.compile(r"^(\d{1,3})\.?\)\s")
-ATTACHED_STYLE = "FootnoteAttached"
+# Linke Einrückung (Twips) angehängter Definitionen; zugleich Idempotenz-Marker.
+ATTACHED_INDENT = 720
 
 
 @dataclass
@@ -44,7 +45,7 @@ def collect(doc: Document) -> tuple[list[Ref], list[Def]]:
             refs.append(Ref(i, run.number, run))
         m = FN_DEF_RE.match(para.text)
         if m:
-            defs.append(Def(i, int(m.group(1)), para, para.style_name == ATTACHED_STYLE))
+            defs.append(Def(i, int(m.group(1)), para, para.left_indent == ATTACHED_INDENT))
     return refs, defs
 
 
@@ -100,7 +101,7 @@ def bind(doc: Document) -> BindReport:
     for ref, d in pairs_sorted:
         anchor = anchor_by_ref.get(ref.para_index, paras[ref.para_index])
         move_after(d.para, anchor)
-        mark_attached(d.para, ATTACHED_STYLE)
+        mark_attached(d.para)
         anchor_by_ref[ref.para_index] = d.para  # nächste Def dieser Ref dahinter
         attached.append((d.number, ref.para_index))
 
