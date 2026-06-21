@@ -93,6 +93,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tp.add_argument("src", type=Path, help="Markdown-Master (z. B. book.md)")
     tp.add_argument("--out", type=Path, required=True, help="übersetzungsreifes .md")
+
+    bf = sub.add_parser(
+        "bind-footnotes",
+        help="DOCX: lose N.)-Fußnoten an den Absatz ihrer hochgestellten Referenz anhängen",
+    )
+    bf.add_argument("src", type=Path, help="Eingabe-DOCX")
+    bf.add_argument("--out", type=Path, required=True, help="Ausgabe-DOCX")
     return p
 
 
@@ -182,6 +189,15 @@ def main(argv: list[str] | None = None) -> int:
         briefing_path = pipeline.translate_prep(args.src, args.out)
         print(f"Übersetzungsreif geschrieben: {args.out}", file=sys.stderr)
         print(f"Briefing: {briefing_path}", file=sys.stderr)
+    elif args.cmd == "bind-footnotes":
+        report = pipeline.bind_footnotes(args.src, args.out)
+        print(f"Geschrieben: {args.out}", file=sys.stderr)
+        print(
+            f"  {len(report.attached)} angehängt, "
+            f"{len(report.orphan_defs)} verwaiste Def., "
+            f"{len(report.orphan_refs)} Ref. ohne Def.",
+            file=sys.stderr,
+        )
     else:  # pragma: no cover
         parser.error(f"unknown command {args.cmd!r}")
     return 0
