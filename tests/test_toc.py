@@ -1,5 +1,5 @@
 from scriptor.reflow.core import Page
-from scriptor.reflow.toc import is_toc_page, parse_toc, TOC_LINK_THRESHOLD, render_toc
+from scriptor.reflow.toc import is_toc_page, parse_toc, TOC_LINK_THRESHOLD, render_toc, inject_page_anchors
 
 
 def _toc_page():
@@ -122,3 +122,21 @@ def test_render_toc_shredded_falls_back_verbatim():
     assert res.blocks[0].startswith(_VERBATIM_MARKER)
     assert any("Outline" in b for b in res.blocks)   # Originalzeilen erhalten
     assert res.anchor_targets == set()
+
+
+def test_inject_anchors_first_occurrence_only():
+    doc = "Foo [S. 15] bar baz [S. 15] qux"
+    out = inject_page_anchors(doc, {15})
+    assert out == "Foo [S. 15]{#p-15} bar baz [S. 15] qux"
+
+
+def test_inject_anchors_only_targets():
+    doc = "a [S. 15] b [S. 99] c"
+    out = inject_page_anchors(doc, {15})
+    assert out == "a [S. 15]{#p-15} b [S. 99] c"
+
+
+def test_inject_anchors_missing_marker_is_noop():
+    doc = "a [S. 15] b"
+    out = inject_page_anchors(doc, {77})
+    assert out == doc

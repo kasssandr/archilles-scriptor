@@ -21,6 +21,9 @@ _ENTRY_RE = re.compile(r"^(?P<title>.*?\S)[\s.]*\s(?P<page>\d{1,4})$")
 # Fuehrende Gliederungsnummer: 1 / 1.1 / 1.1.2 …
 _NUM_PREFIX = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+(?P<rest>.*)$")
 
+# Seitenmarker: [S. NN]
+_PAGE_MARKER_RE = re.compile(r"\[S\. (\d+)\]")
+
 
 @dataclass
 class TocEntry:
@@ -118,3 +121,17 @@ def render_toc(pages: list[Page], available_pages: set[int]) -> TocRender:
     blocks = [_VERBATIM_MARKER]
     blocks.extend(render_frontmatter(pages))
     return TocRender(blocks=blocks, anchor_targets=set())
+
+
+def inject_page_anchors(doc: str, targets: set[int]) -> str:
+    """Haengt an das erste ``[S. NN]`` jeder Zielzahl ``{#p-NN}`` an."""
+    remaining = set(targets)
+
+    def repl(m: re.Match[str]) -> str:
+        n = int(m.group(1))
+        if n in remaining:
+            remaining.discard(n)
+            return f"[S. {n}]{{#p-{n}}}"
+        return m.group(0)
+
+    return _PAGE_MARKER_RE.sub(repl, doc)
