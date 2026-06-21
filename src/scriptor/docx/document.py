@@ -92,3 +92,61 @@ class Document:
             z.writestr("word/document.xml", self.to_document_xml())
             for name, data in self._others.items():
                 z.writestr(name, data)
+
+
+def _get_or_make_ppr(p: etree._Element) -> etree._Element:
+    ppr = p.find(qn("pPr"))
+    if ppr is None:
+        ppr = etree.Element(qn("pPr"))
+        p.insert(0, ppr)  # pPr muss erstes Kind von w:p sein
+    return ppr
+
+
+def mark_attached(para: Paragraph, style: str, indent_twips: int = 720) -> None:
+    """Setzt pStyle + linke Einrückung — kennzeichnet eine angehängte Definition
+    (zugleich Idempotenz-Marker)."""
+    ppr = _get_or_make_ppr(para.elem)
+    st = ppr.find(qn("pStyle"))
+    if st is None:
+        st = etree.Element(qn("pStyle"))
+        ppr.insert(0, st)  # pStyle vor ind (Schema-Reihenfolge)
+    st.set(qn("val"), style)
+    ind = ppr.find(qn("ind"))
+    if ind is None:
+        ind = etree.SubElement(ppr, qn("ind"))
+    ind.set(qn("left"), str(indent_twips))
+
+
+def move_after(moved: Paragraph, anchor: Paragraph) -> None:
+    """Löst ``moved`` aus seiner Position und hängt es unmittelbar hinter
+    ``anchor`` ein."""
+    p = moved.elem
+    parent = p.getparent()
+    if parent is not None:
+        parent.remove(p)
+    anchor.elem.addnext(p)
+
+
+def append_flag(para: Paragraph, flag_text: str) -> None:
+    """Hängt einen gelb hervorgehobenen Run mit ``flag_text`` ans Absatzende.
+    Idempotent: tut nichts, wenn der Absatz bereits ein ``[?FN:``-Flag trägt."""
+    if "[?FN:" in para.text:
+        return
+    r = etree.SubElement(para.elem, qn("r"))
+    rpr = etree.SubElement(r, qn("rPr"))
+    etree.SubElement(rpr, qn("highlight")).set(qn("val"), "yellow")
+    t = etree.SubElement(r, qn("t"))
+    t.set(_XML_SPACE, "preserve")
+    t.text = " " + flag_text
+
+
+def highlight_run(run: Run) -> None:
+    """Setzt gelbe Hervorhebung auf einen bestehenden Run (idempotent)."""
+    rpr = run.elem.find(qn("rPr"))
+    if rpr is None:
+        rpr = etree.Element(qn("rPr"))
+        run.elem.insert(0, rpr)
+    hl = rpr.find(qn("highlight"))
+    if hl is None:
+        hl = etree.SubElement(rpr, qn("highlight"))
+    hl.set(qn("val"), "yellow")
