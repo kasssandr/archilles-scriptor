@@ -86,6 +86,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Datei-Klassifikation (übernommen/übersprungen) berichten, ohne zu schreiben",
     )
+
+    tp = sub.add_parser(
+        "translate-prep",
+        help="Markdown-Master -> übersetzungsreifes MD (<dnt>-Schutz) + Briefing",
+    )
+    tp.add_argument("src", type=Path, help="Markdown-Master (z. B. book.md)")
+    tp.add_argument("--out", type=Path, required=True, help="übersetzungsreifes .md")
     return p
 
 
@@ -171,6 +178,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.out is not None:
             pipeline.reflow(pages_dir, args.out, args.format)
             print(f"Reflow geschrieben: {args.out}", file=sys.stderr)
+    elif args.cmd == "translate-prep":
+        briefing_path = pipeline.translate_prep(args.src, args.out)
+        print(f"Übersetzungsreif geschrieben: {args.out}", file=sys.stderr)
+        print(f"Briefing: {briefing_path}", file=sys.stderr)
     else:  # pragma: no cover
         parser.error(f"unknown command {args.cmd!r}")
     return 0

@@ -28,3 +28,17 @@ def run_all(
         pages_dir = out_path.parent / f"{out_path.stem}_pages"
     extract(pdf_path, pages_dir)
     reflow(pages_dir, out_path, fmt)
+
+
+def translate_prep(master_path: str | Path, out_path: str | Path) -> Path:
+    """Master-Markdown -> übersetzungsreifes MD + Briefing-Sidecar.
+    Gibt den Pfad des Briefing-Sidecars zurück."""
+    from scriptor.reflow.translation import prepare_translation, BRIEFING
+
+    master_path = Path(master_path)
+    out_path = Path(out_path)
+    md = master_path.read_text(encoding="utf-8")
+    out_path.write_text(prepare_translation(md), encoding="utf-8")
+    briefing_path = out_path.with_name(out_path.stem + ".briefing.txt")
+    briefing_path.write_text(BRIEFING, encoding="utf-8")
+    return briefing_path
