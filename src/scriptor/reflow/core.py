@@ -275,7 +275,11 @@ CALIB_FALLBACK_MIN = 40
 # Heading-Muster, die einen Modus-Wechsel auslösen.
 # Geprüft werden die ersten 10 nicht-leeren Body-Zeilen einer Seite.
 HEADING_TRIGGERS = [
-    (re.compile(r"^INHALTSVERZEICHNIS\s*$"), "toc"),
+    (re.compile(
+        r"^(INHALTSVERZEICHNIS|INHALT|CONTENTS|TABLE OF CONTENTS|"
+        r"TABLE DES MATIÈRES|SOMMAIRE|INDICE|SOMMARIO|ÍNDICE)\s*$",
+        re.IGNORECASE,
+    ), "toc"),
     # Literaturverzeichnis: Versal-Nachnamen am Zeilenanfang sind klare Marker
     (re.compile(r"^\d+\.\s+Literatur\s*$"), "entries-versal"),
     # Abkürzungen / Quellen / Register: OCR-Spaltenscan oft kaputt → raw belassen
@@ -332,6 +336,7 @@ def assign_modes(pages: list[Page]) -> None:
     werden Bände ohne arab.-1-Trigger (Snell) korrekt erkannt, ohne das
     bisherige Verhalten zu verlieren (sicherer Fallback).
     """
+    from scriptor.reflow.toc import is_toc_page, detect_trailing_toc
     width = estimate_body_width(pages)
     mode = "frontmatter"
     for p in pages:
@@ -345,10 +350,13 @@ def assign_modes(pages: list[Page]) -> None:
                     break
             if triggered:
                 break
-        if not triggered and mode in ("frontmatter", "toc"):
-            if is_prose_page(p, width) or p.num == 1:
+        if not triggered:
+            if mode == "frontmatter" and is_toc_page(p):
+                mode = "toc"
+            elif mode in ("frontmatter", "toc") and (is_prose_page(p, width) or p.num == 1):
                 mode = "main"
         p.mode = mode
+    detect_trailing_toc(pages)
 
 
 def calibrate_threshold(pages: list[Page], peak_fraction: float = 0.25) -> tuple[int, Counter[int]]:
@@ -661,13 +669,6 @@ def render_frontmatter(pages: list[Page]) -> list[str]:
     return blocks
 
 
-def render_toc(pages: list[Page]) -> list[str]:
-    """Inhaltsverzeichnis komplett auslassen — nur Marker hinterlassen."""
-    if not pages:
-        return []
-    return ["[Inhaltsverzeichnis ausgelassen]"]
-
-
 def render_entries(pages: list[Page], start_re: re.Pattern[str]) -> list[str]:
     """
     Listenartige Region (Bibliographie, Index, Abkürzungen).
@@ -733,9 +734,12 @@ def render_book(
     Liefert das gerenderte Dokument sowie ein Audit-Dict mit Seiten, auf
     denen mindestens eine Fußnoten-Def keinen Marker im Body hatte.
     """
+    from scriptor.reflow.toc import render_toc, inject_page_anchors
     out_blocks: list[str] = []
     state: dict = {"counter": 0, "defs": []}
     audit: dict[int, list[int]] = {}
+    available_pages = {p.num for p in pages if p.num >= 0}
+    anchor_targets: set[int] = set()
     i = 0
     while i < len(pages):
         mode = pages[i].mode
@@ -749,7 +753,9 @@ def render_book(
         elif mode in ("frontmatter", "raw"):
             out_blocks.extend(render_frontmatter(group))
         elif mode == "toc":
-            out_blocks.extend(render_toc(group))
+            tr = render_toc(group, available_pages)
+            out_blocks.extend(tr.blocks)
+            anchor_targets |= tr.anchor_targets
         elif mode == "entries-versal":
             out_blocks.extend(render_entries(group, VERSAL_RE))
         else:
@@ -760,6 +766,8 @@ def render_book(
     result = "\n\n".join(out_blocks).rstrip()
     if fmt == "md" and state["defs"]:
         result += "\n\n" + "\n\n".join(state["defs"])
+    if fmt == "md" and anchor_targets:
+        result = inject_page_anchors(result, anchor_targets)
     return result + "\n", audit
 
 

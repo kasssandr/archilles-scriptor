@@ -177,3 +177,43 @@ def test_detect_trailing_toc_ignores_non_main():
     pages = [_prose(), reg]
     detect_trailing_toc(pages)
     assert [p.mode for p in pages] == ["main", "raw"]
+
+
+from scriptor.reflow.core import assign_modes, render_book
+
+
+def test_heading_trigger_multilingual_contents():
+    pages = [
+        Page(-1, ["CONTENTS", "Intro .... 1", "Kap 1 .... 9"], {}),
+        Page(1, ["Dies ist Fliesstext " * 6 for _ in range(8)], {}),
+    ]
+    assign_modes(pages)
+    assert pages[0].mode == "toc"
+
+
+def test_assign_modes_structural_toc_in_frontmatter():
+    pages = [
+        Page(-1, ["Titelei", "Verlag"], {}),
+        Page(-1, [
+            "Einleitung ......... 9",
+            "Die Krise .......... 15",
+            "Der Wandel ......... 42",
+            "Schluss ............ 88",
+        ], {}),
+        Page(1, ["Echter Fliesstext laeuft hier weiter. " * 4 for _ in range(8)], {}),
+    ]
+    assign_modes(pages)
+    assert pages[1].mode == "toc"
+
+
+def test_render_book_links_and_anchors_end_to_end():
+    toc = Page(-1, [
+        "Die Krise .................. 15",
+        "Der Wandel ................. 42",
+    ], {}, mode="toc")
+    p15 = Page(15, ["Hier beginnt das Kapitel ueber die grosse Krise des Reiches."], {}, mode="main")
+    p42 = Page(42, ["Und hier folgt der lange erwartete Wandel der Verhaeltnisse."], {}, mode="main")
+    doc, _ = render_book([toc, p15, p42], threshold=40, fmt="md")
+    assert "- [Die Krise](#p-15) — S. 15" in doc
+    assert "[S. 15]{#p-15}" in doc
+    assert "[S. 42]{#p-42}" in doc
