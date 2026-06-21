@@ -75,3 +75,43 @@ def assign(
 
     orphan_refs = [r for r in refs if id(r) not in claimed]
     return pairs, orphan_defs, orphan_refs
+
+
+@dataclass
+class BindReport:
+    attached: list[tuple[int, int]]      # (number, ref_para_index)
+    orphan_defs: list[tuple[int, int]]   # (number, def_para_index)
+    orphan_refs: list[tuple[int, int]]   # (number, ref_para_index)
+
+
+def bind(doc: Document) -> BindReport:
+    """Verschiebt eindeutig zuordenbare Definitionen als eingerückten Folgeabsatz
+    hinter ihre Referenz; markiert Unsicheres gelb. In-place, idempotent."""
+    refs, defs = collect(doc)
+    pairs, orphan_defs, orphan_refs = assign(refs, defs)
+
+    # paragraphs-Liste ist statisch (Elemente), Indizes bleiben für Report gültig.
+    paras = doc.paragraphs
+
+    # Anhängen: pro Referenz-Absatz die zugeordneten Defs in Referenz-Reihenfolge.
+    attached: list[tuple[int, int]] = []
+    pairs_sorted = sorted(pairs, key=lambda rd: (rd[0].para_index, rd[1].para_index))
+    anchor_by_ref: dict[int, Paragraph] = {}
+    for ref, d in pairs_sorted:
+        anchor = anchor_by_ref.get(ref.para_index, paras[ref.para_index])
+        move_after(d.para, anchor)
+        mark_attached(d.para, ATTACHED_STYLE)
+        anchor_by_ref[ref.para_index] = d.para  # nächste Def dieser Ref dahinter
+        attached.append((d.number, ref.para_index))
+
+    for d in orphan_defs:
+        append_flag(d.para, f"[?FN:{d.number}: keine Referenz gefunden]")
+    for r in orphan_refs:
+        highlight_run(r.run)
+        append_flag(paras[r.para_index], f"[?FN:{r.number}: keine Definition]")
+
+    return BindReport(
+        attached=sorted(attached),
+        orphan_defs=sorted((d.number, d.para_index) for d in orphan_defs),
+        orphan_refs=sorted((r.number, r.para_index) for r in orphan_refs),
+    )
