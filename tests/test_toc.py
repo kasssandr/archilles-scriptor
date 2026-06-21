@@ -1,5 +1,5 @@
 from scriptor.reflow.core import Page
-from scriptor.reflow.toc import is_toc_page, parse_toc, TOC_LINK_THRESHOLD
+from scriptor.reflow.toc import is_toc_page, parse_toc, TOC_LINK_THRESHOLD, render_toc
 
 
 def _toc_page():
@@ -75,3 +75,50 @@ def test_parse_toc_shredded_low_confidence():
     ], {})]
     res = parse_toc(pages)
     assert res.confidence < TOC_LINK_THRESHOLD
+
+
+_VERBATIM_MARKER = "[Inhaltsverzeichnis: verbatim erhalten"
+
+
+def test_render_toc_clean_produces_linked_hierarchy():
+    pages = [Page(-1, [
+        "1. Die Krise ............... 15",
+        "1.1 Vorgeschichte .......... 18",
+        "2. Der Wandel .............. 42",
+    ], {})]
+    res = render_toc(pages, available_pages={15, 18, 42})
+    text = "\n".join(res.blocks)
+    assert "## Inhaltsverzeichnis" in text
+    assert "- [Die Krise](#p-15) — S. 15" in text
+    assert "  - [Vorgeschichte](#p-18) — S. 18" in text
+    assert "- [Der Wandel](#p-42) — S. 42" in text
+    assert res.anchor_targets == {15, 18, 42}
+
+
+def test_render_toc_entry_without_body_page_has_no_link():
+    pages = [Page(-1, [
+        "Da ............. 15",
+        "Dort ........... 42",
+        "Fehlt .......... 77",
+        "Ende ........... 88",
+    ], {})]
+    res = render_toc(pages, available_pages={15, 42, 88})  # 77 fehlt
+    text = "\n".join(res.blocks)
+    assert "- [Fehlt](#p-77)" not in text
+    assert "- Fehlt — S. 77" in text
+    assert 77 not in res.anchor_targets
+
+
+def test_render_toc_shredded_falls_back_verbatim():
+    pages = [Page(-1, [
+        "1. The History of the Byzantine Empire: an",
+        "Outline",
+        "II. The Economic Life",
+        "III. Public Finances",
+        "IV. The Byzantine Church",
+        "33", "51", "71", "86", "136",
+    ], {})]
+    res = render_toc(pages, available_pages=set())
+    assert res.blocks[0].startswith(_VERBATIM_MARKER)
+    assert any("Outline" in b for b in res.blocks)   # Originalzeilen erhalten
+    assert res.anchor_targets == set()

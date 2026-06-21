@@ -90,3 +90,31 @@ def parse_toc(pages: list[Page]) -> TocParse:
         mono = non_decr / (len(seq) - 1)
         confidence *= 0.5 + 0.5 * mono
     return TocParse(entries=entries, confidence=confidence)
+
+
+_VERBATIM_MARKER = (
+    "[Inhaltsverzeichnis: verbatim erhalten — "
+    "Verlinkung wegen unsicherer Spaltentrennung ausgelassen]"
+)
+
+
+def render_toc(pages: list[Page], available_pages: set[int]) -> TocRender:
+    parse = parse_toc(pages)
+    if parse.confidence >= TOC_LINK_THRESHOLD and parse.entries:
+        lines: list[str] = []
+        targets: set[int] = set()
+        for e in parse.entries:
+            indent = "  " * (e.level - 1)
+            if e.page >= 0 and e.page in available_pages:
+                lines.append(f"{indent}- [{e.title}](#p-{e.page}) — S. {e.page}")
+                targets.add(e.page)
+            elif e.page >= 0:
+                lines.append(f"{indent}- {e.title} — S. {e.page}")
+            else:
+                lines.append(f"{indent}- {e.title}")
+        return TocRender(blocks=["## Inhaltsverzeichnis", "\n".join(lines)],
+                         anchor_targets=targets)
+
+    blocks = [_VERBATIM_MARKER]
+    blocks.extend(render_frontmatter(pages))
+    return TocRender(blocks=blocks, anchor_targets=set())
