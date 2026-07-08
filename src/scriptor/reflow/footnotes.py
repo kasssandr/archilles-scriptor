@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import re
 
-# Fußnoten-Definition am Zeilenanfang: "NN) Text…".
+# Footnote definition at the start of a line: "NN) Text…".
 FOOTNOTE_RE = re.compile(r"^(\d{1,3})\)\s?(.*)$")
-# Marker im fertigen Body: bereits durch [NN] ersetzt — wird beim Reflow erkannt.
+# Marker in the finished body: already replaced with [NN] — recognised during reflow.
 PLACED_MARKER_RE = re.compile(r"\[(\d{1,3})\]")
 
-# OCR liefert Fußnotenmarker oft als Unicode-Superscripts. Vor der
-# Marker-Erkennung normalisieren wir diese in ASCII-Ziffern.
+# OCR often delivers footnote markers as Unicode superscripts. Before marker
+# detection we normalise these to ASCII digits.
 SUPERSCRIPT_DIGITS = str.maketrans({
     "⁰": "0", "¹": "1", "²": "2", "³": "3",
     "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7",
@@ -28,28 +28,28 @@ SUPERSCRIPT_DIGITS = str.maketrans({
 
 def substitute_markers(body_lines: list[str], footnotes: dict[int, str]) -> list[str]:
     """
-    Ersetzt Fußnoten-Marker im Body durch '[NN]'. Zwei-Pass-Verfahren:
+    Replaces footnote markers in the body with '[NN]'. Two-pass procedure:
 
-      Pass 1 (sicher): NN direkt an ein Wort/Punktuationszeichen geklebt.
-                       — z.B. 'wort64', 'sagte"64', 'Annalen-/64' (nach dehyph.)
-      Pass 2 (Fallback): NN durch Leerzeichen vom vorigen Token getrennt.
-                       — z.B. 'geführt" 30.'
+      Pass 1 (safe): NN glued directly onto a word/punctuation character.
+                     — e.g. 'word64', 'said"64', 'annals-/64' (after dehyph.)
+      Pass 2 (fallback): NN separated from the previous token by whitespace.
+                     — e.g. 'led" 30.'
 
-    Jede Fußnotennummer wird nur einmal verbraucht (sequentiell). Wenn beide
-    Pässe einen Marker für dasselbe NN finden würden, gewinnt Pass 1.
-    Falsche Treffer auf Zahlen im Fließtext werden weitgehend vermieden,
-    weil nur Nummern aus dem footnotes-Set überhaupt als Kandidaten gelten.
+    Each footnote number is consumed only once (sequentially). If both
+    passes would find a marker for the same NN, pass 1 wins.
+    False positives on numbers in the running text are largely avoided,
+    because only numbers from the footnotes set count as candidates at all.
     """
     if not footnotes or not body_lines:
         return body_lines
 
-    # Body als ein String mit Trennern verarbeiten — Newlines sind \S-frei,
-    # also bleiben Wortgrenzen erhalten. Nach Substitution wieder splitten.
+    # Process the body as one string with separators — newlines are \S-free,
+    # so word boundaries are preserved. Split again after substitution.
     SEP = "\n"
     body = SEP.join(body_lines)
     consumed: set[int] = set()
 
-    # Pass 1: angeklebt
+    # Pass 1: glued on
     for num in sorted(footnotes.keys()):
         if num in consumed:
             continue
@@ -59,7 +59,7 @@ def substitute_markers(body_lines: list[str], footnotes: dict[int, str]) -> list
             body = new_body
             consumed.add(num)
 
-    # Pass 2: durch Whitespace abgesetzt — nur für noch nicht konsumierte Nummern
+    # Pass 2: separated by whitespace — only for numbers not yet consumed
     for num in sorted(footnotes.keys()):
         if num in consumed:
             continue

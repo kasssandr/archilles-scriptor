@@ -1,8 +1,9 @@
-"""Übersetzungs-Profil (Etappe 2c): Markdown-Master -> übersetzungsreifes MD.
+"""Translation profile (stage 2c): master Markdown -> translation-ready MD.
 
-Reiner String-Postprozessor (kein I/O). Schützt nicht zu übersetzende Elemente
-mit <dnt>…</dnt>-Tags und entfernt offene Confidence-Flags (strip-and-pass).
-Siehe docs/superpowers/specs/2026-06-21-uebersetzungs-profil-design.md.
+Pure string post-processor (no I/O). Protects elements that must not be
+translated with <dnt>…</dnt> tags and removes open confidence flags
+(strip-and-pass). See
+docs/superpowers/specs/2026-06-21-uebersetzungs-profil-design.md.
 """
 
 from __future__ import annotations
@@ -13,40 +14,40 @@ from collections.abc import Callable
 DNT_OPEN = "<dnt>"
 DNT_CLOSE = "</dnt>"
 
-# http(s):// oder www.… bis Whitespace/'<'. Trailing-Satzzeichen wird beim
-# Wrappen abgetrennt (siehe protect_urls), nicht hier.
+# http(s):// or www.… up to whitespace/'<'. Trailing punctuation is split off
+# during wrapping (see protect_urls), not here.
 URL_RE = re.compile(r"(?:https?://|www\.)[^\s<]+", re.IGNORECASE)
 
-# Titel-Anführungspaare: deutsch „…“, gerade "…", Guillemets »…«.
+# Title quote pairs: German „…“, straight "…", guillemets »…«.
 QUOTE_PAIRS = [("„", "“"), ('"', '"'), ("»", "«")]
 
-# Pandoc-Fußnoten-Definitionszeile (einzeilig).
+# Pandoc footnote definition line (single-line).
 FN_DEF_RE = re.compile(r"^\[\^\d+\]:")
 
-# Confidence-Flags der 2-B-Schicht: [?FN:…] / [??FN:…] (optionales führendes Space).
+# Confidence flags from the 2-B layer: [?FN:…] / [??FN:…] (optional leading space).
 FLAG_RE = re.compile(r" ?\[\?\??FN:[^\]]*\]")
 
-# Bestehende <dnt>…</dnt>-Spanne (für das Transformieren nur außerhalb davon).
+# Existing <dnt>…</dnt> span (transformation applies only outside of it).
 _DNT_SPAN_RE = re.compile(r"<dnt>.*?</dnt>", re.DOTALL)
 _URL_TRAIL = ".,;:!?)]"
 
 
 def strip_flags(text: str) -> str:
-    """Entfernt offene Confidence-Flags (strip-and-pass, §9-Q2). Body bleibt
-    unverändert; verwaiste Fußnoten-Defs bleiben erhalten."""
+    """Removes open confidence flags (strip-and-pass, §9-Q2). Body stays
+    unchanged; orphaned footnote definitions are preserved."""
     return FLAG_RE.sub("", text)
 
 
 def strip_dnt(text: str) -> str:
-    """Entfernt die DNT-Tags, behält den Innentext (Round-Trip-Inverse zum
-    Wrappen). Das führt Archillator nach der Übersetzung aus."""
+    """Removes the DNT tags, keeps the inner text (round-trip inverse of
+    wrapping). Archillator runs this after translation."""
     return text.replace(DNT_OPEN, "").replace(DNT_CLOSE, "")
 
 
 def _transform_outside_dnt(text: str, transform: Callable[[str], str]) -> str:
-    """Wendet ``transform`` nur auf die Textteile *außerhalb* bestehender
-    <dnt>…</dnt>-Spannen an; vorhandene Spannen bleiben unangetastet. So sind
-    alle protect_*-Funktionen idempotent und erzeugen keine Verschachtelung."""
+    """Applies ``transform`` only to the text parts *outside* existing
+    <dnt>…</dnt> spans; existing spans are left untouched. This keeps all
+    protect_* functions idempotent and avoids nesting."""
     out: list[str] = []
     last = 0
     for m in _DNT_SPAN_RE.finditer(text):
@@ -58,8 +59,8 @@ def _transform_outside_dnt(text: str, transform: Callable[[str], str]) -> str:
 
 
 def protect_urls(text: str) -> str:
-    """Taggt URLs mit <dnt>…</dnt>. Trailing-Satzzeichen bleibt außerhalb des
-    Tags. Überspringt bereits getaggte URLs."""
+    """Tags URLs with <dnt>…</dnt>. Trailing punctuation stays outside the
+    tag. Skips URLs already tagged."""
     def _wrap(m: re.Match) -> str:
         url = m.group(0)
         trail = ""
@@ -72,8 +73,8 @@ def protect_urls(text: str) -> str:
 
 
 def protect_quoted(text: str) -> str:
-    """Taggt Titel in Anführungszeichen (alle QUOTE_PAIRS) mit <dnt>…</dnt>.
-    Nur außerhalb bestehender Tags; idempotent."""
+    """Tags quoted titles (all QUOTE_PAIRS) with <dnt>…</dnt>.
+    Only outside existing tags; idempotent."""
     def _wrap(seg: str) -> str:
         for open_q, close_q in QUOTE_PAIRS:
             pattern = re.escape(open_q) + "[^" + re.escape(close_q) + "]*" + re.escape(close_q)
@@ -88,9 +89,9 @@ def protect_quoted(text: str) -> str:
 
 
 def prepare_translation(markdown: str) -> str:
-    """Master-Markdown -> übersetzungsreifes MD: Flags strippen; URLs überall
-    taggen; auf Fußnoten-Def-Zeilen zusätzlich Titel in Anführungszeichen
-    taggen. Idempotent; strukturelle Pandoc-Marker bleiben unangetastet."""
+    """Master Markdown -> translation-ready MD: strip flags; tag URLs
+    everywhere; on footnote-definition lines, additionally tag quoted
+    titles. Idempotent; structural Pandoc markers are left untouched."""
     text = strip_flags(markdown)
     out_lines: list[str] = []
     for line in text.split("\n"):
@@ -101,19 +102,20 @@ def prepare_translation(markdown: str) -> str:
     return "\n".join(out_lines)
 
 
-BRIEFING = """Übersetzungs-Briefing für Archillator
-=====================================
-Dieses Dokument ist für die LLM-Übersetzung vorbereitet.
+BRIEFING = """Translation briefing
+====================
+This document has been prepared for LLM translation.
 
-1. Übersetze den Fließtext in die Zielsprache.
-2. Text innerhalb von <dnt>…</dnt> wörtlich und unverändert belassen — niemals
-   übersetzen, umstellen oder normalisieren. Geschützt sind so referenzierte
-   Werk-/Artikeltitel, bibliografische Verweise und URLs.
-3. Auch ungetaggte referenzierte Literaturtitel, Eigennamen und bibliografische
-   Verweise verbatim belassen (besonders im Fußnotenapparat) — im Zweifel nicht
-   übersetzen. Bibliografische Präzision hat Vorrang vor Vollständigkeit.
-4. Pandoc-Strukturen unverändert übernehmen: Fußnotenmarker [^N], Fußnoten-
-   Definitionen [^N]:, Seitenmarker [S. NN].
-5. Nach der Übersetzung die Tags <dnt> und </dnt> entfernen, den Innentext
-   behalten.
+1. Translate the running prose into the target language.
+2. Leave text inside <dnt>…</dnt> exactly as it stands. Never translate,
+   reorder or normalise it. What is protected this way: referenced work and
+   article titles, bibliographic references, URLs.
+3. Leave untagged work titles, proper names and bibliographic references
+   verbatim as well, especially inside the footnote apparatus. When in doubt,
+   do not translate. Bibliographic precision outranks completeness.
+4. Carry over Pandoc structures unchanged: footnote markers [^N], footnote
+   definitions [^N]:, page markers [p. …]. A page label may be roman ([p. xiv]);
+   it is the page as printed in the book and must never be renumbered.
+5. After translating, remove the <dnt> and </dnt> tags and keep the text
+   between them.
 """

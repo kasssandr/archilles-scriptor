@@ -1,5 +1,5 @@
-"""Baut WordprocessingML-Fragmente und minimale DOCX-Bytes für Tests.
-Test-Texte dürfen keine rohen XML-Sonderzeichen (& < >) enthalten."""
+"""Builds WordprocessingML fragments and minimal DOCX bytes for tests.
+Test texts must not contain raw XML special characters (& < >)."""
 from __future__ import annotations
 
 import io

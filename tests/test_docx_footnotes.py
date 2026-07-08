@@ -28,7 +28,7 @@ def test_assign_simple_pair():
     pairs, orphan_defs, orphan_refs = assign(refs, defs)
     assert orphan_defs == [] and orphan_refs == []
     assert [(r.number, d.number) for r, d in pairs] == [(8, 8)]
-    assert pairs[0][0].para_index == 0  # an die Referenz in Absatz 0
+    assert pairs[0][0].para_index == 0  # attached to the reference in paragraph 0
 
 
 def test_assign_respects_chapter_number_reset():
@@ -41,7 +41,7 @@ def test_assign_respects_chapter_number_reset():
     refs, defs = collect(doc)
     pairs, orphan_defs, orphan_refs = assign(refs, defs)
     assert orphan_defs == [] and orphan_refs == []
-    # jede Definition zur jeweils vorausgehenden Referenz
+    # each definition to its immediately preceding reference
     got = sorted((r.para_index, d.para_index) for r, d in pairs)
     assert got == [(0, 1), (2, 3)]
 
@@ -68,12 +68,12 @@ def test_bind_attaches_definition_after_reference():
     )
     report = bind(doc)
     texts = [p.text for p in doc.paragraphs]
-    # Definition steht jetzt direkt hinter der Referenz (Absatz 0)
+    # Definition now sits directly after the reference (paragraph 0)
     assert texts[0].startswith("a")
     assert texts[1] == "8.) Source eight."
     assert texts[2] == "filler"
     assert doc.paragraphs[1].left_indent == ATTACHED_INDENT
-    assert report.attached == [(8, 0)]
+    assert report.attached == [(0, 8, "a8")]   # (para_index, number, snippet)
     assert report.orphan_defs == [] and report.orphan_refs == []
 
 
@@ -98,8 +98,8 @@ def test_bind_marks_orphans_visibly():
     report = bind(doc)
     assert "[?FN:5:" in doc.paragraphs[0].text
     assert "[?FN:9:" in doc.paragraphs[1].text
-    assert [n for n, _ in report.orphan_defs] == [5]
-    assert [n for n, _ in report.orphan_refs] == [9]
+    assert [n for _, n, _ in report.orphan_defs] == [5]
+    assert [n for _, n, _ in report.orphan_refs] == [9]
 
 
 def test_bind_is_idempotent():
@@ -119,8 +119,33 @@ def test_bind_is_idempotent():
     texts2 = [p.text for p in doc2.paragraphs]
     indents2 = [p.left_indent for p in doc2.paragraphs]
 
-    # Strukturell unverändert (robuster als byte-Vergleich):
-    assert texts2 == texts1             # keine doppelten Defs/Flags
-    assert indents2 == indents1         # keine doppelte Einrückung
-    assert rep2.attached == []          # nichts erneut angehängt
-    assert [n for n, _ in rep2.orphan_refs] == [9]  # bleibt korrekt gemeldet
+    # Structurally unchanged (more robust than a byte comparison):
+    assert texts2 == texts1             # no duplicate defs/flags
+    assert indents2 == indents1         # no duplicate indentation
+    assert rep2.attached == []          # nothing reattached
+    assert [n for _, n, _ in rep2.orphan_refs] == [9]  # still correctly reported
+
+
+def test_report_sorted_by_paragraph_not_footnote_number():
+    # Early passage carries FN 5, later one FN 1 (chapter numbering restarts).
+    # The report must sort by paragraph number, not by footnote number.
+    doc = _doc(
+        para_xml(run_xml("early "), run_xml("5", superscript=True)),  # para 0, FN 5
+        para_xml(text="5.) Five."),                                   # para 1
+        para_xml(run_xml("later "), run_xml("1", superscript=True)),  # para 2, FN 1
+        para_xml(text="1.) One."),                                    # para 3
+    )
+    report = bind(doc)
+    assert [idx for idx, _, _ in report.attached] == [0, 2]   # paragraph order
+    assert [n for _, n, _ in report.attached] == [5, 1]       # not sorted by FN
+
+
+def test_report_snippet_is_searchable_passage_text():
+    doc = _doc(
+        para_xml(run_xml("The Carolingian mayors held real power"),
+                 run_xml("8", superscript=True)),
+        para_xml(text="8.) Source eight."),
+    )
+    report = bind(doc)
+    _, _, snip = report.attached[0]
+    assert "Carolingian mayors" in snip

@@ -1,6 +1,7 @@
-# Fußnoten-Confidence-Audit für tests/fixtures/reflow_golden/expected.md
-# 2 Seiten, 2 sichere FN, 0 unsichere, davon 0 mit Mehrfachkandidaten.
-# Konvention: Flag-Nummern sind seitenlokal (wie am Scan); [^N] sind
-# dokumentweit. Geflaggt wird nur an Sequenzlücken zwischen erkannten
-# Markern; wortendige Einzelbuchstaben (z. B. l/i für FN 1) können Fehlflags sein.
+# Footnote confidence audit for tests/fixtures/reflow_golden/expected.md
+# 2 pages, 2 certain footnotes, 0 uncertain, 0 with several candidates.
+# Convention: flag numbers are page-local (as printed on the scan); [^N]
+# are document-wide. Only sequence gaps between recognised markers are
+# flagged; a single letter at a word end (l/i for footnote 1) may be a
+# false positive.
 

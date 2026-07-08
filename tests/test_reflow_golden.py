@@ -5,7 +5,7 @@ fixture so the footnotes.py extraction (Etappe 2-A) can be proven
 behaviour-preserving: the output must stay byte-identical before and after
 the refactor. The fixture deliberately exercises the footnote-relevant paths:
 a footnote whose marker is found in the body (-> [^1]), a footnote definition
-whose marker is missing (-> hanging reference [^2] + audit entry), [S. NN]
+whose marker is missing (-> hanging reference [^2] + audit entry), [p. NN]
 page markers, and a soft-hyphenated word rejoined across a line break.
 """
 
@@ -66,7 +66,7 @@ def test_reflow_review_master_leaves_unbounded_fn_unflagged(tmp_path):
     assert "[?FN" not in review
 
 
-def test_reflow_confidence_fixture_has_vorgeschlagen_flag(tmp_path):
+def test_reflow_confidence_fixture_has_suggested_flag(tmp_path):
     out = tmp_path / "out.md"
     reflow_main(str(CONF_PAGES), str(out), "md")
     review = (tmp_path / "out.review.md").read_text(encoding="utf-8")

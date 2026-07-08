@@ -8,8 +8,9 @@ markup convention:
   a paragraph may span the page boundary.
 - ``--`` on its own line marks the start of the footnote region on the
   current page.
-- ``[p. 211]`` / ``[p.212]`` at the start of a page body becomes ``[S. 211]``
-  inline in the Markdown output.
+- A page marker at the start of a page body. Write it however you like —
+  ``[p. 211]``, ``[p.212]``, ``[S. 223]``, ``[222]`` — it is normalised to
+  ``[p. NNN]`` inline in the Markdown output.
 - Footnote markers in the body are written as ``(1)``, ``(2)``, ``(*)`` etc.
   Footnote definitions in the footnote region start with the same token.
 - Paragraph breaks inside a page body are blank lines.
@@ -17,7 +18,7 @@ markup convention:
   global counter so Pandoc footnote IDs are unique.
 
 Output: Markdown with Pandoc-style footnotes (``[^1]`` in body,
-``[^1]: text`` at the document end) and inline ``[S. NN]`` page markers.
+``[^1]: text`` at the document end) and inline ``[p. NN]`` page markers.
 """
 
 from __future__ import annotations
@@ -33,14 +34,15 @@ FN_SEP_SPLIT = re.compile(r"\n--[ \t]*\n")
 PAGE_MARKER_RE = re.compile(r"^\s*\[(?:p\.?\s*|S\.?\s*)?(\d+)\]")
 # Footnote definition: line starting with (key) where key is * or 1-3 digits
 FN_DEF_RE = re.compile(r"^\((\*|\d{1,3})\)\s*(.*)$")
-# Combined body scanner: [S. NN] placed marker or (key) inline footnote marker
-BODY_SCAN_RE = re.compile(r"\[S\.\s*(\d+)\]|\((\*|\d{1,3})\)")
+# Combined body scanner: [p. NN] placed marker or (key) inline footnote marker
+BODY_SCAN_RE = re.compile(r"\[p\.\s*(\d+)\]|\((\*|\d{1,3})\)")
 
 
 def _parse_page(page_text: str) -> tuple[int | None, str, dict[str, str]]:
     """Split a single page block into (page_num, body_text, footnotes_by_key).
 
-    The body text has its leading ``[p. NNN]`` replaced with ``[S. NNN]``.
+    The body text has its leading page marker, in whatever variant it was
+    written, normalised to ``[p. NNN]``.
     """
     parts = FN_SEP_SPLIT.split(page_text, maxsplit=1)
     body = parts[0]
@@ -59,7 +61,7 @@ def _parse_page(page_text: str) -> tuple[int | None, str, dict[str, str]]:
     m = PAGE_MARKER_RE.match(body)
     page_num = int(m.group(1)) if m else None
     if m:
-        body = body[: m.start()] + f"[S. {m.group(1)}]" + body[m.end() :]
+        body = body[: m.start()] + f"[p. {m.group(1)}]" + body[m.end() :]
 
     fns_raw: dict[str, list[str]] = {}
     order: list[str] = []
@@ -146,7 +148,7 @@ def convert(text: str) -> tuple[str, dict[int, list[str]]]:
             if m.group(1) is not None:
                 page_num = int(m.group(1))
                 current_page_idx = num_to_idx.get(page_num, current_page_idx)
-                out.append(f"[S. {page_num}]")
+                out.append(f"[p. {page_num}]")
             else:
                 local_key = m.group(2)
                 assigned = False
@@ -180,7 +182,7 @@ def convert(text: str) -> tuple[str, dict[int, list[str]]]:
                 # Hang a reference onto the last paragraph that touched this page.
                 target_para = None
                 for pi in range(len(rewritten) - 1, -1, -1):
-                    if f"[S. {p['num']}]" in rewritten[pi]:
+                    if f"[p. {p['num']}]" in rewritten[pi]:
                         target_para = pi
                         break
                 if target_para is None:

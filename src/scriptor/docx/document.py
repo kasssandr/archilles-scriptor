@@ -1,5 +1,5 @@
-"""DOCX-Mechanik über lxml auf ``word/document.xml``: lesen, mutieren,
-ZIP zurückschreiben. Kennt keine Fußnoten-Logik."""
+"""DOCX mechanics via lxml on ``word/document.xml``: read, mutate, write
+the ZIP back. Knows nothing about footnote logic."""
 from __future__ import annotations
 
 import zipfile
@@ -58,7 +58,7 @@ class Paragraph:
 
     @property
     def left_indent(self) -> int | None:
-        """Linke Einrückung in Twips (``w:ind/@w:left``) oder None."""
+        """Left indent in twips (``w:ind/@w:left``), or None."""
         ppr = self.elem.find(qn("pPr"))
         if ppr is None:
             return None
@@ -77,7 +77,7 @@ class Document:
         self._others = others or {}
         self._body = root.find(f".//{qn('body')}")
         if self._body is None:
-            raise ValueError("w:body nicht gefunden")
+            raise ValueError("w:body not found")
 
     @classmethod
     def from_document_xml(cls, xml: str | bytes) -> "Document":
@@ -112,13 +112,13 @@ def _get_or_make_ppr(p: etree._Element) -> etree._Element:
     ppr = p.find(qn("pPr"))
     if ppr is None:
         ppr = etree.Element(qn("pPr"))
-        p.insert(0, ppr)  # pPr muss erstes Kind von w:p sein
+        p.insert(0, ppr)  # pPr must be the first child of w:p
     return ppr
 
 
-# CT_PPr-Schema: Kind-Elemente, die NACH <w:ind> stehen müssen. <w:ind> wird
-# unmittelbar vor dem ersten solchen Element eingefügt — sonst (z. B. ind nach
-# rPr) verwirft Word das Dokument als beschädigt und repariert es mit Datenverlust.
+# CT_PPr schema: child elements that must come AFTER <w:ind>. <w:ind> is
+# inserted immediately before the first such element — otherwise (e.g. ind
+# after rPr) Word rejects the document as corrupt and repairs it with data loss.
 _PPR_AFTER_IND = {
     "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc",
     "textDirection", "textAlignment", "textboxTightWrap", "outlineLvl",
@@ -127,9 +127,9 @@ _PPR_AFTER_IND = {
 
 
 def mark_attached(para: Paragraph, indent_twips: int = 720) -> None:
-    """Rückt den Absatz links ein — kennzeichnet eine angehängte Definition und
-    dient zugleich als Idempotenz-Marker. Fügt ``w:ind`` schema-konform ein;
-    pStyle und Runs bleiben unangetastet. Idempotent (höchstens ein ``w:ind``)."""
+    """Indents the paragraph on the left — marks an attached definition and
+    doubles as an idempotency marker. Inserts ``w:ind`` schema-conformantly;
+    pStyle and runs are left untouched. Idempotent (at most one ``w:ind``)."""
     ppr = _get_or_make_ppr(para.elem)
     ind = ppr.find(qn("ind"))
     if ind is None:
@@ -145,8 +145,8 @@ def mark_attached(para: Paragraph, indent_twips: int = 720) -> None:
 
 
 def move_after(moved: Paragraph, anchor: Paragraph) -> None:
-    """Löst ``moved`` aus seiner Position und hängt es unmittelbar hinter
-    ``anchor`` ein."""
+    """Detaches ``moved`` from its position and inserts it immediately after
+    ``anchor``."""
     p = moved.elem
     parent = p.getparent()
     if parent is not None:
@@ -155,8 +155,9 @@ def move_after(moved: Paragraph, anchor: Paragraph) -> None:
 
 
 def append_flag(para: Paragraph, flag_text: str) -> None:
-    """Hängt einen gelb hervorgehobenen Run mit ``flag_text`` ans Absatzende.
-    Idempotent: tut nichts, wenn der Absatz bereits ein ``[?FN:``-Flag trägt."""
+    """Appends a yellow-highlighted run with ``flag_text`` to the end of the
+    paragraph. Idempotent: does nothing if the paragraph already carries a
+    ``[?FN:`` flag."""
     if "[?FN:" in para.text:
         return
     r = etree.SubElement(para.elem, qn("r"))
@@ -168,7 +169,7 @@ def append_flag(para: Paragraph, flag_text: str) -> None:
 
 
 def highlight_run(run: Run) -> None:
-    """Setzt gelbe Hervorhebung auf einen bestehenden Run (idempotent)."""
+    """Sets yellow highlighting on an existing run (idempotent)."""
     rpr = run.elem.find(qn("rPr"))
     if rpr is None:
         rpr = etree.Element(qn("rPr"))

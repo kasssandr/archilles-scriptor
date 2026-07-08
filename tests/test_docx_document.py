@@ -19,7 +19,7 @@ def test_superscript_digit_is_detected_plain_paren_is_not():
             run_xml("owning Christian slaves."),
             run_xml("8", superscript=True),
             run_xml(" Following the rule, see also "),
-            run_xml("(9)"),  # normale Klammerzahl, NICHT superscript
+            run_xml("(9)"),  # normal bracketed number, NOT superscript
         ),
     ))
     refs = doc.paragraphs[0].superscript_digits()
@@ -44,8 +44,8 @@ def test_load_from_minimal_docx(tmp_path):
 
 
 def test_mark_attached_indents_without_breaking_schema_order():
-    # pPr mit rPr am Ende (wie echte Absätze): ind MUSS vor rPr landen, sonst
-    # verletzt es die OOXML-Schema-Reihenfolge -> Word repariert -> Datenverlust.
+    # pPr with rPr at the end (like real paragraphs): ind MUST land before rPr,
+    # otherwise it violates OOXML schema order -> Word repairs -> data loss.
     doc = Document.from_document_xml(doc_xml(
         '<w:p><w:pPr><w:pStyle w:val="Normal"/><w:rPr><w:i/></w:rPr></w:pPr>'
         '<w:r><w:rPr><w:rStyle w:val="0Text"/></w:rPr><w:t>8.) Titel</w:t></w:r></w:p>'
@@ -56,7 +56,7 @@ def test_mark_attached_indents_without_breaking_schema_order():
     ppr = para.elem.find(qn("pPr"))
     kids = [k.tag.split("}")[1] for k in ppr]
     assert kids.index("ind") < kids.index("rPr"), kids
-    # Originaler Absatzstil bleibt unangetastet (kein dangling FootnoteAttached)
+    # Original paragraph style stays untouched (no dangling FootnoteAttached)
     assert para.style_name == "Normal"
 
 
@@ -64,7 +64,7 @@ def test_mark_attached_idempotent_single_ind():
     doc = Document.from_document_xml(doc_xml(para_xml(text="8.) Source.")))
     para = doc.paragraphs[0]
     mark_attached(para)
-    mark_attached(para)  # zweiter Lauf darf kein zweites ind erzeugen
+    mark_attached(para)  # second run must not create a second ind
     ppr = para.elem.find(qn("pPr"))
     assert len(ppr.findall(qn("ind"))) == 1
     assert para.left_indent == 720
@@ -79,7 +79,7 @@ def test_move_after_reorders_and_preserves_order():
     ))
     ref, _other, def1, def2 = doc.paragraphs
     move_after(def1, ref)
-    move_after(def2, def1)  # Anker fortschreiben -> Reihenfolge bleibt
+    move_after(def2, def1)  # advance the anchor -> order is preserved
     assert [p.text for p in doc.paragraphs] == ["REF", "DEF1", "DEF2", "OTHER"]
 
 
