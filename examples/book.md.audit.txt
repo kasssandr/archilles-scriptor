@@ -1,0 +1,8 @@
+# Footnote confidence audit for examples\book.md
+# 2 pages, 4 certain footnotes, 1 uncertain, 0 with several candidates.
+# Convention: flag numbers are page-local (as printed on the scan); [^N]
+# are document-wide. Only sequence gaps between recognised markers are
+# flagged; a single letter at a word end (l/i for footnote 1) may be a
+# false positive.
+
+p. 12: FN 6 [suggested]  ->  &:0.8 (glyph-in-table+attached+before-space)

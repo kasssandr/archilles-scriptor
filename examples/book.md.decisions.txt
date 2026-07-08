@@ -1,0 +1,16 @@
+# Open footnote decisions for examples\book.md
+# 1 still open.
+#
+# A footnote's text survived OCR but the small superscript marker that anchored
+# it did not. Below are the glyphs that could be that marker, best first. Put an
+# x in the box of the right one and run the reflow again with:
+#
+#     scriptor reflow <pages> --out examples\book.md --decisions examples\book.md.decisions.txt
+#
+# Leave a box empty to keep the footnote as an unreferenced definition at the end
+# of its paragraph — nothing is lost either way, the anchor is simply not claimed.
+# Marking two candidates for the same footnote is refused, not guessed.
+#
+# This file is regenerated on every run and lists only what is still open.
+
+[ ] p. 12  fn 6  cand 1  '&'  conf 0.8  ctx: nschaft, waehrend Eduard Meyer& die wirtschaftliche Grundlage
