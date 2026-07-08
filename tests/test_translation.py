@@ -1,8 +1,8 @@
-"""Tests für das Übersetzungs-Profil (Etappe 2c).
+"""Tests for the translation profile (stage 2c).
 
-Markdown-Postprozessor: schützt nicht zu übersetzende Elemente mit
-<dnt>…</dnt>-Tags (URLs überall; Titel in Anführungszeichen im Fußnoten-
-apparat) und entfernt offene Confidence-Flags (strip-and-pass).
+Markdown post-processor: protects elements that must not be translated with
+<dnt>…</dnt> tags (URLs everywhere; quoted titles in the footnote apparatus)
+and removes open confidence flags (strip-and-pass).
 """
 
 from scriptor.reflow.translation import (
@@ -18,11 +18,11 @@ from scriptor.reflow.translation import (
 # --- strip_flags --------------------------------------------------------------
 
 def test_strip_flags_removes_orphan_and_inline_flags():
-    src = "Ein Wort A[?FN:4|A] und ein Satz. [?FN:7] [^3] [S. 12]"
-    assert strip_flags(src) == "Ein Wort A und ein Satz. [^3] [S. 12]"
+    src = "Ein Wort A[?FN:4|A] und ein Satz. [?FN:7] [^3] [p. 12]"
+    assert strip_flags(src) == "Ein Wort A und ein Satz. [^3] [p. 12]"
 
 
-def test_strip_flags_removes_geraten_multiflag():
+def test_strip_flags_removes_guessed_multiflag():
     src = "Text B[??FN:3|B:0.6] mehr 8[??FN:3|8:0.4] Ende."
     assert strip_flags(src) == "Text B mehr 8 Ende."
 
@@ -82,13 +82,13 @@ def test_protect_quoted_idempotent():
     assert protect_quoted(once) == once
 
 
-# --- prepare_translation (Orchestrierung) -------------------------------------
+# --- prepare_translation (orchestration) -------------------------------------
 
 def test_prepare_apparatus_vs_body_asymmetry():
     body = 'Er nannte „Römische Geschichte“ ein Werk.'
     fndef = '[^3]: Vgl. „Römische Geschichte“, Berlin 1854.'
     out = prepare_translation(body + "\n" + fndef).split("\n")
-    assert out[0] == body  # Body unverändert
+    assert out[0] == body  # body unchanged
     assert out[1] == '[^3]: Vgl. <dnt>„Römische Geschichte“</dnt>, Berlin 1854.'
 
 
@@ -112,7 +112,7 @@ def test_prepare_idempotent():
 
 
 def test_prepare_roundtrip_equals_strip_flags():
-    # strip_dnt(prepare(x)) == strip_flags(x): Tagging restlos reversibel.
+    # strip_dnt(prepare(x)) == strip_flags(x): tagging is fully reversible.
     src = '[^3]: „Titel“ http://a.org [?FN:4|A]\nBody „Zitat“.'
     assert strip_dnt(prepare_translation(src)) == strip_flags(src)
 
@@ -127,5 +127,5 @@ def test_prepare_balanced_tags():
 
 def test_briefing_mentions_convention_and_removal():
     assert "<dnt>" in BRIEFING and "</dnt>" in BRIEFING
-    assert "ungetaggt" in BRIEFING.lower()
-    assert "entfern" in BRIEFING.lower()
+    assert "untagged" in BRIEFING.lower()
+    assert "remove" in BRIEFING.lower()

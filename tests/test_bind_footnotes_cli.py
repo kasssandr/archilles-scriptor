@@ -22,12 +22,15 @@ def test_pipeline_bind_footnotes_writes_output_and_log(tmp_path):
     assert out.exists()
     log = out.with_name(out.name + ".bind-log.txt")
     assert log.exists()
-    assert report.attached == [(8, 0)]
-    assert [n for n, _ in report.orphan_refs] == [9]
-    # Definition direkt hinter der Referenz im geschriebenen DOCX
+    assert report.attached == [(0, 8, "a8")]   # (para_index, number, snippet)
+    assert [n for _, n, _ in report.orphan_refs] == [9]
+    # Report sidecar: by paragraph number, with a searchable snippet
+    log_text = log.read_text(encoding="utf-8")
+    assert "Paragraph" in log_text and "»a8«" in log_text
+    # Definition directly after the reference in the written DOCX
     texts = [p.text for p in Document.load(out).paragraphs]
     assert texts[1] == "8.) Source eight."
-    # Original unverändert
+    # Original unchanged
     assert [p.text for p in Document.load(src).paragraphs][1] == "filler"
 
 

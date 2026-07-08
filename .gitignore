@@ -17,3 +17,12 @@ tmp/
 .superpowers/
 # local test corpora (large IA ZIPs / extracted book dirs)
 Test-ZIPs/
+corpora/
+
+# local working documents — keep out of the public repo: concept notes, design
+# specs, plans, ad-hoc analysis scripts, converted volumes. Real code is in src/.
+/*.py
+/*.md
+!/README.md
+docs/superpowers/
+vision_translate/

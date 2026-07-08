@@ -7,7 +7,7 @@ operate on a list of plain page texts, so they can be called from
 ``scriptor``'s pipeline without pulling in the Archilles class hierarchy.
 
 Used after extraction but before ``parse_page`` — we strip the repeating
-Kolumnentitel from each raw page text so the reflow stage sees only
+running head from each raw page text so the reflow stage sees only
 body + footnotes.
 """
 
@@ -117,7 +117,7 @@ def remove_running_headers(
             if not is_header:
                 cleaned_lines.append(line)
             else:
-                # Titel entfernen, aber eine eingebettete Seitenzahl bewahren.
+                # Remove the title, but preserve an embedded page number.
                 page_num = _extract_edge_page_number(line)
                 if page_num is not None:
                     cleaned_lines.append(page_num)
@@ -190,7 +190,7 @@ def remove_running_footers(
         cleaned_lines: list[str] = []
         for idx, line in enumerate(lines):
             if idx in footer_indices:
-                # Fußtitel entfernen, aber eine eingebettete Seitenzahl bewahren.
+                # Remove the running footer, but preserve an embedded page number.
                 page_num = _extract_edge_page_number(line)
                 if page_num is not None:
                     cleaned_lines.append(page_num)

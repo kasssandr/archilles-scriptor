@@ -1,13 +1,13 @@
 """
-PDF-Text-Reflow für gescannte Bücher.
+PDF text reflow for scanned books.
 
-Eingabe: ein Verzeichnis mit OCR-Textdateien (eine pro Seite, sortiert).
-Ausgabe: eine zusammengeführte TXT-Datei mit:
-  - rekonstruierten Absätzen
-  - de-hyphenierten Wörtern
-  - Fußnoten am Absatzende eingerückt
-  - Seitenmarkern [S. NN] inline
-  - Fußnoten-Markern [NN] im Fließtext
+Input: a directory of OCR text files (one per page, sorted).
+Output: a merged TXT file with:
+  - reconstructed paragraphs
+  - de-hyphenated words
+  - footnotes indented at the end of the paragraph
+  - page markers [p. NN] inline
+  - footnote markers [NN] in the running text
 """
 
 from __future__ import annotations
@@ -17,92 +17,54 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from scriptor._text import plural
 from scriptor.reflow.footnotes import (
     FOOTNOTE_RE,
     PLACED_MARKER_RE,
     SUPERSCRIPT_DIGITS,
     substitute_markers,
 )
+from scriptor.reflow.pagelabel import decode_label, detect_page_label
 
-# --- Konfiguration ---
-INDENT = "    "                # Einrückung der Fußnoten am Absatzende
-PAGENUM_RE = re.compile(r"^\d{1,4}$")
-# FOOTNOTE_RE, PLACED_MARKER_RE, SUPERSCRIPT_DIGITS und substitute_markers
-# leben jetzt in footnotes.py (oben importiert).
-
-# Page number with an adjacent running-head title: digits at the very start
-# or very end of the line, with a running-head-like (mostly uppercase) text on
-# the other side. Conservative — distinguishes "146 WILHELM HEIL" (page) from
-# "1990 war ein gutes Jahr" (body).
-_NUM_HEAD_LEAD = re.compile(r"^(\d{1,4})\s+(.+)$")
-_NUM_HEAD_TRAIL = re.compile(r"^(.+?)\s+(\d{1,4})$")
+# --- Configuration ---
+INDENT = "    "                # indent of footnotes at the end of the paragraph
+# FOOTNOTE_RE, PLACED_MARKER_RE, SUPERSCRIPT_DIGITS and substitute_markers now
+# live in footnotes.py; page-label detection lives in pagelabel.py (both above).
 
 
-def _is_running_head_like(text: str) -> bool:
-    """True if ``text`` looks like a running header/footer (mostly uppercase
-    letters, few lowercase) rather than ordinary prose."""
-    letters = [c for c in text if c.isalpha()]
-    if len(letters) < 2:
-        return False
-    upper = sum(1 for c in letters if c.isupper())
-    return upper / len(letters) >= 0.7
-
-
-def detect_page_number(line: str) -> int | None:
-    """Detect a page number on a single line, conservatively.
-
-    Accepts a pure-digit line, or a line whose edge digit-run is paired with a
-    running-head-like title ("146 WILHELM HEIL"). Returns None for ordinary
-    prose (e.g. a leading year) and implausible numbers — the safe fallback is
-    to report no page number rather than guess wrong.
-
-    Note: the head-paired branch ("146 WILHELM HEIL") is a *fallback* for inputs
-    where running-element removal does not fire. In the full pipeline
-    ``strip_running_elements`` runs before ``parse_page`` and usually removes a
-    recurring running head — page number and all — so head-embedded page numbers
-    are typically gone before this sees them (they are then simply not
-    recovered, never recovered wrong). It still helps short documents/articles
-    where the head does not recur enough to be detected as a running element.
-    """
-    s = line.strip()
-    if not s:
-        return None
-
-    def _plausible(n: int) -> bool:
-        return 1 <= n <= 9999
-
-    if PAGENUM_RE.match(s):
-        n = int(s)
-        return n if _plausible(n) else None
-
-    for rx, num_group, text_group in (
-        (_NUM_HEAD_LEAD, 1, 2),
-        (_NUM_HEAD_TRAIL, 2, 1),
-    ):
-        m = rx.match(s)
-        if m and _is_running_head_like(m.group(text_group)):
-            n = int(m.group(num_group))
-            if _plausible(n):
-                return n
-    return None
+# A footnote's identity inside a paragraph: (which page it came from, number
+# printed next to it there). The printed number alone will not do — numbering
+# restarts on every page in many books, while a paragraph may span the break, so
+# two different notes would both be "1". Keying on that number silently drops one
+# of them (KONZEPT_scriptor_v2.md §5.8: do not hard-wire "page-local").
+FnKey = tuple[int, int]
 
 
 @dataclass
 class Page:
-    num: int                              # finale Seitenzahl (nach reconcile)
-    body_lines: list[str]                 # rohe Body-Zeilen
-    footnotes: dict[int, str] = field(default_factory=dict)  # nr → Text
+    num: int                              # ordinal value of the label (-1 = none)
+    body_lines: list[str]                 # raw body lines
+    footnotes: dict[int, str] = field(default_factory=dict)  # number -> text
     mode: str = "main"                    # frontmatter | toc | main | entries-* | raw
-    num_top: int = -1                     # Seitenzahl-Kandidat oben (-1 = keiner)
-    num_bottom: int = -1                  # Seitenzahl-Kandidat unten (-1 = keiner)
+    label: str | None = None              # printed label, verbatim ("xiv", "312")
+    index: int = -1                       # physical page, 1-based file ordinal
+    label_top: str | None = None          # label candidate at top of the page
+    label_bottom: str | None = None       # label candidate at bottom of the page
+
+    def __post_init__(self) -> None:
+        # ``num`` is the ordinal, ``label`` the identity. For an arabic page the
+        # two coincide, so callers that only know a number (tests, older code)
+        # still get a usable label. reconcile_page_numbers sets both explicitly.
+        if self.label is None and self.num >= 0:
+            self.label = str(self.num)
 
 
 # ----------------------------------------------------------------------
-# 1) Seite parsen: Body / Fußnoten / Seitenzahl trennen
+# 1) Parse page: split body / footnotes / page number
 # ----------------------------------------------------------------------
 
 def parse_page(text: str) -> Page | None:
-    """Eine Seitendatei zerlegen. Gibt None zurück, falls leer."""
+    """Parse a single page file. Returns None if empty."""
     text = text.translate(SUPERSCRIPT_DIGITS)
     lines = [ln.rstrip() for ln in text.splitlines()]
     while lines and not lines[-1].strip():
@@ -110,24 +72,24 @@ def parse_page(text: str) -> Page | None:
     if not lines:
         return None
 
-    # Seitenzahl-Kandidaten an erster UND letzter nicht-leerer Zeile sammeln.
-    # Die Auswahl (oben vs. unten) trifft reconcile_page_numbers global.
-    num_top = -1
-    num_bottom = -1
+    # Collect page-label candidates at the first AND last non-empty line.
+    # The choice (top vs. bottom) is made globally by reconcile_page_numbers.
+    label_top = None
+    label_bottom = None
     if lines:
-        nb = detect_page_number(lines[-1])
-        if nb is not None:
-            num_bottom = nb
+        lb = detect_page_label(lines[-1])
+        if lb is not None:
+            label_bottom = lb
             lines.pop()
     if lines:
-        nt = detect_page_number(lines[0])
-        if nt is not None:
-            num_top = nt
+        lt = detect_page_label(lines[0])
+        if lt is not None:
+            label_top = lt
             lines.pop(0)
-    page_num = -1  # vorläufig; reconcile_page_numbers setzt p.num endgültig
+    page_num = -1  # provisional; reconcile_page_numbers sets num and label
 
-    # Fußnoten-Block: ab erster Zeile, die mit "NN)" beginnt — sofern danach
-    # nur noch Fußnoten/Fortsetzungen folgen.
+    # Footnote block: starting at the first line that begins with "NN)" —
+    # provided only footnotes/continuations follow after that.
     fn_start = None
     for i, ln in enumerate(lines):
         if FOOTNOTE_RE.match(ln):
@@ -142,7 +104,7 @@ def parse_page(text: str) -> Page | None:
         body_lines = lines[:fn_start]
         fn_lines = lines[fn_start:]
 
-    # Fußnoten zusammenbauen (mehrzeilige Noten zusammenfügen, dehyphenieren)
+    # Assemble footnotes (join multi-line notes, dehyphenate)
     footnotes: dict[int, str] = {}
     cur_num: int | None = None
     cur_buf: list[str] = []
@@ -163,15 +125,15 @@ def parse_page(text: str) -> Page | None:
             cur_buf.append(ln)
     flush()
 
-    # Footnote-Marker im Body durch [NN] ersetzen (in-place auf body_lines)
+    # Replace footnote markers in the body with [NN] (in-place on body_lines)
     body_lines = substitute_markers(body_lines, footnotes)
 
     return Page(
         num=page_num,
         body_lines=body_lines,
         footnotes=footnotes,
-        num_top=num_top,
-        num_bottom=num_bottom,
+        label_top=label_top,
+        label_bottom=label_bottom,
     )
 
 
@@ -190,17 +152,31 @@ def _sequence_score(nums: list[int]) -> int:
     return score
 
 
+def _ordinal(label: str | None) -> int:
+    """Sortable value of a label candidate; -1 when there is none."""
+    if label is None:
+        return -1
+    n = decode_label(label)
+    return -1 if n is None else n
+
+
 def reconcile_page_numbers(pages: list[Page]) -> str:
     """Choose, globally, whether the book paginates at the top or the bottom,
-    and set each page's ``num`` from the winning column.
+    and set each page's ``label`` and ``num`` from the winning column.
 
     The winner is the column whose candidates form the longer consistent
     ascending run (sequence variant). Safe fallback: on a tie or no signal,
-    prefer the bottom column (the historical behaviour), else leave ``num`` at
-    -1 — never invent a number.
+    prefer the bottom column (the historical behaviour), else leave the page
+    unlabelled — never invent a number.
+
+    Scoring runs on the decoded ordinals, so a roman frontmatter run (i, ii, …)
+    scores like an arabic one. The label itself stays verbatim: it is what makes
+    the page citable, and roman ``xiv`` must not become arabic ``14``.
     """
-    top = [p.num_top for p in pages]
-    bottom = [p.num_bottom for p in pages]
+    top_labels = [p.label_top for p in pages]
+    bottom_labels = [p.label_bottom for p in pages]
+    top = [_ordinal(lbl) for lbl in top_labels]
+    bottom = [_ordinal(lbl) for lbl in bottom_labels]
     top_score = _sequence_score(top)
     bottom_score = _sequence_score(bottom)
     has_top = any(n >= 0 for n in top)
@@ -209,38 +185,39 @@ def reconcile_page_numbers(pages: list[Page]) -> str:
     if not has_top and not has_bottom:
         return "none"
     if top_score > bottom_score:
-        chosen, col = top, "top"
+        chosen_labels, chosen_nums, col = top_labels, top, "top"
     elif bottom_score > top_score:
-        chosen, col = bottom, "bottom"
-    else:  # tie — prefer whichever column actually has numbers, bottom first
+        chosen_labels, chosen_nums, col = bottom_labels, bottom, "bottom"
+    else:  # tie — prefer whichever column actually has labels, bottom first
         if has_bottom:
-            chosen, col = bottom, "bottom"
+            chosen_labels, chosen_nums, col = bottom_labels, bottom, "bottom"
         else:
-            chosen, col = top, "top"
-    for p, n in zip(pages, chosen):
+            chosen_labels, chosen_nums, col = top_labels, top, "top"
+    for p, lbl, n in zip(pages, chosen_labels, chosen_nums):
         p.num = n
+        p.label = lbl if n >= 0 else None
     return col
 
 
 # ----------------------------------------------------------------------
-# 2) Hilfsfunktionen: De-Hyphenierung
+# 2) Helper functions: de-hyphenation
 # ----------------------------------------------------------------------
 
-# Kurze deutsche Verbindungswörter, vor denen ein Bindestrich beibehalten
-# wird (Kompositum mit ausgesetztem Grundwort, z. B. 'Einzel- und Gesamt…').
+# Short German connecting words before which a hyphen is kept (a compound
+# with an elided base word, e.g. 'Einzel- und Gesamt…').
 KEEP_HYPHEN_BEFORE = re.compile(
     r"^(und|oder|bis|sowie|wie|als|zur?|zum?|noch|aber)\b", re.IGNORECASE
 )
 
 
 def is_hard_hyphen(prev: str, next_line: str) -> bool:
-    """True, wenn das '-' am Ende von prev ein echter Kompositum-Bindestrich ist
-    (sollte erhalten bleiben), False für Trennstrich (sollte verschwinden)."""
+    """True if the '-' at the end of prev is a genuine compound hyphen (should
+    be kept), False for a line-break hyphen (should disappear)."""
     return bool(KEEP_HYPHEN_BEFORE.match(next_line.lstrip()))
 
 
 def dehyphenate_join(lines: list[str]) -> str:
-    """Zeilen verbinden; trennt 'wort-\\n' → 'wort'."""
+    """Join lines; resolves 'word-\\n' into 'word'."""
     out = []
     for i, ln in enumerate(lines):
         if i == 0:
@@ -261,7 +238,7 @@ def dehyphenate_join(lines: list[str]) -> str:
 
 
 # ----------------------------------------------------------------------
-# 3) Kalibrierung: Zeilenlängen-Schwellwert für Absatzenden bestimmen
+# 3) Calibration: determine the line-length threshold for paragraph ends
 # ----------------------------------------------------------------------
 
 # Sane fallback threshold when the main-page histogram is empty/degenerate —
@@ -269,36 +246,36 @@ def dehyphenate_join(lines: list[str]) -> str:
 CALIB_FALLBACK_MIN = 40
 
 # ----------------------------------------------------------------------
-# Region-/Modus-Erkennung
+# Region/mode detection
 # ----------------------------------------------------------------------
 
-# Heading-Muster, die einen Modus-Wechsel auslösen.
-# Geprüft werden die ersten 10 nicht-leeren Body-Zeilen einer Seite.
+# Heading patterns that trigger a mode change.
+# The first 10 non-empty body lines of a page are checked.
 HEADING_TRIGGERS = [
     (re.compile(
         r"^(INHALTSVERZEICHNIS|INHALT|CONTENTS|TABLE OF CONTENTS|"
         r"TABLE DES MATIÈRES|SOMMAIRE|INDICE|SOMMARIO|ÍNDICE)\s*$",
         re.IGNORECASE,
     ), "toc"),
-    # Literaturverzeichnis: Versal-Nachnamen am Zeilenanfang sind klare Marker
+    # Bibliography: capitalized surnames at the start of a line are clear markers
     (re.compile(r"^\d+\.\s+Literatur\s*$"), "entries-versal"),
-    # Abkürzungen / Quellen / Register: OCR-Spaltenscan oft kaputt → raw belassen
+    # Abbreviations / sources / indexes: OCR column scan often broken -> leave as raw
     (re.compile(
         r"^\d+\.\s+(Abkürzungsverzeichnis|Quellen|Personenregister|Sachregister|Ortsregister)\s*$"
     ), "raw"),
 ]
 
 
-# Prose-Klassifikator: eine Seite gilt als Fließtext, wenn mindestens
-# PROSE_MIN_LINES nicht-leere Body-Zeilen existieren und ein hinreichender
-# Anteil davon nahe der dominanten Body-Breite liegt (± PROSE_BAND).
+# Prose classifier: a page counts as running text if at least PROSE_MIN_LINES
+# non-empty body lines exist and a sufficient fraction of them lies near the
+# dominant body width (± PROSE_BAND).
 PROSE_MIN_LINES = 5
-PROSE_BAND = 0.30          # ±30 % der dominanten Breite gilt als "volle Zeile"
-PROSE_FRACTION = 0.5       # so viel Anteil voller Zeilen macht eine Prosaseite
+PROSE_BAND = 0.30          # ±30% of the dominant width counts as a "full line"
+PROSE_FRACTION = 0.5       # this fraction of full lines makes a page prose
 
 
 def estimate_body_width(pages: list[Page]) -> int:
-    """Dominante Body-Zeilenbreite über alle Seiten (häufigste Länge)."""
+    """Dominant body line width across all pages (most common length)."""
     lengths: Counter[int] = Counter()
     for p in pages:
         for ln in p.body_lines:
@@ -316,7 +293,7 @@ def is_prose_page(
     min_lines: int = PROSE_MIN_LINES,
     band: float = PROSE_BAND,
 ) -> bool:
-    """True, wenn die Seite überwiegend aus Zeilen nahe ``width`` besteht."""
+    """True if the page consists mostly of lines near ``width``."""
     if width <= 0:
         return False
     body = [len(ln.rstrip()) for ln in page.body_lines if ln.strip()]
@@ -328,13 +305,13 @@ def is_prose_page(
 
 
 def assign_modes(pages: list[Page]) -> None:
-    """Setzt p.mode für jede Seite anhand erkannter Region-Übergänge.
+    """Sets p.mode for every page based on detected region transitions.
 
-    Startmodus 'frontmatter'. Heading-Trigger schalten nach toc/entries/raw.
-    Der Übergang frontmatter→main ist hybrid: er feuert bei der ersten Seite,
-    die wie Fließtext aussieht (is_prose_page) ODER die Buchseite 1 trägt — so
-    werden Bände ohne arab.-1-Trigger (Snell) korrekt erkannt, ohne das
-    bisherige Verhalten zu verlieren (sicherer Fallback).
+    Starting mode is 'frontmatter'. Heading triggers switch to toc/entries/raw.
+    The frontmatter->main transition is hybrid: it fires on the first page
+    that either looks like running text (is_prose_page) OR carries book page 1
+    — this correctly detects volumes without an arabic-1 trigger (Snell),
+    without losing the previous behaviour (safe fallback).
     """
     from scriptor.reflow.toc import is_toc_page
     width = estimate_body_width(pages)
@@ -353,30 +330,30 @@ def assign_modes(pages: list[Page]) -> None:
         if not triggered:
             if mode == "frontmatter" and is_toc_page(p):
                 mode = "toc"
-            elif mode in ("frontmatter", "toc") and (is_prose_page(p, width) or p.num == 1):
+            elif mode in ("frontmatter", "toc") and (is_prose_page(p, width) or p.label == "1"):
                 mode = "main"
         p.mode = mode
 
 
 def calibrate_threshold(pages: list[Page], peak_fraction: float = 0.25) -> tuple[int, Counter[int]]:
     """
-    Erfasst Längen aller Body-Zeilen, ermittelt die linke Flanke des
-    Haupt-Peaks ('volle Fließtextzeilen') und liefert daraus den maximalen
-    Wert, bei dem eine Zeile noch als 'verdächtig kurz' gilt.
+    Collects the lengths of all body lines, determines the left edge of the
+    main peak ('full running-text lines'), and derives from it the maximum
+    value at which a line still counts as 'suspiciously short'.
 
-    Verfahren:
-      1. Modus der Zeilenlängen finden (= häufigste Länge, typische volle Breite)
-      2. Vom Modus aus nach links laufen, bis count < peak_fraction × peak_count
-      3. Diese Position ist die linke Flanke; threshold = Position − 1.
+    Procedure:
+      1. Find the mode of line lengths (= most common length, typical full width)
+      2. Walk left from the mode until count < peak_fraction × peak_count
+      3. That position is the left edge; threshold = position − 1.
 
-    Lange Tails (Indizes, Überschriften) und ein evtl. zweiter Peak in
-    den Fußnoten beeinflussen das Ergebnis nicht.
+    Long tails (indexes, headings) and a possible second peak in the
+    footnotes do not affect the result.
     """
     lengths: Counter[int] = Counter()
     for p in pages:
         if not p.body_lines or p.mode != "main":
             continue
-        # Letzte Zeile pro Seite ausschließen — fast immer kurz wegen Layout
+        # Exclude the last line of each page — almost always short due to layout
         for ln in p.body_lines[:-1]:
             if ln.strip():
                 lengths[len(ln)] += 1
@@ -396,20 +373,20 @@ def calibrate_threshold(pages: list[Page], peak_fraction: float = 0.25) -> tuple
 
 
 # ----------------------------------------------------------------------
-# 4) Body verarbeiten: Absatz-Rekonstruktion + Seitenmarker einbauen
+# 4) Process body: paragraph reconstruction + insert page markers
 # ----------------------------------------------------------------------
 
-SENT_END = re.compile(r"[.!?»“\"’']$")  # einfache Satzendekennung
+SENT_END = re.compile(r"[.!?»“\"’']$")  # simple sentence-end detection
 
 
-# Numerierte Überschrift am Absatzanfang: "3.4. Probleme um Welf VI."
-# Heading-Level = Anzahl Punkte in der Numerierung + 1.
+# Numbered heading at the start of a paragraph: "3.4. Probleme um Welf VI."
+# Heading level = number of periods in the numbering + 1.
 HEADING_RE = re.compile(r"^(\d+(?:\.\d+){0,3})\.\s+[A-ZÄÖÜ]")
 HEADING_MAX_LEN = 80
 
 
 def heading_level(line: str) -> int:
-    """0 wenn keine Überschrift, sonst Level 1-4."""
+    """0 if not a heading, otherwise level 1-4."""
     if len(line) > HEADING_MAX_LEN:
         return 0
     m = HEADING_RE.match(line)
@@ -421,45 +398,53 @@ def heading_level(line: str) -> int:
 def reconstruct_body(
     pages: list[Page],
     threshold: int,
-    audit: dict[int, list[int]] | None = None,
-) -> tuple[list[str], list[dict[int, str]], list[int]]:
+    audit: dict[str, list[int]] | None = None,
+) -> tuple[list[str], list[dict[FnKey, str]], list[dict[int, FnKey]], list[int]]:
     """
-    Liefert eine Liste von Absatz-Strings (Body, mit [S.NN]-Markern und
-    [NN]-Fußnotenmarkern), parallel dazu pro Absatz einen dict mit den
-    zugehörigen Fußnoten-Texten und ein Heading-Level (0 = normaler Absatz).
+    Returns a list of paragraph strings (body, with [p.NN] markers and
+    [NN] footnote markers), and in parallel, per paragraph, a dict with the
+    associated footnote texts and a heading level (0 = normal paragraph).
 
-    Fußnoten, deren Marker auf der Seite nicht gefunden wurden (OCR-Fehler
-    am Marker, nicht an der Def), werden am Seitenende an den zugehörigen
-    Absatz angehängt, damit sie nicht verloren gehen. Die betroffenen Seiten
-    werden zusätzlich in `audit[page_num] = [nums…]` vermerkt.
+    Footnotes whose marker was not found on the page (OCR error at the
+    marker, not at the definition) are appended to the relevant paragraph
+    at the end of the page, so they are not lost. The affected pages are
+    additionally recorded in `audit[page_num] = [nums…]`.
     """
     if audit is None:
         audit = {}
     paragraphs: list[str] = []
-    para_footnotes: list[dict[int, str]] = []
+    para_footnotes: list[dict[FnKey, str]] = []
+    # Per paragraph: which [N] occurrence (counted left to right, 0-based) belongs
+    # to which footnote. The occurrence index is what disambiguates two notes that
+    # print the same number on different pages; the number in the text cannot.
+    para_occurrences: list[dict[int, FnKey]] = []
     para_levels: list[int] = []
 
-    cur_chunks: list[str] = []                 # Wort-Blöcke des aktuellen Absatzes
-    cur_fn: dict[int, str] = {}                # Fußnoten dieses Absatzes
-    pending_hyphen = False                     # vorheriger Chunk endet auf Trenn-
-    pending_page_marker: str | None = None     # noch nicht eingefügter [S. NN]
+    cur_chunks: list[str] = []                 # word blocks of the current paragraph
+    cur_fn: dict[FnKey, str] = {}              # footnotes of this paragraph
+    cur_occ: dict[int, FnKey] = {}             # marker occurrence -> footnote
+    occ_index = 0                              # [N] occurrences seen in this paragraph
+    pending_hyphen = False                     # previous chunk ends on a line-break hyphen
+    pending_page_marker: str | None = None     # [p. NN] not yet inserted
 
     def end_paragraph(level: int = 0):
-        nonlocal cur_chunks, cur_fn, pending_hyphen
+        nonlocal cur_chunks, cur_fn, cur_occ, occ_index, pending_hyphen
         text = "".join(cur_chunks).strip()
         text = re.sub(r"[ \t]+", " ", text)
         if text:
             paragraphs.append(text)
             para_footnotes.append(cur_fn)
+            para_occurrences.append(cur_occ)
             para_levels.append(level)
         cur_chunks = []
         cur_fn = {}
+        cur_occ = {}
+        occ_index = 0
         pending_hyphen = False
-        # pending_page_marker NICHT zurücksetzen: ein noch nicht platzierter
-        # Seitenmarker (z. B. weil die erste Body-Zeile nach dem entfernten
-        # Kolumnentitel leer ist) muss bis zum ersten Wort erhalten bleiben.
-        # Er wird ausschließlich von flush_page_marker konsumiert bzw. zu
-        # Beginn jeder Seite neu gesetzt (überschrieben).
+        # Do NOT reset pending_page_marker: a page marker not yet placed (e.g.
+        # because the first body line after the removed running head is empty)
+        # must be kept until the first word. It is consumed exclusively by
+        # flush_page_marker, or reset (overwritten) at the start of each page.
 
     def flush_page_marker():
         nonlocal pending_page_marker
@@ -471,28 +456,31 @@ def reconstruct_body(
         pending_page_marker = None
 
     def append_word_segment(seg: str):
-        """Anhängen mit korrekter Behandlung von Trenn-Bindestrich und
-        eines evtl. ausstehenden Seitenmarkers."""
+        """Append with correct handling of a line-break hyphen and any
+        pending page marker."""
         nonlocal pending_hyphen
         if not seg:
             return
         if pending_hyphen:
-            cur_chunks.append(seg)            # ohne Leerzeichen, vervollständigt das Wort
+            cur_chunks.append(seg)            # no space, completes the word
             pending_hyphen = False
-            flush_page_marker()               # Marker erst nach dem Wort einfügen
+            flush_page_marker()               # insert the marker only after the word
         else:
             flush_page_marker()
             if cur_chunks:
                 cur_chunks.append(" ")
             cur_chunks.append(seg)
 
-    for p in pages:
+    # The page position within this reconstruction, not Page.index: the key only
+    # has to separate two pages of this run, and depending on a field some callers
+    # never populate would let the collision back in unnoticed.
+    for page_pos, p in enumerate(pages):
         if not p.body_lines or p.mode != "main":
             continue
 
-        # Seitenmarker vormerken; einfügen nach evtl. offenem Wort
-        if p.num >= 0:
-            pending_page_marker = f"[S. {p.num}]"
+        # Note the page marker; insert it after any word left open
+        if p.label is not None:
+            pending_page_marker = f"[p. {p.label}]"
 
         seen_this_page: set[int] = set()
         paragraphs_before_page = len(paragraphs)
@@ -501,14 +489,14 @@ def reconstruct_body(
         for i, ln in enumerate(p.body_lines):
             stripped = ln.rstrip()
             if not stripped.strip():
-                # Leerzeile mitten im Body → Absatzende
+                # Empty line in the middle of the body -> end of paragraph
                 end_paragraph()
                 continue
 
-            # Numerierte Überschrift am Absatzanfang (nur wenn noch kein
-            # offenes Wort und kein laufender Absatz) → eigener Block.
-            # Ein ausstehender Seitenmarker wird NICHT in das Heading gezogen,
-            # sondern bleibt für den nachfolgenden Absatz vorgemerkt.
+            # Numbered heading at the start of a paragraph (only if no word is
+            # still open and no paragraph is running) -> its own block.
+            # A pending page marker is NOT pulled into the heading, but stays
+            # noted for the following paragraph.
             if not cur_chunks and not pending_hyphen:
                 lvl = heading_level(stripped)
                 if lvl > 0:
@@ -519,8 +507,8 @@ def reconstruct_body(
                     pending_page_marker = saved_marker
                     continue
 
-            # Trenn-Bindestrich am Ende? (nur wenn nächste Zeile NICHT mit
-            # 'und/oder/...' beginnt — sonst ist es ein Kompositum-Strich)
+            # Line-break hyphen at the end? (only if the next line does NOT
+            # start with 'und/oder/...' — otherwise it's a compound hyphen)
             ends_hyphen = (
                 len(stripped) >= 2 and stripped.endswith("-")
                 and stripped[-2].isalpha()
@@ -530,13 +518,18 @@ def reconstruct_body(
                     ends_hyphen = False
             content = stripped[:-1] if ends_hyphen else stripped
 
-            # Bereits platzierte [NN]-Marker registrieren, damit sie ans
-            # Absatzende wandern.
+            # Register already-placed [NN] markers so they migrate to the end of
+            # the paragraph. Every occurrence is counted, whether or not this page
+            # defines that number, so the index stays aligned with the [N] matches
+            # the renderer will walk over the finished paragraph text.
             for m in PLACED_MARKER_RE.finditer(content):
                 num = int(m.group(1))
                 if num in p.footnotes:
-                    cur_fn[num] = p.footnotes[num]
+                    key = (page_pos, num)
+                    cur_fn[key] = p.footnotes[num]
+                    cur_occ[occ_index] = key
                     seen_this_page.add(num)
+                occ_index += 1
 
             append_word_segment(content)
 
@@ -544,91 +537,198 @@ def reconstruct_body(
                 pending_hyphen = True
             else:
                 pending_hyphen = False
-                # Absatzende-Heuristik: kurze Zeile + Satzendezeichen.
-                # Auch die letzte Zeile einer Seite darf Paragraphende sein —
-                # wenn sie wirklich ein Absatz war, beendet das den Absatz hier;
-                # falls nicht, läuft der nächste Absatz auf der Folgeseite einfach
-                # weiter (das passiert in der Praxis seltener als echte Absatzenden
-                # am Seitenfuß).
+                # Paragraph-end heuristic: short line + sentence-end punctuation.
+                # Even the last line of a page may end a paragraph — if it really
+                # was a paragraph, this ends it here; if not, the next paragraph
+                # simply continues on the following page (in practice this
+                # happens less often than genuine paragraph ends at the page foot).
                 visible_len = len(stripped)
                 if visible_len <= threshold and SENT_END.search(stripped):
                     end_paragraph()
 
-        # Seitenende: nicht verankerte Fußnoten dieser Seite retten.
-        # Sie landen im zuletzt berührten Absatz (offen oder zuletzt
-        # geschlossen während dieser Seite). Der Renderer hängt sie als
-        # hanging reference an — so gehen sie nicht verloren.
+        # End of page: rescue this page's unanchored footnotes.
+        # They land in the last-touched paragraph (open, or last closed
+        # during this page). The renderer appends them as a hanging
+        # reference — so they are not lost.
         unclaimed = sorted(set(p.footnotes) - seen_this_page)
-        if unclaimed and p.num >= 0:
-            audit[p.num] = unclaimed
+        if unclaimed and p.label is not None:
+            audit[p.label] = unclaimed
             if cur_chunks:
                 target = cur_fn
             elif len(paragraphs) > paragraphs_before_page:
                 target = para_footnotes[-1]
             else:
-                # Seite enthält nur Fußnoten-Defs ohne eigenen Body
-                # (oder Body spannt nur einen bereits abgeschlossenen
-                # Absatz der Vorseite an) — an den nächsten Absatz hängen.
+                # Page contains only footnote definitions without its own body
+                # (or the body only continues an already-closed paragraph
+                # from the previous page) — attach to the next paragraph.
                 target = cur_fn
             for num in unclaimed:
-                target[num] = p.footnotes[num]
+                target[(page_pos, num)] = p.footnotes[num]
 
     end_paragraph()
-    return paragraphs, para_footnotes, para_levels
+    return paragraphs, para_footnotes, para_occurrences, para_levels
+
+
+def _local_view(fns: dict[FnKey, str]) -> dict[int, str]:
+    """The printed footnote numbers of a paragraph, as the confidence layer sees
+    them. Where a paragraph spans a page break and both pages print the same
+    number, the entries merge; the texts stay distinct in ``fns``."""
+    return {num: text for (_pg, num), text in fns.items()}
+
+
+def document_evidence(pages: list[Page], threshold: int, profile=None):
+    """Count, over the whole document, which glyph stands for which digit.
+
+    Reconstructs a second time on purpose: the statistics must span every main
+    paragraph, not only the group being rendered, and they must be a pure function
+    of the source pages. Same pages, same evidence, same output, same decision file.
+
+    ``profile`` adds pseudo-observations from volumes a human already corrected —
+    an explicit input, so the run stays reproducible. See ``reflow/profile.py``.
+    """
+    from scriptor.reflow.confidence import collect_evidence
+
+    paras, fns, _occs, _levels = reconstruct_body(pages, threshold)
+    pseudo = profile.pseudo_counts() if profile else None
+    return collect_evidence(paras, [_local_view(f) for f in fns], pseudo=pseudo)
+
+
+def apply_decisions(
+    paragraphs: list[str],
+    para_footnotes: list[dict[FnKey, str]],
+    para_occurrences: list[dict[int, FnKey]],
+    decisions,
+    evidence=None,
+) -> tuple[list[str], list[dict[int, FnKey]]]:
+    """Place a real marker wherever the human accepted a candidate glyph.
+
+    The glyph is what OCR made of the superscript digit, so it is *replaced* by
+    the marker rather than kept beside it. Inserting a marker shifts the [N]
+    occurrences after it, so ``para_occurrences`` is rebuilt from the offsets —
+    getting this wrong would reassign footnotes to the wrong pages, which is the
+    very failure ``FnKey`` exists to prevent.
+
+    ``evidence`` must be the same one the decision file was written from, or
+    "cand 1" would name a different glyph than the one the human chose.
+
+    A decision that no longer matches a candidate is reported, never guessed.
+    """
+    from scriptor.reflow.confidence import analyse_paragraph
+
+    new_paragraphs = list(paragraphs)
+    new_occurrences = list(para_occurrences)
+
+    for i, (para, fns, occs) in enumerate(zip(paragraphs, para_footnotes, para_occurrences)):
+        local = _local_view(fns)
+        claimed = set(occs.values())
+        replacements: list[tuple[tuple[int, int], int, FnKey]] = []
+
+        for a in analyse_paragraph(para, local, evidence=evidence):
+            ref = (a.page, a.fn_num)
+            index = decisions.accepted.get(ref)
+            if index is None:
+                continue
+            if not a.candidates or not 1 <= index <= len(a.candidates):
+                decisions.unmatched.append(ref)
+                continue
+            # Which footnote of ``fns`` is this? The one with that printed number
+            # that no marker has claimed yet. Two unclaimed notes with the same
+            # number in one paragraph cannot be told apart — report, do not pick.
+            keys = [k for k in fns if k[1] == a.fn_num and k not in claimed]
+            if len(keys) != 1:
+                decisions.unmatched.append(ref)
+                continue
+            replacements.append((a.candidates[index - 1].span, a.fn_num, keys[0]))
+            decisions.applied.append(ref)
+
+        if not replacements:
+            continue
+
+        # Existing markers keep their key; accepted candidates add one. Ordering
+        # by offset reproduces the order the renderer will walk the new text in.
+        existing = [
+            (m.start(), occs.get(pos))
+            for pos, m in enumerate(PLACED_MARKER_RE.finditer(para))
+        ]
+        added = [(span[0], key) for span, _num, key in replacements]
+        ordered = sorted(existing + added, key=lambda t: t[0])
+        new_occurrences[i] = {
+            pos: key for pos, (_off, key) in enumerate(ordered) if key is not None
+        }
+
+        text = para
+        for (start, end), num, _key in sorted(replacements, key=lambda r: r[0][0], reverse=True):
+            text = text[:start] + f"[{num}]" + text[end:]
+        new_paragraphs[i] = text
+
+    return new_paragraphs, new_occurrences
 
 
 # ----------------------------------------------------------------------
-# 5) Region-spezifische Renderer
+# 5) Region-specific renderers
 # ----------------------------------------------------------------------
 
 VERSAL_RE = re.compile(r"^[A-ZÄÖÜ]{2,}")
 CAP_RE = re.compile(r"^[A-ZÄÖÜ][a-zäöü]")
 
 
-def format_paragraph_txt(para: str, fns: dict[int, str], level: int) -> str:
-    """TXT-Modus: Absatz + Fußnoten eingerückt am Absatzende."""
+def format_paragraph_txt(para: str, fns: dict[FnKey, str], level: int) -> str:
+    """TXT mode: paragraph + footnotes indented at the end of the paragraph.
+
+    Ordered by page, then by the number printed on that page; the number shown is
+    the printed one, so it can be checked against the scan.
+    """
     out = [para]
-    for num in sorted(fns):
-        out.append(f"{INDENT}[{num}] {fns[num]}")
+    for (_page, num) in sorted(fns):
+        out.append(f"{INDENT}[{num}] {fns[(_page, num)]}")
     return "\n".join(out)
 
 
 def format_paragraph_md(
     para: str,
-    fns: dict[int, str],
+    fns: dict[FnKey, str],
+    occurrences: dict[int, FnKey],
     level: int,
     state: dict,
 ) -> str:
     """
-    MD-Modus: [N]-Marker im Absatztext werden zu [^G]-Pandoc-Markern mit
-    globaler Numerierung (weil Markdown-Footnote-IDs dokumentweit eindeutig
-    sein müssen — Hechbergers Kapitel-Reset bricht das sonst). Die Defs
-    werden in state["defs"] gesammelt und am Dokumentende emittiert.
-    Überschriften (level > 0) werden mit # voran gesetzt.
+    MD mode: [N] markers in the paragraph text become [^G] Pandoc markers with
+    global numbering (because Markdown footnote IDs must be unique across the
+    whole document — Hechberger's per-chapter reset would otherwise break this).
+    The defs are collected in state["defs"] and emitted at the end of the
+    document. Headings (level > 0) get a leading #.
+
+    Each [N] is resolved by its *position*, not by the number it shows: within one
+    paragraph the same number can belong to two different footnotes, one per page.
+    ``occurrences`` maps the position to the footnote; positions it does not cover
+    are markers this page never defined, and they are left untouched.
     """
-    num_map: dict[int, int] = {}
+    num_map: dict[FnKey, int] = {}
+    seen = 0
 
     def repl(m: re.Match) -> str:
-        local = int(m.group(1))
-        if local not in fns:
+        nonlocal seen
+        position = seen
+        seen += 1
+        key = occurrences.get(position)
+        if key is None:
             return m.group(0)
-        if local not in num_map:
+        if key not in num_map:
             state["counter"] += 1
-            g = state["counter"]
-            num_map[local] = g
-            state["defs"].append(f"[^{g}]: {fns[local]}")
-        return f"[^{num_map[local]}]"
+            num_map[key] = state["counter"]
+            state["defs"].append(f"[^{state['counter']}]: {fns[key]}")
+        return f"[^{num_map[key]}]"
 
     new_para = PLACED_MARKER_RE.sub(repl, para)
 
-    # Fußnoten, deren Marker im Text nicht gefunden wurden: als hängende
-    # Referenz am Absatzende anfügen, damit die Def nicht verwaist bleibt.
-    for local in sorted(fns):
-        if local in num_map:
+    # Footnotes whose marker was not found in the text: append as a hanging
+    # reference at the end of the paragraph, so the definition isn't orphaned.
+    for key in sorted(fns):
+        if key in num_map:
             continue
         state["counter"] += 1
         g = state["counter"]
-        state["defs"].append(f"[^{g}]: {fns[local]}")
+        state["defs"].append(f"[^{g}]: {fns[key]}")
         new_para = new_para.rstrip() + f" [^{g}]"
 
     if level > 0:
@@ -641,16 +741,29 @@ def render_main(
     threshold: int,
     fmt: str,
     state: dict,
-    audit: dict[int, list[int]],
+    audit: dict[str, list[int]],
     annotator=None,
+    decisions=None,
+    evidence=None,
 ) -> list[str]:
-    paras, fns, levels = reconstruct_body(pages, threshold, audit)
+    paras, fns, occs, levels = reconstruct_body(pages, threshold, audit)
+    if decisions:
+        # Before the annotator: a footnote whose marker has just been placed is no
+        # longer uncertain, so it must not be flagged again.
+        paras, occs = apply_decisions(paras, fns, occs, decisions, evidence)
     if annotator is not None:
-        paras = [annotator.annotate(p, f) for p, f in zip(paras, fns)]
+        # The confidence layer reasons about the numbers printed on the page, so
+        # it gets the printed-number view. Where a paragraph spans a page break and
+        # both pages print the same number, the views merge — the layer then simply
+        # sees the number as present and does not flag it. Under-flagging, not
+        # corruption: the texts themselves stay distinct in ``fns``.
+        paras = [
+            annotator.annotate(p, _local_view(f), evidence) for p, f in zip(paras, fns)
+        ]
     if fmt == "md":
         return [
-            format_paragraph_md(p, f, lvl, state)
-            for p, f, lvl in zip(paras, fns, levels)
+            format_paragraph_md(p, f, o, lvl, state)
+            for p, f, o, lvl in zip(paras, fns, occs, levels)
         ]
     return [
         format_paragraph_txt(p, f, lvl) for p, f, lvl in zip(paras, fns, levels)
@@ -658,21 +771,21 @@ def render_main(
 
 
 def render_frontmatter(pages: list[Page]) -> list[str]:
-    """Front Matter: Originalzeilen erhalten, pro Seite ein Block."""
+    """Front matter: original lines preserved, one block per page."""
     blocks: list[str] = []
     for p in pages:
         if not p.body_lines:
             continue
-        marker = f"[S. {p.num}]\n" if p.num >= 0 else ""
+        marker = f"[p. {p.label}]\n" if p.label is not None else ""
         blocks.append(marker + "\n".join(p.body_lines).rstrip())
     return blocks
 
 
 def render_entries(pages: list[Page], start_re: re.Pattern[str]) -> list[str]:
     """
-    Listenartige Region (Bibliographie, Index, Abkürzungen).
-    Ein Eintrag = zusammenhängender Block, der mit start_re beginnt;
-    Folgezeilen werden dehyphenated angehängt.
+    List-like region (bibliography, index, abbreviations).
+    An entry = a contiguous block starting with start_re;
+    following lines are appended dehyphenated.
     """
     entries: list[str] = []
     cur: list[str] = []
@@ -702,8 +815,8 @@ def render_entries(pages: list[Page], start_re: re.Pattern[str]) -> list[str]:
             pending_page = None
 
     for p in pages:
-        if p.num >= 0:
-            pending_page = f"[S. {p.num}]"
+        if p.label is not None:
+            pending_page = f"[p. {p.label}]"
         n = len(p.body_lines)
         for i, ln in enumerate(p.body_lines):
             stripped = ln.rstrip()
@@ -726,19 +839,32 @@ def render_entries(pages: list[Page], start_re: re.Pattern[str]) -> list[str]:
 
 
 def render_book(
-    pages: list[Page], threshold: int, fmt: str = "txt", annotator=None
-) -> tuple[str, dict[int, list[int]]]:
-    """Pages in Quellreihenfolge nach Modus gruppieren und passend rendern.
+    pages: list[Page],
+    threshold: int,
+    fmt: str = "txt",
+    annotator=None,
+    decisions=None,
+    evidence=None,
+) -> tuple[str, dict[str, list[int]]]:
+    """Group pages by mode in source order and render each group accordingly.
 
-    Liefert das gerenderte Dokument sowie ein Audit-Dict mit Seiten, auf
-    denen mindestens eine Fußnoten-Def keinen Marker im Body hatte.
+    Returns the rendered document plus an audit dict of pages on which at
+    least one footnote definition had no marker in the body.
     """
     from scriptor.reflow.toc import render_toc, inject_page_anchors
+
+    if evidence is None:
+        # Pass one over the whole document, so a glyph the book repeats is known
+        # before the first paragraph is scored. Callers that render twice should
+        # compute it once and pass it, or the two renders could rank candidates
+        # differently.
+        evidence = document_evidence(pages, threshold)
+
     out_blocks: list[str] = []
     state: dict = {"counter": 0, "defs": []}
-    audit: dict[int, list[int]] = {}
-    available_pages = {p.num for p in pages if p.num >= 0}
-    anchor_targets: set[int] = set()
+    audit: dict[str, list[int]] = {}
+    available_pages = {p.label for p in pages if p.label is not None}
+    anchor_targets: set[str] = set()
     i = 0
     while i < len(pages):
         mode = pages[i].mode
@@ -748,7 +874,11 @@ def render_book(
         group = pages[i:j]
 
         if mode == "main":
-            out_blocks.extend(render_main(group, threshold, fmt, state, audit, annotator))
+            out_blocks.extend(
+                render_main(
+                    group, threshold, fmt, state, audit, annotator, decisions, evidence
+                )
+            )
         elif mode in ("frontmatter", "raw"):
             out_blocks.extend(render_frontmatter(group))
         elif mode == "toc":
@@ -774,60 +904,123 @@ def render_book(
 # main
 # ----------------------------------------------------------------------
 
-def main(src_dir: str, out_path: str, fmt: str | None = None) -> None:
+def main(
+    src_dir: str,
+    out_path: str,
+    fmt: str | None = None,
+    decisions_path: str | None = None,
+    profile_path: str | None = None,
+) -> None:
+    from scriptor.reflow import decisions as decisions_mod
+    from scriptor.reflow import profile as profile_mod
+
+    decisions = (
+        decisions_mod.load(decisions_path) if decisions_path else decisions_mod.Decisions()
+    )
+    ocr_profile = profile_mod.load(profile_path) if profile_path else None
+    if ocr_profile:
+        print(
+            f"OCR profile: {profile_path} "
+            f"({plural(len(ocr_profile.sources), 'source')}, "
+            f"{plural(len(ocr_profile.digits()), 'digit')})",
+            file=sys.stderr,
+        )
+
     src = Path(src_dir)
     files = sorted(src.glob("[0-9]*.txt"))
-    print(f"Lese {len(files)} Seiten aus {src}…", file=sys.stderr)
+    print(f"Reading {plural(len(files), 'page')} from {src}…", file=sys.stderr)
 
     if fmt is None:
         fmt = "md" if out_path.lower().endswith(".md") else "txt"
-    print(f"Ausgabeformat: {fmt}", file=sys.stderr)
+    print(f"Output format: {fmt}", file=sys.stderr)
 
     raw_texts = [f.read_text(encoding="utf-8", errors="replace") for f in files]
 
-    # Kolumnentitel und Fußzeilen seitenweit entfernen, bevor parse_page läuft.
+    # Remove running heads and footers document-wide, before parse_page runs.
     from scriptor.reflow.running_elements import strip_running_elements
     cleaned, headers, footers = strip_running_elements(raw_texts)
     if headers:
-        print(f"Running-Header entfernt ({len(headers)}): {headers[:3]}", file=sys.stderr)
+        print(f"Running headers removed ({len(headers)}): {headers[:3]}", file=sys.stderr)
     if footers:
-        print(f"Running-Footer entfernt ({len(footers)}): {footers[:3]}", file=sys.stderr)
+        print(f"Running footers removed ({len(footers)}): {footers[:3]}", file=sys.stderr)
 
     pages: list[Page] = []
-    for text in cleaned:
+    for ordinal, text in enumerate(cleaned, start=1):
         pg = parse_page(text)
         if pg is not None:
+            # The physical page, counted over the source files. Always known,
+            # even where nothing is printed on the page. Kept as the counterpart
+            # to page_label/page_number in the archilles chunk schema; not
+            # emitted yet, because the marker syntax for it is a decision shared
+            # with that repo (see docs/.../2026-07-08-page-label-modell-design.md).
+            pg.index = ordinal
             pages.append(pg)
 
     page_col = reconcile_page_numbers(pages)
-    print(f"Seitenzahl-Spalte: {page_col}", file=sys.stderr)
+    print(f"Page label position: {page_col}", file=sys.stderr)
 
     assign_modes(pages)
     mode_counts = Counter(p.mode for p in pages)
-    print(f"Modus-Verteilung: {dict(mode_counts)}", file=sys.stderr)
+    print(f"Mode distribution: {dict(mode_counts)}", file=sys.stderr)
 
     threshold, hist = calibrate_threshold(pages)
-    print(f"Kalibrierung (nur main): Schwellwert ≤ {threshold} Zeichen", file=sys.stderr)
-    print(f"  Top-Zeilenlängen: {hist.most_common(5)}", file=sys.stderr)
+    print(f"Calibration (main pages only): threshold <= {threshold} chars", file=sys.stderr)
+    print(f"  Most common line lengths: {hist.most_common(5)}", file=sys.stderr)
 
-    clean_output, _ = render_book(pages, threshold, fmt)
+    # Counted once, used by both renders and by the decision applier. If the two
+    # renders disagreed on the ranking, "cand 1" in the decision file would mean
+    # one glyph while writing it and another while reading it back.
+    evidence = document_evidence(pages, threshold, ocr_profile)
+    known = {d for d, _g in evidence.counts} | {d for d, _g in evidence.pseudo}
+    for digit in sorted(known):
+        if not evidence.informed(digit):
+            continue
+        glyphs = sorted(
+            evidence.glyphs_for(digit), key=lambda g: -evidence.share(digit, g)
+        )
+        shown = ", ".join(
+            f"{g!r} {evidence.count(digit, g)}x ({evidence.share(digit, g):.0%})"
+            for g in glyphs
+        )
+        source = " (profile)" if evidence.from_profile(digit) else ""
+        print(f"Glyph evidence for footnote {digit}{source}: {shown}", file=sys.stderr)
+
+    decisions.reset_report()
+    clean_output, _ = render_book(
+        pages, threshold, fmt, decisions=decisions, evidence=evidence
+    )
     Path(out_path).write_text(clean_output, encoding="utf-8")
-    print(f"Geschrieben: {out_path}", file=sys.stderr)
+    print(f"Written: {out_path}", file=sys.stderr)
 
-    # Annotierter Master (immer, Option 3) — zweiter Render mit Annotator.
+    if decisions.accepted:
+        print(
+            f"Decisions: {plural(len(decisions.applied), 'marker')} placed",
+            file=sys.stderr,
+        )
+    for page, fn in decisions.unmatched:
+        print(
+            f"  ! decision for footnote {fn} on page {page} matched no candidate "
+            f"and was ignored",
+            file=sys.stderr,
+        )
+
+    # Annotated master (always, option 3) — second render pass with the annotator.
     from scriptor.reflow.confidence import Annotator
     annotator = Annotator()
-    review_output, _ = render_book(pages, threshold, fmt, annotator=annotator)
+    decisions.reset_report()   # the clean render already reported; do not double count
+    review_output, _ = render_book(
+        pages, threshold, fmt, annotator=annotator, decisions=decisions, evidence=evidence
+    )
     op = Path(out_path)
     review_path = op.with_name(f"{op.stem}.review{op.suffix}")
     review_path.write_text(review_output, encoding="utf-8")
     print(
-        f"Annotierter Master: {review_path}  "
-        f"({len(annotator.annotations)} unsichere FN)",
+        f"Annotated master: {review_path}  "
+        f"({plural(len(annotator.annotations), 'uncertain footnote')})",
         file=sys.stderr,
     )
 
-    # Erweitertes Audit-Sidecar aus den Annotationen + Lauf-Zusammenfassung.
+    # Extended audit sidecar built from the annotations + run summary.
     from scriptor.reflow.confidence import render_audit
     total_fn_defs = sum(len(p.footnotes) for p in pages)
     audit_text = render_audit(
@@ -836,7 +1029,22 @@ def main(src_dir: str, out_path: str, fmt: str | None = None) -> None:
     audit_path = op.with_suffix(op.suffix + ".audit.txt")
     audit_path.write_text(audit_text, encoding="utf-8")
     print(
-        f"Audit: {len(annotator.annotations)} unsichere FN → {audit_path}",
+        f"Audit: {plural(len(annotator.annotations), 'uncertain footnote')} -> {audit_path}",
+        file=sys.stderr,
+    )
+
+    # Decision sidecar: the still-open choices, ready to be marked. Regenerated
+    # every run, so it shrinks as decisions are made and applied.
+    decisions_out = op.with_name(op.name + ".decisions.txt")
+    decisions_out.write_text(
+        decisions_mod.render_template(
+            annotator.annotations, out_path, str(decisions_out)
+        ),
+        encoding="utf-8",
+    )
+    open_count = sum(len(a.candidates) for a in annotator.annotations if a.page)
+    print(
+        f"Decisions open: {plural(open_count, 'candidate')} -> {decisions_out}",
         file=sys.stderr,
     )
 

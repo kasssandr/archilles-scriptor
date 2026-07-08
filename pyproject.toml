@@ -5,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "archilles-scriptor"
 version = "0.1.0"
-description = "PDF -> Markdown converter for scholarly prose. Part of the Archilles family."
+description = "PDF -> Markdown for scholarly prose, with footnotes still attached to the right sentence."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Proprietary" }
+license = { text = "MIT" }
 authors = [{ name = "Tom Rauchenwald" }]
 dependencies = [
     "pymupdf4llm>=0.0.17",

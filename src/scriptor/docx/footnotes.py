@@ -1,6 +1,7 @@
-"""Binde-Logik über der document.py-Abstraktion: Fußnoten-Referenzen und
-lose ``N.)``-Definitionen erkennen, positionsbasiert zuordnen, anhängen,
-Unsicheres markieren. Konservativ: nur eindeutige Paare werden ausgeführt."""
+"""Binding logic on top of the document.py abstraction: detect footnote
+references and loose ``N.)`` definitions, pair them up by position, attach
+them, and flag anything uncertain. Conservative: only unambiguous pairs are
+acted on."""
 from __future__ import annotations
 
 import re
@@ -11,11 +12,26 @@ from scriptor.docx.document import (
     mark_attached, move_after, append_flag, highlight_run,
 )
 
-# Lose Fußnoten-Definition: "N.) Text" oder "N) Text" (schließende Klammer
-# zwingend; "N." ohne Klammer sind TOC-/Kapitelzeilen und werden ausgeschlossen).
+# Loose footnote definition: "N.) Text" or "N) Text" (closing parenthesis
+# required; "N." without a parenthesis are TOC/chapter lines and are excluded).
 FN_DEF_RE = re.compile(r"^(\d{1,3})\.?\)\s")
-# Linke Einrückung (Twips) angehängter Definitionen; zugleich Idempotenz-Marker.
+# Left indent (twips) of attached definitions; also doubles as an idempotency marker.
 ATTACHED_INDENT = 720
+
+
+def _snippet(text: str, length: int = 70) -> str:
+    """Short start-of-passage text findable via LibreOffice/Word search — the
+    paragraph number itself isn't visible there, so this text snippet serves
+    as a jump target. An already-set ``[?FN:…]`` flag is hidden (idempotency:
+    the snippet stays stable across multiple runs)."""
+    text = " ".join(text.split("[?FN:")[0].split())
+    if len(text) <= length:
+        return text
+    cut = text[:length].rstrip()
+    sp = cut.rfind(" ")
+    if sp > length // 2:
+        cut = cut[:sp]
+    return cut + " …"
 
 
 @dataclass
@@ -34,10 +50,10 @@ class Def:
 
 
 def collect(doc: Document) -> tuple[list[Ref], list[Def]]:
-    """Sammelt alle Superscript-Ziffern-Referenzen und alle ``N.)``-Definitionen
-    in Dokumentreihenfolge. Schon angehängte Definitionen (ATTACHED_STYLE) werden
-    mit ``is_attached=True`` mitgeführt — sie verbrauchen später ihre Referenz,
-    werden aber nicht erneut verschoben (Idempotenz)."""
+    """Collects all superscript-digit references and all ``N.)`` definitions in
+    document order. Definitions already attached (ATTACHED_STYLE) are carried
+    along with ``is_attached=True`` — they still consume their reference later
+    on, but are not moved again (idempotency)."""
     refs: list[Ref] = []
     defs: list[Def] = []
     for i, para in enumerate(doc.paragraphs):
@@ -52,12 +68,12 @@ def collect(doc: Document) -> tuple[list[Ref], list[Def]]:
 def assign(
     refs: list[Ref], defs: list[Def]
 ) -> tuple[list[tuple[Ref, Def]], list[Def], list[Ref]]:
-    """Ordnet jede Definition der letzten vorausgehenden, noch freien Referenz
-    gleicher Nummer zu. Gibt (pairs, orphan_defs, orphan_refs) zurück; ``pairs``
-    enthält nur nicht angehängte Definitionen (zu verschieben)."""
+    """Assigns each definition to the last preceding, still-free reference with
+    the same number. Returns (pairs, orphan_defs, orphan_refs); ``pairs``
+    contains only definitions not yet attached (still to be moved)."""
     pairs: list[tuple[Ref, Def]] = []
     orphan_defs: list[Def] = []
-    claimed: set[int] = set()  # id(ref) bereits vergeben
+    claimed: set[int] = set()  # id(ref) already claimed
 
     for d in sorted(defs, key=lambda d: d.para_index):
         cands = [
@@ -80,39 +96,52 @@ def assign(
 
 @dataclass
 class BindReport:
-    attached: list[tuple[int, int]]      # (number, ref_para_index)
-    orphan_defs: list[tuple[int, int]]   # (number, def_para_index)
-    orphan_refs: list[tuple[int, int]]   # (number, ref_para_index)
+    # Each is (para_index, number, snippet) — para_index first, so the lists
+    # sort by running paragraph number (not by the footnote number, which
+    # restarts at 1 per chapter); snippet is a searchable text example of
+    # the passage.
+    attached: list[tuple[int, int, str]]      # ref_para_index
+    orphan_defs: list[tuple[int, int, str]]   # def_para_index
+    orphan_refs: list[tuple[int, int, str]]   # ref_para_index
 
 
 def bind(doc: Document) -> BindReport:
-    """Verschiebt eindeutig zuordenbare Definitionen als eingerückten Folgeabsatz
-    hinter ihre Referenz; markiert Unsicheres gelb. In-place, idempotent."""
+    """Moves unambiguously assignable definitions to an indented paragraph
+    right after their reference; flags anything uncertain in yellow. In-place,
+    idempotent."""
     refs, defs = collect(doc)
     pairs, orphan_defs, orphan_refs = assign(refs, defs)
 
-    # paragraphs-Liste ist statisch (Elemente), Indizes bleiben für Report gültig.
+    # The paragraphs list is static (elements); indices stay valid for the report.
     paras = doc.paragraphs
 
-    # Anhängen: pro Referenz-Absatz die zugeordneten Defs in Referenz-Reihenfolge.
-    attached: list[tuple[int, int]] = []
+    # Attach: for each reference paragraph, the assigned defs in reference order.
+    attached: list[tuple[int, int, str]] = []
     pairs_sorted = sorted(pairs, key=lambda rd: (rd[0].para_index, rd[1].para_index))
     anchor_by_ref: dict[int, Paragraph] = {}
     for ref, d in pairs_sorted:
         anchor = anchor_by_ref.get(ref.para_index, paras[ref.para_index])
         move_after(d.para, anchor)
         mark_attached(d.para)
-        anchor_by_ref[ref.para_index] = d.para  # nächste Def dieser Ref dahinter
-        attached.append((d.number, ref.para_index))
+        anchor_by_ref[ref.para_index] = d.para  # next def of this ref goes after it
+        # Snippet from the reference paragraph (that's where the superscript
+        # digit sits; the definition now hangs directly beneath it).
+        attached.append((ref.para_index, d.number, _snippet(paras[ref.para_index].text)))
 
+    # Capture the snippet BEFORE flagging, so the flag doesn't slip into it.
+    orphan_def_entries: list[tuple[int, int, str]] = []
     for d in orphan_defs:
+        orphan_def_entries.append((d.para_index, d.number, _snippet(d.para.text)))
         append_flag(d.para, f"[?FN:{d.number}: keine Referenz gefunden]")
+
+    orphan_ref_entries: list[tuple[int, int, str]] = []
     for r in orphan_refs:
+        orphan_ref_entries.append((r.para_index, r.number, _snippet(paras[r.para_index].text)))
         highlight_run(r.run)
         append_flag(paras[r.para_index], f"[?FN:{r.number}: keine Definition]")
 
     return BindReport(
         attached=sorted(attached),
-        orphan_defs=sorted((d.number, d.para_index) for d in orphan_defs),
-        orphan_refs=sorted((r.number, r.para_index) for r in orphan_refs),
+        orphan_defs=sorted(orphan_def_entries),
+        orphan_refs=sorted(orphan_ref_entries),
     )

@@ -45,19 +45,19 @@ def test_find_candidates_empty_when_no_glyph():
 def test_classify_three_classes():
     strong = Candidate("&", 0.9, "x", (1, 2))
     weak = Candidate("b", 0.4, "x", (3, 4))
-    assert classify([strong]) == "vorgeschlagen"
-    assert classify([weak]) == "geraten"
-    assert classify([strong, weak]) == "geraten"
+    assert classify([strong]) == "suggested"
+    assert classify([weak]) == "guessed"
+    assert classify([strong, weak]) == "guessed"
     assert classify([]) == "orphan"
 
 
 def test_dataclasses_have_expected_fields():
     c = Candidate("A", 0.7, "glued", (2, 3))
-    a = FootnoteAnnotation(4, 12, "vorgeschlagen", [c])
+    a = FootnoteAnnotation(4, "12", "suggested", [c])
     assert a.scope == "page" and a.candidates[0].char == "A"
 
 
-def test_annotate_vorgeschlagen_single_candidate():
+def test_annotate_suggested_single_candidate():
     # FN 5,7 present as [5]/[7]; FN 6 unclaimed; "&" (in OCR_CONFUSION[6])
     # is the only candidate in the [5]..[7] interval. NB: avoid words with
     # 'b'/'G' there — they are also OCR_CONFUSION[6] glyphs (e.g. "sieBtens").
@@ -67,7 +67,7 @@ def test_annotate_vorgeschlagen_single_candidate():
     assert "Werk&[?FN:6|&]" in out
     assert "[5]" in out and "[7]" in out  # present markers untouched
     assert len(anns) == 1
-    assert anns[0].fn_num == 6 and anns[0].klasse == "vorgeschlagen"
+    assert anns[0].fn_num == 6 and anns[0].confidence_class == "suggested"
 
 
 def test_annotate_orphan_no_candidate():
@@ -76,16 +76,16 @@ def test_annotate_orphan_no_candidate():
     para = "Hier [7] steht nur Prosa ohne Marke [9] danach."
     out, anns = annotate_paragraph(para, {7: "sieben", 8: "acht", 9: "neun"})
     assert out.endswith("[?FN:8]")
-    assert anns[0].klasse == "orphan" and anns[0].candidates == []
+    assert anns[0].confidence_class == "orphan" and anns[0].candidates == []
 
 
-def test_annotate_geraten_distributes_flags():
+def test_annotate_guessed_distributes_flags():
     # FN 6 is an interior gap (bounded by [5] and [7]); two "&" glyphs
     # (OCR_CONFUSION[6]) at WORD ENDS in the interval -> two candidates ->
-    # geraten, one flag per candidate position.
+    # guessed, one flag per candidate position.
     para = "Anfang [5] Werk& und Buch& Ende [7] Schluss."
     out, anns = annotate_paragraph(para, {5: "fuenf", 6: "sechs", 7: "sieben"})
-    assert anns[0].klasse == "geraten"
+    assert anns[0].confidence_class == "guessed"
     assert out.count("[??FN:6|&:") == 2
 
 
@@ -106,13 +106,13 @@ def test_annotator_accumulates():
 
 def test_render_audit_has_summary_and_per_flag_lines():
     anns = [
-        FootnoteAnnotation(6, 12, "vorgeschlagen", [Candidate("&", 0.9, "glued", (20, 21))]),
-        FootnoteAnnotation(2, 5, "orphan", []),
+        FootnoteAnnotation(6, "12", "suggested", [Candidate("&", 0.9, "glued", (20, 21))]),
+        FootnoteAnnotation(2, "5", "orphan", []),
     ]
     text = render_audit(anns, total_fn_defs=8, page_count=3, out_path="book.md")
-    assert "3 Seiten" in text
-    assert "6 sichere" in text   # 8 defs - 2 unsichere = 6 sicher
-    assert "2 unsichere" in text
-    assert "S. 12: FN 6 [vorgeschlagen]" in text
+    assert "3 pages" in text
+    assert "6 certain" in text   # 8 defs - 2 uncertain = 6 certain
+    assert "2 uncertain" in text
+    assert "p. 12: FN 6 [suggested]" in text
     assert "&:0.9" in text
-    assert "S. 5: FN 2 [orphan]" in text
+    assert "p. 5: FN 2 [orphan]" in text

@@ -1,4 +1,4 @@
-[S. 1] Erstens [^1] dann das Werk& und hinten [^2] als Schluss folgt es hier. [^3]
+[p. 1] Erstens [^1] dann das Werk& und hinten [^2] als Schluss folgt es hier. [^3]
 
 [^1]: Fuenfte Note.
 

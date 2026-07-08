@@ -1,9 +1,9 @@
-"""Tests für die Running-Element-Entfernung.
+"""Tests for running-element removal.
 
-Schwerpunkt: Beim Entfernen eines wiederkehrenden Kolumnentitels muss eine
-darin eingebettete Seitenzahl ("146 WILHELM HEIL") erhalten bleiben, damit die
-nachgelagerte Seitenzahl-Erkennung (parse_page) sie weiterhin sieht. Vorher
-wurde die ganze Zeile inkl. Zahl gelöscht (Braunfels-Fall, offene-nacharbeiten #1).
+Focus: when removing a recurring running head, a page number embedded in it
+("146 WILHELM HEIL") must be preserved, so downstream page-number detection
+(parse_page) still sees it. Previously the whole line including the number
+was deleted (Braunfels case, open follow-ups #1).
 """
 
 from scriptor.reflow.running_elements import (
@@ -27,14 +27,14 @@ def test_extract_trailing_edge_number():
 
 def test_extract_none_without_edge_number():
     assert _extract_edge_page_number("WILHELM HEIL") is None
-    # Eine Zahl in der Mitte ist keine Seitenzahl.
+    # A number in the middle is not a page number.
     assert _extract_edge_page_number("BAND 2 STAUFER") is None
 
 
-# --- strip_running_elements: Header mit eingebetteter Seitenzahl ---------------
+# --- strip_running_elements: header with an embedded page number ---------------
 
-# Inhaltlich klar verschiedene Sätze: Body-Zeilen dürfen einander nicht
-# ähneln (SequenceMatcher ≥ 0,85 würde sie sonst als Running-Element gruppieren).
+# Content-wise clearly distinct sentences: body lines must not resemble each
+# other (SequenceMatcher ≥ 0.85 would otherwise group them as a running element).
 _DISTINCT = [
     "Karl der Große gründete viele Klöster im fränkischen Reich.",
     "Die Reichenau war ein Zentrum mittelalterlicher Buchmalerei.",
@@ -52,8 +52,8 @@ _DISTINCT = [
 
 
 def _heil_pages(nums, *, trailing=False):
-    # Body je Seite inhaltlich verschieden, damit nur der Kolumnentitel als
-    # wiederkehrendes Running-Element erkannt wird.
+    # Body differs in content per page, so only the running head is
+    # recognised as the recurring running element.
     pages = []
     for i, n in enumerate(nums):
         b1 = _DISTINCT[(2 * i) % len(_DISTINCT)]
@@ -68,8 +68,8 @@ def test_strip_preserves_leading_page_number():
     cleaned, headers, _ = strip_running_elements(_heil_pages(nums))
     assert headers, "wiederkehrender Kolumnentitel muss erkannt werden"
     for n, page in zip(nums, cleaned):
-        assert "WILHELM HEIL" not in page  # Titel weg
-        assert page.strip().splitlines()[0].strip() == str(n)  # Zahl bleibt
+        assert "WILHELM HEIL" not in page  # title gone
+        assert page.strip().splitlines()[0].strip() == str(n)  # number stays
 
 
 def test_strip_preserves_trailing_page_number():
@@ -82,8 +82,8 @@ def test_strip_preserves_trailing_page_number():
 
 
 def test_header_without_number_fully_removed():
-    # Regression: Header ohne Zahl wird weiterhin komplett entfernt,
-    # und es wird keine Zahl erfunden; der Body bleibt erhalten.
+    # Regression: a header without a number is still removed completely,
+    # and no number is invented; the body is preserved.
     nums = (1, 2, 3, 4)
     pages = []
     for i in nums:
@@ -95,25 +95,25 @@ def test_header_without_number_fully_removed():
     for page in cleaned:
         assert "WILHELM HEIL" not in page
         assert not any(c.isdigit() for c in page)
-        assert page.strip()  # Body überlebt
+        assert page.strip()  # body survives
 
 
-# --- Ende-zu-Ende: strip -> parse_page findet die Top-Seitenzahl --------------
+# --- End-to-end: strip -> parse_page recovers the top page number --------------
 
-def test_strip_then_parse_recovers_top_number():
+def test_strip_then_parse_recovers_top_label():
     nums = (146, 148, 150)
     cleaned, *_ = strip_running_elements(_heil_pages(nums))
     pg = parse_page(cleaned[0])
-    assert pg.num_top == 146
-    assert pg.num_bottom == -1
+    assert pg.label_top == "146"
+    assert pg.label_bottom is None
 
 
-# --- Footer mit eingebetteter Seitenzahl (Konsistenz) -------------------------
+# --- Footer with an embedded page number (consistency) -------------------------
 
 def test_strip_preserves_footer_number():
     nums = tuple(range(10, 16))
-    # Footer steht hinter mehreren inhaltlich verschiedenen Body-Zeilen, damit
-    # er nicht bereits in den ersten 3 Zeilen als Header erkannt wird.
+    # The footer sits after several content-distinct body lines, so it isn't
+    # already recognised as a header within the first 3 lines.
     pages = []
     for i, n in enumerate(nums):
         body = "\n".join(_DISTINCT[(2 * i + k) % len(_DISTINCT)] for k in range(4))
