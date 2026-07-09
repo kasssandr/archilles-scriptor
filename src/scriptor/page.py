@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
 SCHEMA_VERSION = 1
 
@@ -207,3 +208,48 @@ def dumps(page: SourcePage) -> str:
 
 def loads(text: str) -> SourcePage:
     return from_dict(json.loads(text))
+
+
+# ----------------------------------------------------------------------
+# Loading a pages directory
+# ----------------------------------------------------------------------
+
+def page_from_text(index: int, text: str) -> SourcePage:
+    """Lift a plain page TXT into the model: one span per line, no geometry.
+
+    Blank lines are kept as empty lines -- ``reflow.parse_page`` reads them as
+    paragraph breaks, so dropping them would silently merge paragraphs.
+    """
+    return SourcePage(
+        index=index,
+        lines=[Line(spans=[Span(line)] if line else []) for line in text.splitlines()],
+        source="text",
+    )
+
+
+def load_pages(src: str | Path) -> list[SourcePage]:
+    """Read a pages directory: JSON when present, else legacy page TXT.
+
+    A directory holding both formats for the same page is an error, not a question
+    of precedence. Whichever we picked, the user would never learn that the other
+    file existed and differed (README: "Never guess silently"). The text channel
+    that ``extract --emit-txt`` writes lives in a ``txt/`` subdirectory, which this
+    glob does not reach.
+    """
+    src = Path(src)
+    jsons = sorted(src.glob("[0-9]*.json"))
+    txts = sorted(src.glob("[0-9]*.txt"))
+
+    clash = sorted({p.stem for p in jsons} & {p.stem for p in txts})
+    if clash:
+        raise ValueError(
+            f"{src}: pages {', '.join(clash)} exist as both .json and .txt; "
+            f"remove one -- refusing to choose"
+        )
+
+    if jsons:
+        return [loads(p.read_text(encoding="utf-8")) for p in jsons]
+    return [
+        page_from_text(i, p.read_text(encoding="utf-8", errors="replace"))
+        for i, p in enumerate(txts, start=1)
+    ]
