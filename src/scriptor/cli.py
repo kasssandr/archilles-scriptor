@@ -17,12 +17,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    e = sub.add_parser("extract", help="PDF -> per-page TXT")
+    e = sub.add_parser("extract", help="PDF -> per-page JSON page model")
     e.add_argument("pdf", type=Path)
-    e.add_argument("--out", type=Path, required=True, help="output directory for page TXTs")
+    e.add_argument("--out", type=Path, required=True, help="output directory for page JSON")
+    e.add_argument(
+        "--emit-txt",
+        action="store_true",
+        help="also write the plain text channel to <out>/txt/ (derived, never read)",
+    )
 
-    r = sub.add_parser("reflow", help="per-page TXT -> Markdown/TXT")
-    r.add_argument("src", type=Path, help="directory with page TXT files")
+    r = sub.add_parser("reflow", help="per-page JSON/TXT -> Markdown/TXT")
+    r.add_argument("src", type=Path, help="directory with page JSON (or legacy TXT) files")
     r.add_argument("--out", type=Path, required=True, help="output .md or .txt file")
     r.add_argument("--format", choices=["md", "txt"], default=None)
     r.add_argument(
@@ -154,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def _dispatch(args, parser) -> int:
     if args.cmd == "extract":
-        written = pipeline.extract(args.pdf, args.out)
+        written = pipeline.extract(args.pdf, args.out, emit_txt=args.emit_txt)
         print(f"{plural(len(written), 'page')} -> {args.out}", file=sys.stderr)
     elif args.cmd == "reflow":
         pipeline.reflow(args.src, args.out, args.format, args.decisions, args.ocr_profile)

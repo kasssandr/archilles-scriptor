@@ -1,22 +1,18 @@
-"""The pymupdf backend reads a text layer. It must never silently OCR.
+"""The pymupdf backend reports what it measured. It never OCRs.
 
-A scanned book carries a full-page image *and* a text layer written by whatever
-engine digitised it. pymupdf4llm's default (``OCRMode.SELECT_REMOVING_OLD``)
-looks at such a page, sees an image covering it, and runs Tesseract over the
-picture — while the existing layer stays. "Removing old" only removes spans it
-recognises as previous OCR output; a FineReader layer is not one of those. The
-page then carries every paragraph twice, once per engine, in two spellings.
-
-For scriptor that is not a cosmetic defect: every footnote definition and every
-marker would be duplicated, and the confidence layer would score glyphs that the
-book never printed. Which engine turns pixels into text is a decision the caller
-makes (``ocr_backend``), never one this backend takes on its own.
+A scanned book carries a full-page image and a text layer from whatever engine
+digitised it. Turning pixels into text is the OCR backend's job, chosen by the
+caller -- not something the extraction path does on its own. Two real books show
+why a library that decides for itself is dangerous: Zuckerman's FineReader layer
+is rendered visibly, so pymupdf4llm's default re-OCRed the page image and appended
+the result; Susa and Thil-Lorrain carry an invisible OCR layer, which the same
+default deletes and replaces, in the default language, over a French text.
 """
 
+import json
 from pathlib import Path
 
 import pymupdf
-import pytest
 
 from scriptor.extract import pymupdf_backend
 
@@ -43,35 +39,114 @@ def _make_scanned_pdf(path: Path) -> None:
     out.save(path)
 
 
-def test_extract_disables_ocr(tmp_path, monkeypatch):
-    """The backend asks pymupdf4llm for the text layer and nothing else."""
-    from pymupdf4llm.ocr import OCRMode
+def _make_image_only_pdf(path: Path) -> None:
+    src = pymupdf.open()
+    page = src.new_page(width=300, height=400)
+    page.insert_text((20, 60), "nothing readable without OCR", fontsize=9)
+    pix = page.get_pixmap(dpi=200)
 
-    seen = {}
-
-    def spy(pdf, **kwargs):
-        seen.update(kwargs)
-        return [{"text": "page one"}]
-
-    monkeypatch.setattr(pymupdf_backend.pymupdf4llm, "to_markdown", spy)
-    pdf = tmp_path / "book.pdf"
-    _make_scanned_pdf(pdf)
-
-    pymupdf_backend.extract(pdf, tmp_path / "pages")
-
-    assert seen["use_ocr"] == OCRMode.NEVER
+    out = pymupdf.open()
+    scan = out.new_page(width=300, height=400)
+    scan.insert_image(scan.rect, pixmap=pix)
+    out.save(path)
 
 
-@pytest.mark.skipif(
-    pymupdf.get_tessdata() is None, reason="needs Tesseract to reproduce the double pass"
-)
+def _spans(payload: dict) -> list[dict]:
+    return [span for line in payload["lines"] for span in line["spans"]]
+
+
 def test_scanned_page_is_not_extracted_twice(tmp_path):
-    """A sentence printed once on the page appears once in the output."""
+    """A sentence printed once on the page appears once in the model."""
     pdf = tmp_path / "scan.pdf"
     _make_scanned_pdf(pdf)
 
     written = pymupdf_backend.extract(pdf, tmp_path / "pages")
 
     assert len(written) == 1
-    text = " ".join(written[0].read_text(encoding="utf-8").split())
+    payload = json.loads(written[0].read_text(encoding="utf-8"))
+    text = " ".join(span["text"] for span in _spans(payload))
     assert text.count("Vespasian had reached the throne") == 1
+
+
+def test_image_only_pdf_yields_empty_pages_and_says_so(tmp_path, capsys):
+    pdf = tmp_path / "image.pdf"
+    _make_image_only_pdf(pdf)
+
+    written = pymupdf_backend.extract(pdf, tmp_path / "pages")
+
+    payload = json.loads(written[0].read_text(encoding="utf-8"))
+    assert payload["lines"] == []
+    err = capsys.readouterr().err
+    assert "1 of 1 pages carry no text layer" in err
+    assert "does not OCR" in err
+
+
+def test_extracted_json_carries_geometry_and_no_markdown(tmp_path):
+    pdf = tmp_path / "scan.pdf"
+    _make_scanned_pdf(pdf)
+
+    written = pymupdf_backend.extract(pdf, tmp_path / "pages")
+    payload = json.loads(written[0].read_text(encoding="utf-8"))
+
+    assert payload["version"] == 1
+    assert payload["source"] == "pymupdf"
+    assert payload["width"] == 300.0
+    assert payload["height"] == 400.0
+
+    first_line = payload["lines"][0]
+    assert len(first_line["box"]) == 4
+    assert first_line["baseline"] > 0
+    assert len(first_line["spans"][0]["box"]) == 4
+    assert first_line["spans"][0]["size"] > 0
+
+    joined = " ".join(span["text"] for span in _spans(payload))
+    assert "##" not in joined
+    assert "**" not in joined
+    assert "_" not in joined
+
+
+def test_baseline_is_the_script_line_not_the_box_top(tmp_path):
+    pdf = tmp_path / "scan.pdf"
+    _make_scanned_pdf(pdf)
+
+    payload = json.loads(
+        pymupdf_backend.extract(pdf, tmp_path / "pages")[0].read_text(encoding="utf-8")
+    )
+    line = payload["lines"][0]
+    top, bottom = line["box"][1], line["box"][3]
+    assert top < line["baseline"] <= bottom
+
+
+def test_emit_txt_writes_a_subdirectory_that_load_pages_ignores(tmp_path):
+    from scriptor.page import load_pages
+
+    pdf = tmp_path / "scan.pdf"
+    _make_scanned_pdf(pdf)
+    pages_dir = tmp_path / "pages"
+
+    pymupdf_backend.extract(pdf, pages_dir, emit_txt=True)
+
+    txt = (pages_dir / "txt" / "00000001.txt").read_text(encoding="utf-8")
+    assert "Vespasian" in txt
+    assert [p.index for p in load_pages(pages_dir)] == [1]
+
+
+def test_glyph_trail_is_off_by_default_and_can_be_asked_for(tmp_path):
+    pdf = tmp_path / "scan.pdf"
+    _make_scanned_pdf(pdf)
+
+    plain = json.loads(
+        pymupdf_backend.extract(pdf, tmp_path / "a")[0].read_text(encoding="utf-8")
+    )
+    assert "glyphs" not in plain["lines"][0]
+
+    rich = json.loads(
+        pymupdf_backend.extract(pdf, tmp_path / "b", glyphs=True)[0].read_text(
+            encoding="utf-8"
+        )
+    )
+    glyphs = rich["lines"][0]["glyphs"]
+    assert len(glyphs) > 0
+    assert glyphs[0]["char"] == "V"
+    # rawdict spans carry `chars`, not `text` -- the text must survive that
+    assert rich["lines"][0]["spans"][0]["text"].startswith("Vespasian")

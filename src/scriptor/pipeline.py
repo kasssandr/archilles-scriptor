@@ -9,8 +9,13 @@ from scriptor.extract import pymupdf_backend
 from scriptor.reflow.core import main as reflow_main
 
 
-def extract(pdf_path: str | Path, out_dir: str | Path) -> list[Path]:
-    return pymupdf_backend.extract(pdf_path, out_dir)
+def extract(
+    pdf_path: str | Path,
+    out_dir: str | Path,
+    *,
+    emit_txt: bool = False,
+) -> list[Path]:
+    return pymupdf_backend.extract(pdf_path, out_dir, emit_txt=emit_txt)
 
 
 def reflow(
