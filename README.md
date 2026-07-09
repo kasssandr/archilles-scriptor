@@ -32,31 +32,31 @@ or dropped. Page-local footnotes become document-wide Pandoc footnotes.
 Where a marker was lost, it does not guess silently. Take this scanned page:
 
 ```
-Erstens5 dann das Werk& und hinten7 als Schluss folgt es hier.
-5) Fuenfte Note.
-6) Sechste Note ohne Marker im Body.
-7) Siebte Note.
+Firstly5 then the work& and later7 the conclusion follows here.
+5) Fifth note.
+6) Sixth note without a marker in the body.
+7) Seventh note.
 ```
 
-Note 6 has a definition and no marker. The `&` after "Werk" is where the
+Note 6 has a definition and no marker. The `&` after "work" is where the
 superscript 6 used to be. Scriptor knows a marker is missing, because 6 sits
 between two markers it did recognise, and it knows `&` is a glyph a superscript
 6 is commonly misread as. So it writes a clean file:
 
 ```markdown
-[p. 1] Erstens [^1] dann das Werk& und hinten [^2] als Schluss folgt es hier. [^3]
+[p. 1] Firstly [^1] then the work& and later [^2] the conclusion follows here. [^3]
 
-[^1]: Fuenfte Note.
+[^1]: Fifth note.
 
-[^2]: Siebte Note.
+[^2]: Seventh note.
 
-[^3]: Sechste Note ohne Marker im Body.
+[^3]: Sixth note without a marker in the body.
 ```
 
 and the review one, identical except for the flag:
 
 ```markdown
-[p. 1] Erstens [^1] dann das Werk&[?FN:6|&] und hinten [^2] als Schluss ...
+[p. 1] Firstly [^1] then the work&[?FN:6|&] and later [^2] the conclusion ...
 ```
 
 The clean file never carries a flag, so it stays valid Pandoc and stays
@@ -180,8 +180,8 @@ Glyph evidence for footnote 2: 'z' 6x (86%), 'Z' 1x (14%)
 A glyph the volume repeats says so in the decision file:
 
 ```
-[ ] p. 6  fn 2  cand 1  'z'  conf 0.9  seen 6x  ctx: …und WerkZ oder Werkz sowie Marke [3].
-[ ] p. 6  fn 2  cand 2  'Z'  conf 0.7  ctx: …und WerkZ oder Werkz sowie Marke [3].
+[ ] p. 6  fn 2  cand 1  'z'  conf 0.9  seen 6x  ctx: …bore the mintZ or the mintz mark and the die [3]…
+[ ] p. 6  fn 2  cand 2  'Z'  conf 0.7  ctx: …bore the mintZ or the mintz mark and the die [3]…
 ```
 
 The effect is not subtle. A gap holding both `z` and `Z` is a coin toss to the
@@ -238,7 +238,7 @@ scriptor reflow build/pages/ --out book.md \
 The decision file is generated for you:
 
 ```
-[ ] p. 1  fn 6  cand 1  '&'  conf 0.8  ctx: …dann das Werk& und hinten [7] als…
+[ ] p. 1  fn 6  cand 1  '&'  conf 0.8  ctx: …then the work& and later [7] the conclusion…
 ```
 
 Put an `x` in the box and footnote 6 is anchored where that `&` sits — the glyph
