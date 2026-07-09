@@ -109,8 +109,9 @@ scriptor all book.pdf --out book.md
 Each input has its own subcommand. They all converge on the same output.
 
 ```bash
-scriptor extract input.pdf --out build/pages/   # text PDF -> per-page TXT
-scriptor reflow build/pages/ --out book.md      # per-page TXT -> Markdown
+scriptor extract input.pdf --out build/pages/   # text PDF -> per-page JSON page model
+scriptor extract input.pdf --out build/pages/ --emit-txt   # …and a readable text copy
+scriptor reflow build/pages/ --out book.md      # page model (or legacy TXT) -> Markdown
 scriptor reflow build/pages/ --out book.txt --format txt
 scriptor reflow build/pages/ --out book.md --decisions book.md.decisions.txt
 
@@ -323,11 +324,13 @@ src/scriptor/
   pipeline.py           # end-to-end orchestration
   clippings.py          # journal-clipping path
   pages_zip.py          # Internet Archive page ZIPs
+  page.py               # the page model a backend delivers: lines, spans, boxes
   extract/
-    pymupdf_backend.py  # text PDFs
+    pymupdf_backend.py  # text PDFs — reads the text layer, never OCRs
     ocr_backend.py      # stub
   reflow/
     core.py             # reflow, calibration, rendering
+    textlines.py        # printed lines, clustered from the fragments a backend reports
     pagelabel.py        # the printed page label (arabic or roman) and its ordinal
     footnotes.py        # marker substitution and rescue
     confidence.py       # candidate search, classification, audit
