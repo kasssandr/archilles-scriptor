@@ -299,19 +299,23 @@ expensive kind of correct.
 **Never guess silently.** The default flags and waits. There will be an
 aggressive mode, and it will still record what it did.
 
-**Don't reimplement PDF-to-Markdown.** Marker, MinerU, Docling and olmOCR
-exist. Scriptor is meant to orchestrate them behind a narrow backend interface
-and refine their output for a use case none of them serves.
+**A backend reports, it does not judge.** It says where a line sits, how big it
+is set, and how sure it is. Whether that line is a running head is decided here.
+Marker, MinerU, Docling and olmOCR exist and are good at turning a page into
+Markdown — but Markdown has no boxes and no page number, and the page number is
+the citation. So the seam is a page model, not a Markdown pipe.
 
 **YAGNI**, ranked equal with modularity. Because clean seams make later
 extensions cheap, nothing gets built on speculation.
 
 ## Where this is going
 
-A real OCR backend behind the existing stub, chosen by testing candidates
-against a volume that actually resists. Per-token confidence from that backend,
-feeding the same candidate machinery — a backend that reports low confidence on a
-superscript glyph knows something the confusion table can only guess. An HTML
+A real OCR backend behind the existing stub, for the minority of PDFs that carry
+no text layer at all. Per-token confidence from that backend, feeding the same
+candidate machinery — a backend that reports low confidence on a superscript
+glyph knows something the confusion table can only guess. Running heads and page
+numbers recognised by geometry, since a lexicon prints a different head on every
+page and similarity finds nothing there. An HTML
 review view, since Markdown cannot show colour and the classes want to be told
 apart at a glance. A second export profile that hardens page boundaries and
 separates the apparatus for chunking and retrieval.
