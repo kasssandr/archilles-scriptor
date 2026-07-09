@@ -926,15 +926,36 @@ def main(
             file=sys.stderr,
         )
 
+    from scriptor.page import load_pages
+    from scriptor.reflow.textlines import reconstruct
+
     src = Path(src_dir)
-    files = sorted(src.glob("[0-9]*.txt"))
-    print(f"Reading {plural(len(files), 'page')} from {src}…", file=sys.stderr)
+    source_pages = load_pages(src)
+    print(f"Reading {plural(len(source_pages), 'page')} from {src}…", file=sys.stderr)
 
     if fmt is None:
         fmt = "md" if out_path.lower().endswith(".md") else "txt"
     print(f"Output format: {fmt}", file=sys.stderr)
 
-    raw_texts = [f.read_text(encoding="utf-8", errors="replace") for f in files]
+    # Printed lines, where the backend measured them. A page whose lines carry no
+    # baseline is passed through unchanged — that is the TXT path, and it is exactly
+    # today's behaviour. Which of the two happened is reported, never assumed: a
+    # line-length histogram built from fragments yields plausible, wrong paragraphs
+    # and says nothing about it.
+    reconstructions = [reconstruct(sp) for sp in source_pages]
+    measured = sum(1 for r in reconstructions if r.measured)
+    print(
+        f"{measured} of {len(reconstructions)} pages reassembled from geometry",
+        file=sys.stderr,
+    )
+    wide_gaps = sum(1 for r in reconstructions if r.wide_gap_lines)
+    if wide_gaps:
+        print(
+            f"{wide_gaps} pages hold a line with a column-wide horizontal gap; "
+            f"if this book is set in two columns, the reassembled lines are unreliable",
+            file=sys.stderr,
+        )
+    raw_texts = ["\n".join(r.lines) for r in reconstructions]
 
     # Remove running heads and footers document-wide, before parse_page runs.
     from scriptor.reflow.running_elements import strip_running_elements
