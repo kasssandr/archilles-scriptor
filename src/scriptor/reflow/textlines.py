@@ -45,12 +45,38 @@ class Reconstruction:
     lines: list[str]
     measured: bool          # True: assembled from baselines. False: passed through.
     wide_gap_lines: int     # printed lines holding a suspiciously wide gap
+    sizes: list[float | None] = None  # dominant size per printed line, parallel to ``lines``
+
+    def __post_init__(self) -> None:
+        if self.sizes is None:
+            self.sizes = [None] * len(self.lines)
 
 
 def _passthrough(page: SourcePage) -> Reconstruction:
     return Reconstruction(
-        lines=[line.text for line in page.lines], measured=False, wide_gap_lines=0
+        lines=[line.text for line in page.lines],
+        measured=False,
+        wide_gap_lines=0,
+        sizes=[line.size for line in page.lines],
     )
+
+
+def _cluster_size(cluster: list[Line]) -> float | None:
+    """The dominant size of a printed line, weighted by character count.
+
+    Same rule as ``Line.size``, applied across the fragments of one cluster: a
+    short bold run must not drag the whole line to its size. Ties go to the
+    larger size, so the result does not depend on iteration order.
+    """
+    weights: dict[float, int] = {}
+    for line in cluster:
+        for span in line.spans:
+            if span.size is None:
+                continue
+            weights[span.size] = weights.get(span.size, 0) + len(span.text)
+    if not weights:
+        return None
+    return max(weights.items(), key=lambda kv: (kv[1], kv[0]))[0]
 
 
 def _has_wide_gap(cluster: list[Line], threshold: float) -> bool:
@@ -94,4 +120,5 @@ def reconstruct(
         lines=[" ".join(line.text for line in cluster) for cluster in clusters],
         measured=True,
         wide_gap_lines=wide_gap_lines,
+        sizes=[_cluster_size(cluster) for cluster in clusters],
     )

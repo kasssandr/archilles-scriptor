@@ -22,6 +22,8 @@ from scriptor.reflow.footnotes import (
     FOOTNOTE_RE,
     PLACED_MARKER_RE,
     SUPERSCRIPT_DIGITS,
+    match_definition,
+    split_small_type_block,
     substitute_markers,
 )
 from scriptor.reflow.pagelabel import decode_label, detect_page_label
@@ -50,6 +52,10 @@ class Page:
     index: int = -1                       # physical page, 1-based file ordinal
     label_top: str | None = None          # label candidate at top of the page
     label_bottom: str | None = None       # label candidate at bottom of the page
+    # Small-type lines above the first definition of this page's footnote
+    # block: the tail of a note that began on the previous page. Consumed by
+    # attach_continuations, None afterwards.
+    fn_continuation: str | None = None
 
     def __post_init__(self) -> None:
         # ``num`` is the ordinal, ``label`` the identity. For an arabic page the
@@ -63,13 +69,19 @@ class Page:
 # 1) Parse page: split body / footnotes / page number
 # ----------------------------------------------------------------------
 
-def parse_page(text: str) -> Page | None:
-    """Parse a single page file. Returns None if empty."""
+def parse_page(text: str, fn_block: list[str] | None = None) -> Page | None:
+    """Parse a single page file. Returns None if empty.
+
+    ``fn_block`` carries the page's footnote block where the geometry already
+    verified it (small type at the bottom, see ``split_small_type_block``).
+    Inside such a block the ``NN.`` convention is trusted alongside ``NN)``;
+    on bare text it never is.
+    """
     text = text.translate(SUPERSCRIPT_DIGITS)
     lines = [ln.rstrip() for ln in text.splitlines()]
     while lines and not lines[-1].strip():
         lines.pop()
-    if not lines:
+    if not lines and not fn_block:
         return None
 
     # Collect page-label candidates at the first AND last non-empty line.
@@ -105,25 +117,17 @@ def parse_page(text: str) -> Page | None:
         fn_lines = lines[fn_start:]
 
     # Assemble footnotes (join multi-line notes, dehyphenate)
-    footnotes: dict[int, str] = {}
-    cur_num: int | None = None
-    cur_buf: list[str] = []
+    footnotes, _ = _assemble_footnotes(fn_lines, FOOTNOTE_RE.match)
 
-    def flush():
-        if cur_num is None:
-            return
-        joined = dehyphenate_join(cur_buf)
-        footnotes[cur_num] = joined.strip()
-
-    for ln in fn_lines:
-        m = FOOTNOTE_RE.match(ln)
-        if m:
-            flush()
-            cur_num = int(m.group(1))
-            cur_buf = [m.group(2)]
-        else:
-            cur_buf.append(ln)
-    flush()
+    # The size-verified block from the page geometry. Lines above its first
+    # definition are the tail of a note that began on the previous page.
+    fn_continuation: str | None = None
+    if fn_block:
+        block = [ln.translate(SUPERSCRIPT_DIGITS).rstrip() for ln in fn_block]
+        block_notes, leading = _assemble_footnotes(block, match_definition)
+        footnotes.update(block_notes)
+        if leading:
+            fn_continuation = dehyphenate_join(leading).strip() or None
 
     # Replace footnote markers in the body with [NN] (in-place on body_lines)
     body_lines = substitute_markers(body_lines, footnotes)
@@ -134,7 +138,61 @@ def parse_page(text: str) -> Page | None:
         footnotes=footnotes,
         label_top=label_top,
         label_bottom=label_bottom,
+        fn_continuation=fn_continuation,
     )
+
+
+def _assemble_footnotes(
+    fn_lines: list[str], matcher
+) -> tuple[dict[int, str], list[str]]:
+    """Join multi-line definitions, dehyphenated. Returns (notes, leading) —
+    ``leading`` being the lines before the first definition start."""
+    footnotes: dict[int, str] = {}
+    leading: list[str] = []
+    cur_num: int | None = None
+    cur_buf: list[str] = []
+
+    def flush():
+        if cur_num is None:
+            return
+        footnotes[cur_num] = dehyphenate_join(cur_buf).strip()
+
+    for ln in fn_lines:
+        m = matcher(ln)
+        if m:
+            flush()
+            cur_num = int(m.group(1))
+            cur_buf = [m.group(2)]
+        elif cur_num is None:
+            leading.append(ln)
+        else:
+            cur_buf.append(ln)
+    flush()
+    return footnotes, leading
+
+
+def attach_continuations(pages: list[Page]) -> int:
+    """Reattach a definition that ran over the page break to its note.
+
+    The continuation extends the highest-numbered note of the nearest earlier
+    page that has any — footnotes print in reading order, so the note broken
+    by the page edge is the last one begun. Returns how many were reattached;
+    an unattachable continuation stays on its page for the audit to see.
+    """
+    attached = 0
+    for i, page in enumerate(pages):
+        if not page.fn_continuation:
+            continue
+        for prev in reversed(pages[:i]):
+            if prev.footnotes:
+                num = max(prev.footnotes)
+                prev.footnotes[num] = dehyphenate_join(
+                    [prev.footnotes[num], page.fn_continuation]
+                )
+                page.fn_continuation = None
+                attached += 1
+                break
+    return attached
 
 
 def _sequence_score(nums: list[int]) -> int:
@@ -955,7 +1013,30 @@ def main(
             f"if this book is set in two columns, the reassembled lines are unreliable",
             file=sys.stderr,
         )
-    raw_texts = ["\n".join(r.lines) for r in reconstructions]
+    # Cut the size-verified footnote block first, while lines and sizes are
+    # still parallel — the running-element stripper below edits lines and
+    # would silently desynchronise the two. The body size is calibrated over
+    # the whole document: a note-heavy page's own dominant size would flip to
+    # the footnote size and see nothing small.
+    from scriptor.reflow.footnotes import dominant_size
+    doc_body_size = dominant_size(
+        [ln for r in reconstructions for ln in r.lines],
+        [s for r in reconstructions for s in r.sizes],
+    )
+    if doc_body_size is not None:
+        print(f"Dominant type size: {doc_body_size}pt", file=sys.stderr)
+    splits = [
+        split_small_type_block(r.lines, r.sizes, body_size=doc_body_size)
+        for r in reconstructions
+    ]
+    fn_blocks = [s.notes if s else None for s in splits]
+    cut = sum(1 for s in splits if s)
+    if cut:
+        print(f"Footnote blocks cut by type size: {cut} pages", file=sys.stderr)
+    raw_texts = [
+        "\n".join(s.body if s else r.lines)
+        for s, r in zip(splits, reconstructions)
+    ]
 
     # Remove running heads and footers document-wide, before parse_page runs.
     from scriptor.reflow.running_elements import strip_running_elements
@@ -966,8 +1047,8 @@ def main(
         print(f"Running footers removed ({len(footers)}): {footers[:3]}", file=sys.stderr)
 
     pages: list[Page] = []
-    for ordinal, text in enumerate(cleaned, start=1):
-        pg = parse_page(text)
+    for ordinal, (text, fn_block) in enumerate(zip(cleaned, fn_blocks), start=1):
+        pg = parse_page(text, fn_block=fn_block)
         if pg is not None:
             # The physical page, counted over the source files. Always known,
             # even where nothing is printed on the page. Kept as the counterpart
@@ -976,6 +1057,13 @@ def main(
             # with that repo (see docs/.../2026-07-08-page-label-modell-design.md).
             pg.index = ordinal
             pages.append(pg)
+
+    reattached = attach_continuations(pages)
+    if reattached:
+        print(
+            f"Footnote continuations reattached across page breaks: {reattached}",
+            file=sys.stderr,
+        )
 
     page_col = reconcile_page_numbers(pages)
     print(f"Page label position: {page_col}", file=sys.stderr)
