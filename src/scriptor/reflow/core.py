@@ -56,6 +56,9 @@ class Page:
     # by the backend. reconcile_page_numbers believes it only where it agrees
     # with the labels actually detected on the printed pages.
     backend_label: str | None = None
+    # A chapter title the outline states for this page and the page confirmed
+    # (reflow/outline.py). Rendered as a heading before the page's text.
+    heading: str | None = None
     # Small-type lines above the first definition of this page's footnote
     # block: the tail of a note that began on the previous page. Consumed by
     # attach_continuations, None afterwards.
@@ -410,7 +413,12 @@ def assign_modes(pages: list[Page]) -> None:
     width = estimate_body_width(pages)
     mode = "frontmatter"
     for p in pages:
-        candidates = [ln.strip() for ln in p.body_lines if ln.strip()][:10]
+        # A confirmed outline heading was cut off the page's body — the mode
+        # triggers must still see it ("Contents" cut away would let the
+        # contents page reflow as prose).
+        candidates = ([p.heading.strip()] if p.heading else []) + [
+            ln.strip() for ln in p.body_lines if ln.strip()
+        ][:10]
         triggered = False
         for line in candidates:
             for pat, new_mode in HEADING_TRIGGERS:
@@ -574,6 +582,17 @@ def reconstruct_body(
         # Note the page marker; insert it after any word left open
         if p.label is not None:
             pending_page_marker = f"[p. {p.label}]"
+
+        # A confirmed chapter start: close whatever paragraph is running and
+        # set the title as its own heading block. The page marker is not
+        # pulled into the heading — it stays noted for the following text.
+        if p.heading:
+            end_paragraph()
+            saved_marker = pending_page_marker
+            pending_page_marker = None
+            cur_chunks.append(p.heading)
+            end_paragraph(level=1)
+            pending_page_marker = saved_marker
 
         seen_this_page: set[int] = set()
         paragraphs_before_page = len(paragraphs)
@@ -1068,10 +1087,37 @@ def main(
     cut = sum(1 for s in splits if s)
     if cut:
         print(f"Footnote blocks cut by type size: {cut} pages", file=sys.stderr)
-    raw_texts = [
-        "\n".join(s.body if s else r.lines)
-        for s, r in zip(splits, reconstructions)
-    ]
+    page_lines = [s.body if s else r.lines for s, r in zip(splits, reconstructions)]
+
+    # The catalogue's outline, believed entry by entry where the page confirms
+    # the title: the confirmed chapter starts become headings, and the chapter
+    # titles inform running-head removal — the generic stripper below would
+    # preserve the title's own year ("… in 759") as a phantom folio.
+    from scriptor.reflow import outline as outline_mod
+    entries = outline_mod.load_outline(src)
+    pos_by_phys = {sp.index: pos for pos, sp in enumerate(source_pages)}
+    headings_by_pos: dict[int, str] = {}
+    if entries and outline_mod.credible(entries):
+        level1 = [e for e in entries if e.level == 1]
+        positional = [
+            outline_mod.OutlineEntry(e.level, e.title, pos_by_phys[e.page] + 1)
+            for e in level1
+            if e.page in pos_by_phys
+        ]
+        confirmed = outline_mod.chapter_headings(positional, page_lines)
+        for page_no, (title, k) in confirmed.items():
+            page_lines[page_no - 1] = page_lines[page_no - 1][k:]
+            headings_by_pos[page_no - 1] = title
+        if confirmed:
+            titles = [t for t, _k in confirmed.values()]
+            page_lines = outline_mod.strip_running_titles(page_lines, titles)
+        print(
+            f"Outline: {len(confirmed)} of {len(level1)} level-1 entries "
+            f"confirmed as chapter starts",
+            file=sys.stderr,
+        )
+
+    raw_texts = ["\n".join(lines) for lines in page_lines]
 
     # Remove running heads and footers document-wide, before parse_page runs.
     from scriptor.reflow.running_elements import strip_running_elements
@@ -1088,6 +1134,7 @@ def main(
         pg = parse_page(text, fn_block=fn_block)
         if pg is not None:
             pg.backend_label = sp.label
+            pg.heading = headings_by_pos.get(ordinal - 1)
             # The physical page, counted over the source files. Always known,
             # even where nothing is printed on the page. Kept as the counterpart
             # to page_label/page_number in the archilles chunk schema; not

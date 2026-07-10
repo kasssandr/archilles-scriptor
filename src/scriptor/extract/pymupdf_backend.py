@@ -110,6 +110,19 @@ def extract(
     written: list[Path] = []
     blank = 0
     with pymupdf.open(pdf_path) as doc:
+        # The catalogue's outline: chapter titles with their physical start
+        # page. A measured fact, written as a sidecar; whether to believe it
+        # is reflow's decision (reflow/outline.py: credibility + per-page
+        # confirmation).
+        from scriptor.reflow.outline import OutlineEntry, save_outline
+        save_outline(
+            [
+                OutlineEntry(level=level, title=title.strip(), page=page)
+                for level, title, page in doc.get_toc()
+                if page >= 1
+            ],
+            out_dir,
+        )
         for index, page in enumerate(doc, start=1):
             source_page = read_page(page, index, glyphs=glyphs)
             path = out_dir / f"{index:08d}.json"
