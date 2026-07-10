@@ -26,4 +26,5 @@ corpora/
 /*.md
 !/README.md
 docs/superpowers/
+docs/internal/
 vision_translate/
