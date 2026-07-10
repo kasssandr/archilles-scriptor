@@ -477,7 +477,14 @@ def calibrate_threshold(pages: list[Page], peak_fraction: float = 0.25) -> tuple
 # 4) Process body: paragraph reconstruction + insert page markers
 # ----------------------------------------------------------------------
 
-SENT_END = re.compile(r"[.!?»“\"’']$")  # simple sentence-end detection
+# Simple sentence-end detection. Both curly double quotes close sentences:
+# German quotations end on “ („…“), English ones on ” (“…”) — Zuckerman.
+SENT_END = re.compile(r"[.!?»“”\"’']$")
+
+# Placed footnote markers at the end of a line ("… Occident.” [1]" or even
+# "… country. [4] [5]"). They stand *after* the full stop and would hide it
+# from SENT_END — the paragraph-end check looks at the line without them.
+_TRAILING_MARKERS = re.compile(r"(\s*\[\d{1,3}\])+$")
 
 
 # Numbered heading at the start of a paragraph: "3.4. Probleme um Welf VI."
@@ -654,8 +661,11 @@ def reconstruct_body(
                 # was a paragraph, this ends it here; if not, the next paragraph
                 # simply continues on the following page (in practice this
                 # happens less often than genuine paragraph ends at the page foot).
-                visible_len = len(stripped)
-                if visible_len <= threshold and SENT_END.search(stripped):
+                # Markers sit after the closing punctuation; strip them for the
+                # check, but keep their length out of the width measure too —
+                # "[N]" is not printed on the page.
+                bare = _TRAILING_MARKERS.sub("", stripped)
+                if len(bare) <= threshold and SENT_END.search(bare):
                     end_paragraph()
 
         # End of page: rescue this page's unanchored footnotes.
@@ -796,6 +806,18 @@ def format_paragraph_txt(para: str, fns: dict[FnKey, str], level: int) -> str:
     return "\n".join(out)
 
 
+# Literal * and _ in the source text (FineReader renders the ʿayn of Arabic
+# transliterations as an asterisk: "*Abbasid") would pair up into Markdown
+# emphasis — the characters vanish from the reading view and the text between
+# them turns italic. Escaped, they stay visible verbatim. Our own constructs
+# ([^N], [p. …], leading #) never contain these characters.
+_MD_LITERALS = re.compile(r"[*_]")
+
+
+def escape_md(text: str) -> str:
+    return _MD_LITERALS.sub(lambda m: "\\" + m.group(0), text)
+
+
 def format_paragraph_md(
     para: str,
     fns: dict[FnKey, str],
@@ -815,6 +837,7 @@ def format_paragraph_md(
     ``occurrences`` maps the position to the footnote; positions it does not cover
     are markers this page never defined, and they are left untouched.
     """
+    para = escape_md(para)
     num_map: dict[FnKey, int] = {}
     seen = 0
 
@@ -828,7 +851,7 @@ def format_paragraph_md(
         if key not in num_map:
             state["counter"] += 1
             num_map[key] = state["counter"]
-            state["defs"].append(f"[^{state['counter']}]: {fns[key]}")
+            state["defs"].append(f"[^{state['counter']}]: {escape_md(fns[key])}")
         return f"[^{num_map[key]}]"
 
     new_para = PLACED_MARKER_RE.sub(repl, para)
@@ -840,7 +863,7 @@ def format_paragraph_md(
             continue
         state["counter"] += 1
         g = state["counter"]
-        state["defs"].append(f"[^{g}]: {fns[key]}")
+        state["defs"].append(f"[^{g}]: {escape_md(fns[key])}")
         new_para = new_para.rstrip() + f" [^{g}]"
 
     if level > 0:
