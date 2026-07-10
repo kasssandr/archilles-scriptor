@@ -45,11 +45,14 @@ class Reconstruction:
     lines: list[str]
     measured: bool          # True: assembled from baselines. False: passed through.
     wide_gap_lines: int     # printed lines holding a suspiciously wide gap
-    sizes: list[float | None] = None  # dominant size per printed line, parallel to ``lines``
+    sizes: list[float | None] = None    # dominant size per printed line, parallel to ``lines``
+    indents: list[float | None] = None  # left edge (x0) per printed line, parallel to ``lines``
 
     def __post_init__(self) -> None:
         if self.sizes is None:
             self.sizes = [None] * len(self.lines)
+        if self.indents is None:
+            self.indents = [None] * len(self.lines)
 
 
 def _passthrough(page: SourcePage) -> Reconstruction:
@@ -58,6 +61,7 @@ def _passthrough(page: SourcePage) -> Reconstruction:
         measured=False,
         wide_gap_lines=0,
         sizes=[line.size for line in page.lines],
+        indents=[line.box.x0 if line.box else None for line in page.lines],
     )
 
 
@@ -121,4 +125,50 @@ def reconstruct(
         measured=True,
         wide_gap_lines=wide_gap_lines,
         sizes=[_cluster_size(cluster) for cluster in clusters],
+        indents=[cluster[0].box.x0 for cluster in clusters],
     )
+
+
+# A first-line paragraph indent, relative to the page's stable left edge. The
+# edge itself scatters by ~0.3pt (OCR boxes), so the band starts well above
+# that; a centred heading or a deep quotation sits far beyond it and is not a
+# paragraph start. Zuckerman indents by ~8.8pt.
+INDENT_MIN = 4.0
+INDENT_MAX = 18.0
+# Lines that must sit on the modal edge before it counts as stable.
+EDGE_MIN_LINES = 5
+
+
+def mark_indent_breaks(
+    lines: list[str], indents: list[float | None]
+) -> list[str]:
+    """Insert a blank line before each line that starts with a paragraph indent.
+
+    The blank line is the same signal ``parse_page``/merge already read as a
+    paragraph end, so the geometry flows through the existing seam. Only added
+    when the page has a stable left edge, the offset falls inside the indent
+    band, and the previous line does not end in a line-break hyphen — a
+    continuation of a hyphenated word can never start a paragraph.
+    """
+    if len(lines) != len(indents):
+        return lines
+    edge_counts: dict[int, int] = {}
+    for x in indents:
+        if x is not None:
+            edge_counts[round(x)] = edge_counts.get(round(x), 0) + 1
+    if not edge_counts:
+        return lines
+    edge, count = max(edge_counts.items(), key=lambda kv: (kv[1], -kv[0]))
+    if count < EDGE_MIN_LINES:
+        return lines
+
+    out: list[str] = []
+    for i, (line, x) in enumerate(zip(lines, indents)):
+        if (
+            x is not None
+            and INDENT_MIN <= x - edge <= INDENT_MAX
+            and not (i > 0 and lines[i - 1].rstrip().endswith("-"))
+        ):
+            out.append("")
+        out.append(line)
+    return out

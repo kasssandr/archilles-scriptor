@@ -35,6 +35,23 @@ def test_substitute_consumes_each_number_once():
     ]
 
 
+def test_substitute_never_matches_inside_a_number():
+    # Zuckerman p. 39: "arriving in August 754" bore footnote 4 out of the
+    # year's last digit, while the genuine marker "fall.4" went empty. A
+    # printed marker glues to a letter or punctuation, never to another digit.
+    line = "arriving in August 754, and the blockade ended with its fall.4"
+    assert substitute_markers([line], {4: "note"}) == [
+        "arriving in August 754, and the blockade ended with its fall. [4]"
+    ]
+
+
+def test_substitute_leaves_a_bare_year_alone():
+    # No safe anchor at all: better an unplaced footnote (hanging reference,
+    # flagged by the audit) than a marker invented inside a year.
+    line = "scored an initial victory in May 755."
+    assert substitute_markers([line], {5: "note"}) == [line]
+
+
 def test_substitute_ignores_numbers_not_in_footnotes():
     # Empty footnote set: untouched. A non-footnote digit: untouched.
     assert substitute_markers(["im Jahr 1798 geschah es"], {}) == [

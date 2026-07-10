@@ -1111,6 +1111,14 @@ def main(
     if cut:
         print(f"Footnote blocks cut by type size: {cut} pages", file=sys.stderr)
     page_lines = [s.body if s else r.lines for s, r in zip(splits, reconstructions)]
+    # Left edges, kept parallel to page_lines: the peeled label tail behind a
+    # footnote cut carries none.
+    page_indents = [
+        (r.indents[: s.split_at] + [None] * (len(s.body) - s.split_at))
+        if s
+        else list(r.indents)
+        for s, r in zip(splits, reconstructions)
+    ]
 
     # The catalogue's outline, believed entry by entry where the page confirms
     # the title: the confirmed chapter starts become headings, and the chapter
@@ -1130,15 +1138,34 @@ def main(
         confirmed = outline_mod.chapter_headings(positional, page_lines)
         for page_no, (title, k) in confirmed.items():
             page_lines[page_no - 1] = page_lines[page_no - 1][k:]
+            page_indents[page_no - 1] = page_indents[page_no - 1][k:]
             headings_by_pos[page_no - 1] = title
-        if confirmed:
-            titles = [t for t, _k in confirmed.values()]
-            page_lines = outline_mod.strip_running_titles(page_lines, titles)
+        chapter_titles = [t for t, _k in confirmed.values()]
         print(
             f"Outline: {len(confirmed)} of {len(level1)} level-1 entries "
             f"confirmed as chapter starts",
             file=sys.stderr,
         )
+    else:
+        chapter_titles = []
+
+    # A first-line indent is the typographic paragraph signal — it catches the
+    # paragraph ends the short-line heuristic misses (a last line set at full
+    # width). Injected as blank lines, which parse_page/merge already read as
+    # paragraph breaks. This is the last consumer of the indent column, so it
+    # runs before anything edits lines out from under it; from here on the
+    # lines carry their own structure.
+    from scriptor.reflow.textlines import mark_indent_breaks
+    page_lines = [
+        mark_indent_breaks(lines, indents)
+        for lines, indents in zip(page_lines, page_indents)
+    ]
+
+    # Chapter running heads, removed with knowledge of the full title — the
+    # generic stripper below would preserve the title's own year ("… in 759")
+    # as a phantom folio.
+    if chapter_titles:
+        page_lines = outline_mod.strip_running_titles(page_lines, chapter_titles)
 
     raw_texts = ["\n".join(lines) for lines in page_lines]
 

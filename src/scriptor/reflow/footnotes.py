@@ -47,6 +47,8 @@ SMALL_TYPE_MAX_RATIO = 0.92   # fraction of the body size
 class SmallTypeSplit:
     body: list[str]    # body lines, a peeled bottom page label included
     notes: list[str]   # the small-type block, a leading continuation included
+    split_at: int = 0  # how many of ``body``'s lines keep their source index
+                       # (the peeled label tail behind them does not)
 
 
 def dominant_size(
@@ -121,7 +123,7 @@ def split_small_type_block(
     notes = lines[start:end]
     if not any(match_definition(ln) for ln in notes):
         return None
-    return SmallTypeSplit(body=lines[:start] + tail, notes=notes)
+    return SmallTypeSplit(body=lines[:start] + tail, notes=notes, split_at=start)
 
 
 def substitute_markers(body_lines: list[str], footnotes: dict[int, str]) -> list[str]:
@@ -147,11 +149,15 @@ def substitute_markers(body_lines: list[str], footnotes: dict[int, str]) -> list
     body = SEP.join(body_lines)
     consumed: set[int] = set()
 
-    # Pass 1: glued on
+    # Pass 1: glued on. The character before the marker must not be a digit —
+    # a printed marker glues to a letter or punctuation ('fall.4', 'word64'),
+    # never to another digit. Without this, the last digit of a year births a
+    # footnote ('August 754' -> 'August 75 [4]', Zuckerman p. 39) while the
+    # genuine marker goes empty.
     for num in sorted(footnotes.keys()):
         if num in consumed:
             continue
-        pat = re.compile(rf"(?<=\S){num}(?=$|[^\w])", re.MULTILINE)
+        pat = re.compile(rf"(?<=[^\s\d]){num}(?=$|[^\w])", re.MULTILINE)
         new_body, n = pat.subn(f" [{num}]", body, count=1)
         if n > 0:
             body = new_body
