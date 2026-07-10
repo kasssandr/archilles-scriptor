@@ -97,6 +97,10 @@ class SourcePage:
     width: float | None = None
     height: float | None = None
     source: str = ""                    # backend name, for reproducibility
+    # The printed page label as the document's own catalogue states it (PDF
+    # PageLabels: "xiv", "36"). A measured fact like a box, not a judgement —
+    # whether to *believe* it against the printed pages is reflow's decision.
+    label: str | None = None
 
     @property
     def text(self) -> str:
@@ -184,6 +188,8 @@ def to_dict(page: SourcePage) -> dict:
         out["width"] = page.width
     if page.height is not None:
         out["height"] = page.height
+    if page.label is not None:
+        out["label"] = page.label
     out["lines"] = [_line_out(line) for line in page.lines]
     return out
 
@@ -198,6 +204,7 @@ def from_dict(payload: dict) -> SourcePage:
         width=payload.get("width"),
         height=payload.get("height"),
         source=payload.get("source", ""),
+        label=payload.get("label"),
     )
 
 

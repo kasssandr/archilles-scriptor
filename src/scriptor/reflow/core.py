@@ -52,6 +52,10 @@ class Page:
     index: int = -1                       # physical page, 1-based file ordinal
     label_top: str | None = None          # label candidate at top of the page
     label_bottom: str | None = None       # label candidate at bottom of the page
+    # The label the document's own catalogue states (PDF PageLabels), measured
+    # by the backend. reconcile_page_numbers believes it only where it agrees
+    # with the labels actually detected on the printed pages.
+    backend_label: str | None = None
     # Small-type lines above the first definition of this page's footnote
     # block: the tail of a note that began on the previous page. Consumed by
     # attach_continuations, None afterwards.
@@ -218,6 +222,14 @@ def _ordinal(label: str | None) -> int:
     return -1 if n is None else n
 
 
+# A catalogue column needs this many pages where both it and a printed label
+# exist, agreeing at this rate, before it is believed. Below that, the printed
+# pages stand: scan tooling generates catalogues mechanically (physical =
+# printed), and believing one shifts every citation in the book.
+MIN_BACKEND_OVERLAP = 3
+BACKEND_AGREEMENT = 0.8
+
+
 def reconcile_page_numbers(pages: list[Page]) -> str:
     """Choose, globally, whether the book paginates at the top or the bottom,
     and set each page's ``label`` and ``num`` from the winning column.
@@ -241,6 +253,9 @@ def reconcile_page_numbers(pages: list[Page]) -> str:
     has_bottom = any(n >= 0 for n in bottom)
 
     if not has_top and not has_bottom:
+        # Without printed labels there is nothing to verify a catalogue column
+        # against — and an unverified catalogue is exactly the thing scan
+        # tooling generates mechanically. Stay unlabelled rather than guess.
         return "none"
     if top_score > bottom_score:
         chosen_labels, chosen_nums, col = top_labels, top, "top"
@@ -251,6 +266,26 @@ def reconcile_page_numbers(pages: list[Page]) -> str:
             chosen_labels, chosen_nums, col = bottom_labels, bottom, "bottom"
         else:
             chosen_labels, chosen_nums, col = top_labels, top, "top"
+
+    # The catalogue column (PDF PageLabels) wins where it demonstrably agrees
+    # with the printed pages: it knows the pages the detector must guess — a
+    # chapter opening shows no running head, only the big chapter number.
+    backend_labels = [p.backend_label for p in pages]
+    both = [
+        (b, c)
+        for b, c in zip(backend_labels, chosen_labels)
+        if b is not None and c is not None
+    ]
+    agree = sum(1 for b, c in both if b.strip().lower() == c.strip().lower())
+    if len(both) >= MIN_BACKEND_OVERLAP and agree >= BACKEND_AGREEMENT * len(both):
+        for p, backend, lbl, n in zip(pages, backend_labels, chosen_labels, chosen_nums):
+            ordinal = _ordinal(backend) if backend is not None else -1
+            if ordinal >= 0:
+                p.num, p.label = ordinal, backend
+            else:
+                p.num, p.label = n, (lbl if n >= 0 else None)
+        return f"backend catalogue (agrees with {col} on {agree}/{len(both)} pages)"
+
     for p, lbl, n in zip(pages, chosen_labels, chosen_nums):
         p.num = n
         p.label = lbl if n >= 0 else None
@@ -1047,9 +1082,12 @@ def main(
         print(f"Running footers removed ({len(footers)}): {footers[:3]}", file=sys.stderr)
 
     pages: list[Page] = []
-    for ordinal, (text, fn_block) in enumerate(zip(cleaned, fn_blocks), start=1):
+    for ordinal, (text, fn_block, sp) in enumerate(
+        zip(cleaned, fn_blocks, source_pages), start=1
+    ):
         pg = parse_page(text, fn_block=fn_block)
         if pg is not None:
+            pg.backend_label = sp.label
             # The physical page, counted over the source files. Always known,
             # even where nothing is printed on the page. Kept as the counterpart
             # to page_label/page_number in the archilles chunk schema; not

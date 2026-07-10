@@ -83,12 +83,16 @@ def read_page(page: pymupdf.Page, index: int, *, glyphs: bool = False) -> Source
                     glyphs=_glyphs(raw_line) if glyphs else None,
                 )
             )
+    # The catalogue's printed label for this page (PDF PageLabels). An empty
+    # string means the PDF declares none — omitted then, never invented.
+    label = page.get_label()
     return SourcePage(
         index=index,
         lines=lines,
         width=round(page.rect.width, 2),
         height=round(page.rect.height, 2),
         source="pymupdf",
+        label=label or None,
     )
 
 
