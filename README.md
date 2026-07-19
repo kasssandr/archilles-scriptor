@@ -353,6 +353,24 @@ tests/fixtures/         # golden files
 
 ## Related
 
+Scriptor exists because Archilles needed it. Retrieval quality is capped by
+ingestion quality — the first study to evaluate PDF processing by its effect on
+downstream question-answering found data preparation quality to be the dominant
+factor in RAG performance ([arXiv:2604.04948](https://arxiv.org/abs/2604.04948)).
+Scriptor is the family's answer to that bottleneck — and useful without the
+family: a footnote-true converter serves people who will never build an index
+or translate a page.
+
+Scriptor prepares, Archilles retrieves, Archillator translates — three tools,
+one path: from the printed apparatus to a citable answer, in any language, on
+your own machine. Each tool stands alone; none requires the others. All three
+are developed under one fixed charter: **local-first, source-true, the scholar
+as the acting subject**. Contributions are welcome within that charter; beyond
+it, the license invites forks.
+
+The interchange contract between the tools — the *prepared document* — is
+specified in [docs/PREPARED_FORMAT_SPEC.md](docs/PREPARED_FORMAT_SPEC.md).
+
 - [archilles](https://github.com/kasssandr/archilles) — Informed RAG over a
   personal research library: retrieval grounded in page-level citations rather
   than in whatever the chunker happened to keep. Scriptor feeds it.
