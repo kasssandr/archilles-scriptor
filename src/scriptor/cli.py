@@ -137,6 +137,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bf.add_argument("src", type=Path, help="input DOCX")
     bf.add_argument("--out", type=Path, required=True, help="output DOCX")
+
+    ev = sub.add_parser("eval", help="evaluate candidate outputs against golden-file ground truth")
+    evsub = ev.add_subparsers(dest="eval_cmd", required=True)
+    evr = evsub.add_parser("run", help="one truth file against one candidate output")
+    evr.add_argument("--truth", type=Path, required=True)
+    evr.add_argument("--candidate", type=Path, required=True)
+    evr.add_argument("--adapter", choices=("prepared", "plain"), default="prepared")
+    evr.add_argument("--json", type=Path, default=None)
+    evs = evsub.add_parser("suite", help="all golden volumes against captured outputs")
+    evs.add_argument("--golden-dir", type=Path, action="append", required=True)
+    evs.add_argument("--outputs-dir", type=Path, required=True)
+    evs.add_argument("--out", type=Path, required=True)
     return p
 
 
@@ -265,6 +277,18 @@ def _dispatch(args, parser) -> int:
             f"{plural(len(report.orphan_refs), 'reference without a definition', 'references without a definition')}",
             file=sys.stderr,
         )
+    elif args.cmd == "eval":
+        from scriptor.eval.report import render_json, render_markdown
+        from scriptor.eval.runner import evaluate_file, evaluate_suite
+        if args.eval_cmd == "run":
+            rep = evaluate_file(args.truth, args.candidate, args.adapter)
+            print(render_markdown([rep]))
+            if args.json:
+                args.json.write_text(render_json([rep]), encoding="utf-8")
+        else:
+            reports = evaluate_suite(args.golden_dir, args.outputs_dir)
+            args.out.write_text(render_markdown(reports), encoding="utf-8")
+            print(f"Wrote {args.out} ({len(reports)} rows)", file=sys.stderr)
     else:  # pragma: no cover
         parser.error(f"unknown command {args.cmd!r}")
     return 0
