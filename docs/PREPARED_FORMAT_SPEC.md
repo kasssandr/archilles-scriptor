@@ -127,14 +127,27 @@ in the body is not dropped and not attached to a guess. It is preserved as a
 regular footnote with a **synthetic anchor** (a plain definition without an
 anchor would be silently discarded by Pandoc renderers, which is exactly the
 data loss this format exists to prevent). The synthetic anchor is placed at
-**the end of the printed page's own text**: at the end of the paragraph in
-which the page's body text ends — or, when that paragraph continues across the
-page boundary, immediately before the following `[p. …]` marker. The anchor
-thus always stays on the page whose apparatus it belongs to, and resolving its
-citation address by the nearest preceding page marker (§4.2) gives the printed
-page on which the note appeared. That the anchor is synthetic — “somewhere on
-this page, exact position unknown” — is recorded in the audit sidecar, keyed
-by printed page and printed footnote number.
+the **upper bound of the interval in which the lost marker can lie** — the
+last position at which it could still legally stand:
+
+1. immediately **before the next confidently placed footnote anchor**, when
+   that anchor lies on the same printed page;
+2. otherwise at **the end of the printed page's own text**: at the end of the
+   paragraph in which the page's body text ends or, when that paragraph
+   continues across the page boundary, immediately before the following
+   `[p. …]` marker.
+
+Several hanging references sharing the same bound are placed there together,
+in ascending printed-number order. The rule is deterministic — no judgement
+call between candidate paragraphs — and it preserves three invariants at
+once: the ascending marker order (a synthetic anchor never overtakes a placed
+marker), the citation address (the anchor stays on the page whose apparatus
+it belongs to, so resolving by the nearest preceding page marker (§4.2) gives
+the printed page on which the note appeared), and reading order (the anchor
+appears only after every sentence it might have belonged to). That the anchor
+is synthetic — “somewhere on this page before this point, exact position
+unknown” — is recorded in the audit sidecar, keyed by printed page and
+printed footnote number.
 
 ### 4.4 Headings and structural regions
 
