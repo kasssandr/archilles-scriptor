@@ -81,7 +81,8 @@ def test_without_decisions_the_footnote_stays_a_hanging_reference():
     out = _render()
     assert "Werkz" in out                    # glyph untouched
     assert "eins-2" in out                   # text never lost
-    assert _defs(out)[-1] == "eins-2"        # appended, unanchored
+    assert "weiter [^2][^3]" in out          # synthetic anchor before [3] (spec §4.3)
+    assert _defs(out)[1] == "eins-2"         # defs stay in printed order
 
 
 def test_accepted_candidate_replaces_the_glyph_with_a_marker():

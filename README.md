@@ -44,23 +44,24 @@ between two markers it did recognise, and it knows `&` is a glyph a superscript
 6 is commonly misread as. So it writes a clean file:
 
 ```markdown
-[p. 1] Firstly [^1] then the work& and later [^2] the conclusion follows here. [^3]
+[p. 1] Firstly [^1] then the work& and later [^2][^3] the conclusion follows here.
 
 [^1]: Fifth note.
 
-[^2]: Seventh note.
+[^2]: Sixth note without a marker in the body.
 
-[^3]: Sixth note without a marker in the body.
+[^3]: Seventh note.
 ```
 
 and the review one, identical except for the flag:
 
 ```markdown
-[p. 1] Firstly [^1] then the work&[?FN:6|&] and later [^2] the conclusion ...
+[p. 1] Firstly [^1] then the work&[?FN:6|&] and later [^2][^3] the conclusion ...
 ```
 
 The clean file never carries a flag, so it stays valid Pandoc and stays
-translatable. Note 6 survives there as an unreferenced definition rather than
+translatable. Note 6 survives there with a synthetic anchor at the last
+position its lost marker could occupy — just before marker 7 — rather than
 being dropped or attached to a guess. The doubt lives in the review file, in an
 audit sidecar, and in a decision file you can answer with one keystroke (see
 below). Correcting one flagged glyph is a two-second job. Finding it yourself in
@@ -154,7 +155,7 @@ gap:
 | certain | Marker present, sequence intact. | Set cleanly, no flag. |
 | suggested | Exactly one plausible candidate. | `[?FN:6\|&]` |
 | guessed | Several candidates, or weak evidence. | One `[??FN:6\|&:0.7]` per candidate, each at its own position |
-| orphan | No candidate at all. | `[?FN:6]` at the end of the paragraph |
+| orphan | No candidate at all. | `[?FN:6]` at the last position the marker could occupy |
 
 The candidate search is deliberately narrow. It only fires on an *interior
 gap*, one bounded by a confidently placed marker both below and above it in

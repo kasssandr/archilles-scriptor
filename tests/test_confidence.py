@@ -75,7 +75,8 @@ def test_annotate_orphan_no_candidate():
     # glyph ({B, &, ⁸}) sits in the interval -> orphan.
     para = "Hier [7] steht nur Prosa ohne Marke [9] danach."
     out, anns = annotate_paragraph(para, {7: "sieben", 8: "acht", 9: "neun"})
-    assert out.endswith("[?FN:8]")
+    # The flag stands at the upper bound of the gap, before [9] (spec §4.3).
+    assert "[?FN:8][9]" in out
     assert anns[0].confidence_class == "orphan" and anns[0].candidates == []
 
 

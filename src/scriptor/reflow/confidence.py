@@ -363,10 +363,19 @@ def annotate_paragraph(
     Returns the annotated paragraph and the annotations behind it."""
     annotations = analyse_paragraph(para, fns, T, evidence)
     insertions: list[tuple[int, str]] = []  # (offset, flag), applied right-to-left
+    present = _present_markers(para)
 
     for a in annotations:
         if a.confidence_class == "orphan":
-            insertions.append((len(para), f" [?FN:{a.fn_num}]"))
+            # Upper bound of the gap (PREPARED_FORMAT_SPEC §4.3): the flag
+            # stands before the next placed marker, after every sentence the
+            # lost one could have belonged to. Orphans are always interior
+            # gaps, so the upper marker exists; len(para) is belt and braces.
+            upper = min((n for n in present if n > a.fn_num), default=None)
+            if upper is None:
+                insertions.append((len(para), f" [?FN:{a.fn_num}]"))
+            else:
+                insertions.append((present[upper], f"[?FN:{a.fn_num}]"))
         elif a.confidence_class == "suggested":
             c = a.candidates[0]
             insertions.append((c.span[1], f"[?FN:{a.fn_num}|{c.char}]"))

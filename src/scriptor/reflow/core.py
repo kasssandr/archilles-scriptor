@@ -26,7 +26,7 @@ from scriptor.reflow.footnotes import (
     split_small_type_block,
     substitute_markers,
 )
-from scriptor.reflow.pagelabel import decode_label, detect_page_label
+from scriptor.reflow.pagelabel import PAGE_MARKER_RE, decode_label, detect_page_label
 
 # --- Configuration ---
 INDENT = "    "                # indent of footnotes at the end of the paragraph
@@ -818,12 +818,19 @@ def escape_md(text: str) -> str:
     return _MD_LITERALS.sub(lambda m: "\\" + m.group(0), text)
 
 
+# One pass over synthetic-anchor sentinels and placed [N] markers together, so
+# global numbers are assigned in final reading order and the definitions stay
+# in anchor order. Group 1 is the sentinel index, group 2 the printed number.
+_COMBINED_MARKER_RE = re.compile("\x00(\\d+)\x00|" + PLACED_MARKER_RE.pattern)
+
+
 def format_paragraph_md(
     para: str,
     fns: dict[FnKey, str],
     occurrences: dict[int, FnKey],
     level: int,
     state: dict,
+    page_order: dict[str, int] | None = None,
 ) -> str:
     """
     MD mode: [N] markers in the paragraph text become [^G] Pandoc markers with
@@ -836,35 +843,72 @@ def format_paragraph_md(
     paragraph the same number can belong to two different footnotes, one per page.
     ``occurrences`` maps the position to the footnote; positions it does not cover
     are markers this page never defined, and they are left untouched.
+
+    Footnotes whose marker was not found in the text get a synthetic anchor at
+    the upper bound of the interval in which the lost marker can lie
+    (PREPARED_FORMAT_SPEC §4.3): before the next placed marker of the same
+    page where one follows, otherwise before the first marker of a following
+    page (``page_order``: printed label -> page position, same positions as
+    the FnKey page component), otherwise at the end of the paragraph. Several
+    anchors sharing a bound stand there in ascending printed-number order.
     """
     para = escape_md(para)
+
+    placed_keys = set(occurrences.values())
+    hanging = [k for k in sorted(fns) if k not in placed_keys]
+    sentinel_keys: list[FnKey] = []
+    if hanging:
+        marker_starts = [m.start() for m in PLACED_MARKER_RE.finditer(para)]
+        page_marks = list(PAGE_MARKER_RE.finditer(para))
+        bounds: list[tuple[int, int, FnKey]] = []
+        for key in hanging:
+            pg, num = key
+            offset = len(para)
+            same_page = [
+                marker_starts[i]
+                for i, k in occurrences.items()
+                if k[0] == pg and k[1] > num and i < len(marker_starts)
+            ]
+            if same_page:
+                offset = min(same_page)
+            else:
+                for m in page_marks:
+                    later = (page_order or {}).get(m.group(1))
+                    if later is not None and later > pg:
+                        offset = m.start()
+                        break
+            bounds.append((offset, num, key))
+        ordered = sorted(bounds)
+        sentinel_keys = [key for _off, _num, key in ordered]
+        for i in range(len(ordered) - 1, -1, -1):
+            offset = ordered[i][0]
+            para = para[:offset] + f" \x00{i}\x00" + para[offset:]
+
     num_map: dict[FnKey, int] = {}
     seen = 0
 
+    def assign(key: FnKey) -> int:
+        if key not in num_map:
+            state["counter"] += 1
+            num_map[key] = state["counter"]
+            state["defs"].append(f"[^{state['counter']}]: {escape_md(fns[key])}")
+        return num_map[key]
+
     def repl(m: re.Match) -> str:
         nonlocal seen
+        if m.group(1) is not None:
+            return f"[^{assign(sentinel_keys[int(m.group(1))])}]"
         position = seen
         seen += 1
         key = occurrences.get(position)
         if key is None:
             return m.group(0)
-        if key not in num_map:
-            state["counter"] += 1
-            num_map[key] = state["counter"]
-            state["defs"].append(f"[^{state['counter']}]: {escape_md(fns[key])}")
-        return f"[^{num_map[key]}]"
+        return f"[^{assign(key)}]"
 
-    new_para = PLACED_MARKER_RE.sub(repl, para)
-
-    # Footnotes whose marker was not found in the text: append as a hanging
-    # reference at the end of the paragraph, so the definition isn't orphaned.
-    for key in sorted(fns):
-        if key in num_map:
-            continue
-        state["counter"] += 1
-        g = state["counter"]
-        state["defs"].append(f"[^{g}]: {escape_md(fns[key])}")
-        new_para = new_para.rstrip() + f" [^{g}]"
+    new_para = _COMBINED_MARKER_RE.sub(repl, para)
+    # The sentinel carries a leading space; collapse the doubling where the
+    # insertion point already had one, and trim the end-of-paragraph case.
+    new_para = re.sub(r" {2,}", " ", new_para).rstrip()
 
     if level > 0:
         return ("#" * min(level, 6)) + " " + new_para
@@ -896,8 +940,14 @@ def render_main(
             annotator.annotate(p, _local_view(f), evidence) for p, f in zip(paras, fns)
         ]
     if fmt == "md":
+        # Printed label -> page position, aligned with the FnKey page component
+        # (reconstruct_body enumerates this same list). First occurrence wins.
+        page_order: dict[str, int] = {}
+        for i, p in enumerate(pages):
+            if p.label is not None:
+                page_order.setdefault(p.label, i)
         return [
-            format_paragraph_md(p, f, o, lvl, state)
+            format_paragraph_md(p, f, o, lvl, state, page_order)
             for p, f, o, lvl in zip(paras, fns, occs, levels)
         ]
     return [
