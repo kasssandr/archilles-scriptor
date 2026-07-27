@@ -28,3 +28,9 @@ corpora/
 docs/superpowers/
 docs/internal/
 vision_translate/
+
+# evaluation: local (copyrighted) golden volumes and captured outputs stay out
+eval/golden-local/
+eval/outputs/
+eval/excite/
+eval/BENCHMARK-draft.md

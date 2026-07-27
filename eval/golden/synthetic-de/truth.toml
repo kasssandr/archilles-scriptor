@@ -1,0 +1,55 @@
+# Synthetic golden volume, self-authored (copyright-free, committed).
+# Continuous footnote numbering (1..7): the pipeline merges all pages into one
+# paragraph and dedups present markers by number, so page-local numbers would
+# let only the last note per number ever be flagged. Continuous numbers give
+# every gap its own bounding markers — the volume can then exercise a suggested
+# flag (note 2, a "z" glyph in marker position), an orphan flag (note 5, no
+# candidate glyph) and a hanging reference over a page boundary (note 7).
+volume = "synthetic-de"
+pages = ["1", "2", "3", "4"]
+
+[[footnotes]]
+page = "1"
+num = 1
+anchor_after = "Erster Teil mit sicherer Note"
+definition_starts = "Sichere Note eins"
+status = "intact"
+
+[[footnotes]]
+page = "1"
+num = 2
+definition_starts = "Verlorene Note zwei"
+status = "damaged"          # marker degraded to a "z" glyph -> suggested flag
+
+[[footnotes]]
+page = "1"
+num = 3
+anchor_after = "Ein dritter Teil mit sicherer Note"
+definition_starts = "Sichere Note drei"
+status = "intact"
+
+[[footnotes]]
+page = "2"
+num = 4
+anchor_after = "steht ein Anker"
+definition_starts = "Zweite Seite Note vier"
+status = "intact"
+
+[[footnotes]]
+page = "2"
+num = 5
+definition_starts = "Zweite Seite Note fuenf"
+status = "marker_lost"      # no candidate glyph in the gap -> orphan flag
+
+[[footnotes]]
+page = "2"
+num = 6
+anchor_after = "und spaeter noch einer"
+definition_starts = "Zweite Seite Note sechs"
+status = "intact"
+
+[[footnotes]]
+page = "3"
+num = 7
+definition_starts = "Ueberlaufende Note sieben"
+status = "marker_lost"      # hanging reference rescued at the page boundary

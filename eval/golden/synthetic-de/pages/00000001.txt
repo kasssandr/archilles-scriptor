@@ -1,0 +1,7 @@
+Erster Teil mit sicherer Note [1] am Ende dieses ersten Abschnitts hier.
+Der zweite Teil verliert seinen Marker z im Verlauf und laeuft noch weiter bis zum Ende.
+Ein dritter Teil mit sicherer Note [3] beschliesst diesen ersten Absatz nun.
+1) Sichere Note eins.
+2) Verlorene Note zwei.
+3) Sichere Note drei.
+1
