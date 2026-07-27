@@ -180,3 +180,52 @@ def test_small_type_footnotes_leave_the_running_text(tmp_path):
 
     assert "[4] Die kleine Fussnote unten auf der Seite." in text
     assert "Absatz. 4." not in text  # the definition no longer bleeds into the body
+
+
+# ----------------------------------------------------------------------
+# a numbered list is prose, not a footnote block
+# ----------------------------------------------------------------------
+
+# Regression (EXCITE 35056 p. 19, 11696 pp. 10/20/31): a page whose paragraphs
+# open with "1)", "2)" … was read as a footnote block from the first match on.
+# With the list starting at line 0 the body came out empty and the whole page
+# vanished from the render — 47 of 53 lines lost without a trace. The geometry
+# had already spoken: the page carries no small type, so there is no footnote
+# block to find, and the bare regex must not overrule that.
+
+_LIST_PAGE_LINES = [
+    "1)  Entwicklungspolitische Wirkung. Fuer die Zusammenarbeit mit allen",
+    "Partnerlaendern stellt sich zuerst die Frage nach der groessten Wirkung.",
+    "2)  Subsidiaritaet. Angesichts zunehmender Leistungsfaehigkeit sollten",
+    "Massnahmen schrittweise zurueckgenommen werden.",
+]
+
+
+def test_a_numbered_list_on_a_measured_page_stays_body(tmp_path):
+    pages_dir = tmp_path / "pages"
+    pages_dir.mkdir()
+    page = SourcePage(index=1, width=300.0, height=400.0, source="pymupdf", lines=[
+        _frag(text, 30, 50.0 + 12.0 * i) for i, text in enumerate(_LIST_PAGE_LINES)
+    ])
+    (pages_dir / "00000001.json").write_text(dumps(page), encoding="utf-8")
+
+    out = tmp_path / "book.txt"
+    main(str(pages_dir), str(out))
+    text = out.read_text(encoding="utf-8")
+
+    # Nothing may go missing, whatever the list is taken for.
+    assert "Entwicklungspolitische Wirkung" in text
+    assert "Subsidiaritaet" in text
+    assert "Massnahmen schrittweise zurueckgenommen" in text
+
+
+def test_measured_page_without_a_small_block_has_no_footnotes():
+    pg = parse_page("\n".join(_LIST_PAGE_LINES), geometry_verified=True)
+    assert pg.footnotes == {}
+    assert len(pg.body_lines) == len(_LIST_PAGE_LINES)
+
+
+def test_the_bare_regex_still_serves_pages_without_geometry():
+    # The TXT path has no sizes to consult; there the convention is all we have.
+    pg = parse_page("\n".join(_LIST_PAGE_LINES))
+    assert set(pg.footnotes) == {1, 2}
