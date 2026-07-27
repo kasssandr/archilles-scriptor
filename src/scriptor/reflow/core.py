@@ -76,13 +76,26 @@ class Page:
 # 1) Parse page: split body / footnotes / page number
 # ----------------------------------------------------------------------
 
-def parse_page(text: str, fn_block: list[str] | None = None) -> Page | None:
+def parse_page(
+    text: str,
+    fn_block: list[str] | None = None,
+    *,
+    geometry_verified: bool = False,
+) -> Page | None:
     """Parse a single page file. Returns None if empty.
 
     ``fn_block`` carries the page's footnote block where the geometry already
     verified it (small type at the bottom, see ``split_small_type_block``).
     Inside such a block the ``NN.`` convention is trusted alongside ``NN)``;
     on bare text it never is.
+
+    ``geometry_verified`` says the page was reassembled from measured lines.
+    Then ``split_small_type_block`` has already looked for a footnote block and
+    an empty ``fn_block`` is an answer, not a gap: the page carries no small
+    type, so there is no block, and the bare ``NN)`` convention must not
+    overrule that — a numbered list ("1) …") would otherwise swallow the page
+    from its first item on. Without geometry (the TXT path) the convention is
+    all we have and is trusted as before.
     """
     text = text.translate(SUPERSCRIPT_DIGITS)
     lines = [ln.rstrip() for ln in text.splitlines()]
@@ -107,13 +120,14 @@ def parse_page(text: str, fn_block: list[str] | None = None) -> Page | None:
             lines.pop(0)
     page_num = -1  # provisional; reconcile_page_numbers sets num and label
 
-    # Footnote block: starting at the first line that begins with "NN)" —
-    # provided only footnotes/continuations follow after that.
+    # Footnote block: starting at the first line that begins with "NN)".
+    # Only consulted where the geometry could not answer the question itself.
     fn_start = None
-    for i, ln in enumerate(lines):
-        if FOOTNOTE_RE.match(ln):
-            fn_start = i
-            break
+    if not (geometry_verified and fn_block is None):
+        for i, ln in enumerate(lines):
+            if FOOTNOTE_RE.match(ln):
+                fn_start = i
+                break
 
     body_lines: list[str] = []
     fn_lines: list[str] = []
@@ -1228,10 +1242,10 @@ def main(
         print(f"Running footers removed ({len(footers)}): {footers[:3]}", file=sys.stderr)
 
     pages: list[Page] = []
-    for ordinal, (text, fn_block, sp) in enumerate(
-        zip(cleaned, fn_blocks, source_pages), start=1
+    for ordinal, (text, fn_block, sp, rec) in enumerate(
+        zip(cleaned, fn_blocks, source_pages, reconstructions), start=1
     ):
-        pg = parse_page(text, fn_block=fn_block)
+        pg = parse_page(text, fn_block=fn_block, geometry_verified=rec.measured)
         if pg is not None:
             pg.backend_label = sp.label
             pg.heading = headings_by_pos.get(ordinal - 1)
