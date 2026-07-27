@@ -11,6 +11,7 @@ from scriptor.reflow.running_elements import (
     remove_running_headers,
     detect_running_headers,
     _extract_edge_page_number,
+    _strings_are_similar,
 )
 from scriptor.reflow.core import parse_page
 
@@ -123,3 +124,43 @@ def test_strip_preserves_footer_number():
     for n, page in zip(nums, cleaned):
         assert "QUELLENBAND" not in page
         assert page.strip().splitlines()[-1].strip() == str(n)
+
+
+# --- A running element quoted inside a longer real line ------------------------
+
+# Regression (EXCITE 35056, p. 4): the publisher's name is the running footer,
+# and a footnote cites that same publisher. The note line contains the footer
+# verbatim but is much longer — it is body text, not a running element, and
+# must survive. Silent loss of a text line is worse than a visible error.
+_DIE_FOOTER = "Deutsches Institut für Entwicklungspolitik"
+_DIE_NOTE = (
+    "Bonn: Deutsches Institut für Entwicklungspolitik (Discussion Paper 7/2006)."
+)
+
+
+def test_similarity_rejects_a_short_substring_of_a_long_line():
+    # The footer covers barely half the note line; SequenceMatcher puts them at
+    # 0.72, well under the 0.85 threshold. Only the substring shortcut said yes.
+    assert not _strings_are_similar(_DIE_NOTE, _DIE_FOOTER)
+
+
+def test_similarity_still_accepts_a_line_that_is_essentially_the_element():
+    # The shortcut's legitimate case must keep working: trailing punctuation or
+    # a stray word around an otherwise identical running element.
+    assert _strings_are_similar(_DIE_FOOTER + ".", _DIE_FOOTER)
+
+
+def test_footer_quoted_in_a_footnote_survives():
+    # Ordered as in the source: the citing note sits on an early page, the
+    # plain running footer carries the rest of the volume.
+    tail = "\n".join(_DISTINCT[k] for k in range(3))
+    pages = [f"{tail}\n{_DIE_NOTE}"]
+    for i in range(1, 7):
+        body = "\n".join(_DISTINCT[(2 * i + k) % len(_DISTINCT)] for k in range(3))
+        pages.append(f"{body}\n{_DIE_FOOTER}")
+
+    cleaned, _, footers = strip_running_elements(pages, footer_min=3)
+    assert footers, "wiederkehrender Fußtitel muss erkannt werden"
+    for page in cleaned[1:]:
+        assert _DIE_FOOTER not in page  # the real running footer goes
+    assert _DIE_NOTE in cleaned[0]  # the footnote citing it stays

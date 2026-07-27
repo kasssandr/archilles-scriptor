@@ -20,7 +20,15 @@ from difflib import SequenceMatcher
 def _strings_are_similar(a: str, b: str, threshold: float = 0.85) -> bool:
     if not a or not b:
         return False
-    if a == b or b in a:
+    if a == b:
+        return True
+    # A running element quoted inside a much longer line is body text, not a
+    # running element. The containment shortcut may therefore only fire when b
+    # makes up essentially all of a — otherwise a footnote citing the publisher
+    # whose name is the running footer loses its whole line (EXCITE 35056 p. 4:
+    # "Bonn: Deutsches Institut für Entwicklungspolitik (Discussion Paper
+    # 7/2006)." vs. the footer "Deutsches Institut für Entwicklungspolitik").
+    if b in a and len(b) >= threshold * len(a):
         return True
     return SequenceMatcher(None, a.lower(), b.lower()).ratio() >= threshold
 
