@@ -129,3 +129,33 @@ def test_briefing_mentions_convention_and_removal():
     assert "<dnt>" in BRIEFING and "</dnt>" in BRIEFING
     assert "untagged" in BRIEFING.lower()
     assert "remove" in BRIEFING.lower()
+
+
+# --- REFERENCE ENTRIES --------------------------------------------------------
+
+def test_a_reference_entry_is_protected_whole():
+    """Sen et al. [23]: without protection a translator renders "BEIR: A
+    Heterogenous Benchmark for Zero-shot Evaluation of Information Retrieval
+    Models" into German and the citation stops being findable."""
+    src = (
+        "[23] Nandan Thakur, Nils Reimers, and Iryna Gurevych. 2021. BEIR: A "
+        "Heterogenous Benchmark for Zero-shot Evaluation of Information Retrieval "
+        "Models. In Advances in Neural Information Processing Systems."
+    )
+
+    out = prepare_translation(src)
+
+    assert out == f"<dnt>{src}</dnt>"
+
+
+def test_protecting_a_reference_entry_is_idempotent():
+    src = "[7] Zhengbao Jiang. 2023. Active Retrieval Augmented Generation. https://x.org"
+    once = prepare_translation(src)
+    assert prepare_translation(once) == once
+    assert once.count("<dnt>") == once.count("</dnt>") == 1
+
+
+def test_a_footnote_marker_in_prose_is_not_a_reference_entry():
+    """Body text opens with a placed marker often enough; it is not a citation."""
+    src = "[3] ist der Beleg für die vorstehende Behauptung im laufenden Text."
+    assert prepare_translation(src) == src

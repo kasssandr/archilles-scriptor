@@ -24,6 +24,15 @@ QUOTE_PAIRS = [("„", "“"), ('"', '"'), ("»", "«")]
 # Pandoc footnote definition line (single-line).
 FN_DEF_RE = re.compile(r"^\[\^\d+\]:")
 
+# A bibliography entry, as ``reflow/references.py`` leaves it: one entry, one
+# paragraph, opening with its own number. Stricter than the rule over there,
+# because here there is no reference block around the line to vouch for it — a
+# name and a year have to stand in the text itself, or "[3] ist der Beleg für die
+# vorstehende Behauptung" would be protected as a citation.
+REFERENCE_ENTRY_RE = re.compile(
+    r"^\[\d{1,3}\]\s+[A-ZÄÖÜ].*\b(?:1[5-9]\d\d|20\d\d|21\d\d)\b"
+)
+
 # Confidence flags from the 2-B layer: [?FN:…] / [??FN:…] (optional leading space).
 FLAG_RE = re.compile(r" ?\[\?\??FN:[^\]]*\]")
 
@@ -95,6 +104,12 @@ def prepare_translation(markdown: str) -> str:
     text = strip_flags(markdown)
     out_lines: list[str] = []
     for line in text.split("\n"):
+        if REFERENCE_ENTRY_RE.match(line):
+            # Whole-line protection, and no inner tagging afterwards: a citation
+            # is one unit — author, title, venue, year — and every part of it is
+            # a thing a translator must leave alone.
+            out_lines.append(f"{DNT_OPEN}{line}{DNT_CLOSE}")
+            continue
         line = protect_urls(line)
         if FN_DEF_RE.match(line):
             line = protect_quoted(line)

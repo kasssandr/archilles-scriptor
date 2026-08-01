@@ -1199,6 +1199,36 @@ def main(
         else list(r.indents)
         for s, r in zip(splits, reconstructions)
     ]
+    page_sizes = [
+        (r.sizes[: s.split_at] + [None] * (len(s.body) - s.split_at))
+        if s
+        else list(r.sizes)
+        for s, r in zip(splits, reconstructions)
+    ]
+
+    # A bibliography is set with a hanging indent — the entry at the column edge,
+    # its continuations indented — which is the paragraph indent read backwards.
+    # Joining the entries here, while lines, sizes and edges are still parallel,
+    # keeps both the indent rule and the short-line rule off them.
+    from scriptor.reflow.references import merge_reference_entries
+
+    joined = merge_reference_entries(
+        list(zip(page_lines, page_sizes, page_indents)), body_size=doc_body_size
+    )
+    entries = sum(
+        1
+        for (before, _s, _i), (after, _s2, _i2) in zip(
+            zip(page_lines, page_sizes, page_indents), joined
+        )
+        for _ in range(len(before) - len(after))
+    )
+    if entries:
+        print(
+            f"Reference list: {plural(entries, 'line')} joined into their entries",
+            file=sys.stderr,
+        )
+    page_lines = [lines for lines, _s, _i in joined]
+    page_indents = [indents for _l, _s, indents in joined]
 
     # The catalogue's outline, believed entry by entry where the page confirms
     # the title: the confirmed chapter starts become headings, and the chapter
