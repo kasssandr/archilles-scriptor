@@ -210,3 +210,32 @@ def test_a_table_between_the_columns_is_read_after_them():
     assert result.lines[12] == "right line 0"
     assert result.lines[24] == "Table 1: Overall accuracy on the subset"
     assert result.lines[-1] == "5"
+
+
+def test_a_float_is_anchored_at_the_first_paragraph_break():
+    """A float belongs to a seam in the text, not to the edge of the page: it
+    goes where the page's first paragraph ends, at the indent that opens the
+    second. Sen et al. p.5 opens with the tail of a sentence carried over from
+    p.4 — Table 1 follows that, not the whole page.
+    """
+    lines = [
+        _frag("carried over from the previous page and ending here.", 55.0, 150.0,
+              x1=296.0),
+        _frag("Der zweite Absatz beginnt eingerueckt und laeuft", 64.0, 162.0, x1=296.0),
+        _frag("ueber mehrere Zeilen bis zum Ende der Spalte hier.", 55.0, 174.0, x1=296.0),
+        _frag("right column line one", 320.0, 150.0, x1=557.0),
+        _frag("Table 1: Overall accuracy on the subset", 55.0, 90.0, x1=557.0),
+        _frag("5", 303.0, 720.0, x1=309.0),
+    ]
+    page = SourcePage(index=5, width=612.0, height=792.0, lines=lines)
+
+    result = reconstruct(page, gutter=Gutter(296.0, 320.0))
+
+    assert result.lines == [
+        "carried over from the previous page and ending here.",
+        "Table 1: Overall accuracy on the subset",
+        "Der zweite Absatz beginnt eingerueckt und laeuft",
+        "ueber mehrere Zeilen bis zum Ende der Spalte hier.",
+        "right column line one",
+        "5",
+    ]

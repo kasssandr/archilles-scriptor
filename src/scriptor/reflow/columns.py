@@ -59,6 +59,12 @@ BASELINE_GROUP = 1.0
 # than as part of a page's head matter. An author's name fills a third of it.
 HEAD_WIDTH_SHARE = 0.6
 
+# A first-line indent, relative to the column's own left edge. Same band as
+# ``textlines.INDENT_MIN``/``INDENT_MAX``, read here to find the seam a float
+# can be anchored at.
+INDENT_MIN = 4.0
+INDENT_MAX = 18.0
+
 
 @dataclass(frozen=True)
 class Gutter:
@@ -171,6 +177,40 @@ def find_gutter(
         if deep_left >= min_depth and deep_right >= min_depth:
             return Gutter(x0, x1)
     return None
+
+
+def _anchor_floats(
+    column: list[Line], right: list[Line], floats: list[list[Line]]
+) -> list[list[Line]]:
+    """Place the page's floats at the seam its first paragraph ends on.
+
+    A table set across the measure has to go *somewhere* in a linear text, and
+    the foot of the page is the one place it certainly does not belong: layout
+    decides where a float is printed, so it rarely stands where the argument
+    first names it. The first paragraph break of the page is a real seam —
+    reached at the first indented line, which is where the second paragraph
+    starts. Without one (a page holding a single paragraph) the floats follow the
+    column, as before.
+    """
+    tail = [right] if right else []
+    if not floats:
+        return ([column] if column else []) + tail
+    if not column:
+        return tail + floats
+
+    edge = min(ln.box.x0 for ln in column)
+    cut = next(
+        (
+            i
+            for i, ln in enumerate(column)
+            if i and INDENT_MIN <= ln.box.x0 - edge <= INDENT_MAX
+        ),
+        None,
+    )
+    if cut is None:
+        # No seam on this page: the float follows the text, as it did before.
+        return [column] + tail + floats
+    return [column[:cut]] + floats + [column[cut:]] + tail
 
 
 def _is_plain_columns(lines: list[Line], gutter: Gutter) -> bool:
@@ -322,5 +362,5 @@ def reading_order(page: SourcePage, gutter: Gutter) -> list[list[Line]]:
         for line in lines:
             sides[column_of(line, gutter)].append(line)
 
-    columns = [block for block in (sides["left"], sides["right"]) if block]
-    return head + columns + floats + foot
+    left, right = sides["left"], sides["right"]
+    return head + _anchor_floats(left, right, floats) + foot
