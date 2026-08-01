@@ -20,10 +20,18 @@ from __future__ import annotations
 
 import re
 
-# "3", "3.2", "3.2.1", with or without a closing period, followed by a title that
-# begins with a letter. Zuckerman's OCR layer hands over the folio as "2 0 8" and
-# reports it italic; without the letter that reads as section 2, title "0 8".
-SECTION_NUMBER_RE = re.compile(r"^\d{1,2}(?:\.\d{1,2}){0,3}\.?\s+[^\W\d_]")
+# A section number in front of a title: a subsection ("3.2", "3.2.1", period
+# optional) or a single number *without* one ("3 Methodology"). The title must
+# begin with a letter — Zuckerman's OCR layer hands over the folio as "2 0 8" and
+# reports it italic, which without that reads as section 2, title "0 8".
+#
+# A single number *with* a period is an ordinal, and cutting there costs text:
+# Zuckerman breaks an italic title across two lines as "… vom 9. bis zum" /
+# "16. Jahrhundert, 2 vols.", and the cut leaves "Jahrhundert , 2 vols.".
+# ``core.MARKED_HEADING_RE`` reads the same shape, one step further on.
+SECTION_NUMBER_RE = re.compile(
+    r"^(?:\d{1,2}(?:\.\d{1,2}){1,3}\.?|\d{1,2})\s+[^\W\d_]"
+)
 
 # A run-in heading is a title, not a sentence: this many characters and it is
 # prose that happens to start in italics.

@@ -115,6 +115,12 @@ def _emphasis_run(cluster: list[Line]) -> int:
 # taller than it is wide in most faces, and says nothing about its direction.
 SIDEWAYS_MIN_CHARS = 4
 
+# How much taller than wide. Merely taller is not enough: Zuckerman p.399 carries
+# an OCR scrap, "•־־׳־ 399", in a box 24pt wide and 30pt tall, and treating that
+# as a stamp lifts it into the text the label detection had been dropping it from.
+# A stamp runs down the margin — arXiv's is thirteen times taller than it is wide.
+SIDEWAYS_RATIO = 3.0
+
 
 def _sideways(line: Line) -> bool:
     """Is this line set across the page rather than along it?
@@ -124,7 +130,8 @@ def _sideways(line: Line) -> bool:
     """
     if line.box is None or len(line.text.strip()) < SIDEWAYS_MIN_CHARS:
         return False
-    return (line.box.y1 - line.box.y0) > (line.box.x1 - line.box.x0)
+    width = line.box.x1 - line.box.x0
+    return width > 0 and (line.box.y1 - line.box.y0) / width >= SIDEWAYS_RATIO
 
 
 def _has_wide_gap(cluster: list[Line], threshold: float) -> bool:

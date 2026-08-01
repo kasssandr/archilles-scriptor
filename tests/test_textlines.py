@@ -251,3 +251,25 @@ def test_a_line_set_across_the_page_is_read_ahead_of_it():
         "Modern LLM agents increasingly rely on RAG",
         "to access external knowledge at inference time",
     ]
+
+
+def test_a_slightly_tall_scrap_is_not_a_margin_stamp():
+    """Zuckerman p.399 carries an OCR scrap at the edge, '•־־׳־ 399', whose box is
+    a little taller than wide. Treated as a stamp it survives into the text, where
+    the page-label detection had been quietly dropping it.
+
+    A stamp runs down the whole margin: it is *much* taller than it is wide.
+    """
+    box = Box(20.0, 700.0, 44.0, 730.0)          # 24pt wide, 30pt tall
+    page = SourcePage(
+        index=1,
+        width=332.0,
+        lines=[
+            _frag("prose line of the page", 30.0, 100.0),
+            Line(spans=[Span("•־־׳־ 399", box=box, size=9.0)], box=box, baseline=725.0),
+        ],
+    )
+
+    result = reconstruct(page)
+
+    assert result.lines[-1] == "•־־׳־ 399"

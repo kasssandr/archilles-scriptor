@@ -143,3 +143,24 @@ def test_a_folded_table_stands_on_its_own():
     assert lines[3] == ""
     assert lines[4].startswith("bookkeeping")
     assert len(lines) == len(sizes) == len(indents) == len(emphases)
+
+
+def test_a_row_carrying_a_sentence_is_not_part_of_the_table():
+    """Sen et al. p.9: the appendix heading and the caption's tail sit right under
+    Table 4 and fit its grid by accident. A cell is a value; one sentence-long
+    cell ends the table rather than being pressed into a column."""
+    rows = [
+        [(188.0, "Model"), (268.0, "KU"), (322.0, "MS"), (350.0, "TR")],
+        [(188.0, "Claude Opus 4.6"), (268.0, "94.4"), (322.0, "83.9"), (350.0, "87.1")],
+        [(188.0, "Claude Haiku 4.5"), (268.0, "83.3"), (322.0, "71.0"), (350.0, "87.1")],
+        [(188.0, "GPT-5.4"), (268.0, "77.8"), (322.0, "74.2"), (350.0, "67.7")],
+        [(188.0, "A"), (268.0, "Per-Category Accuracy"), (322.0, "inline tool calling "
+          "method, and the full haystack (n=116). Grader:"), (350.0, "GPT-4o.")],
+    ]
+
+    lines, _s, _i, _e = _fold(rows)
+
+    table = _table_of(rows)
+    assert "| GPT-5.4 | 77.8 | 74.2 | 67.7 |" in table
+    assert "Per-Category Accuracy" not in table
+    assert lines[-1] == _texts(rows)[-1]

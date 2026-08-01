@@ -85,12 +85,15 @@ def _is_candidate(row: Row) -> bool:
     return len(row) >= MIN_COLUMNS
 
 
-def _cells_are_values(table: list[list[str]]) -> bool:
-    lengths = [len(c) for row in table for c in row if c]
-    if not lengths:
-        return False
-    long = sum(1 for n in lengths if n > MAX_CELL_CHARS)
-    return long * 2 <= len(lengths)
+def _cells_are_values(cells: list[str]) -> bool:
+    """Does this row read like table cells rather than like a sentence?
+
+    Checked row by row, not over the table as a whole: on Sen's p.9 the appendix
+    heading and the tail of a caption sit right under Table 4 and fit its grid by
+    accident, and a single sentence averaged over ten rows of figures disappears.
+    """
+    filled = [c for c in cells if c]
+    return bool(filled) and all(len(c) <= MAX_CELL_CHARS for c in filled)
 
 
 def _density(table: list[list[str]]) -> float:
@@ -117,7 +120,7 @@ def _find_tables(rows: list[Row]) -> list[tuple[int, int, list[float]]]:
             if (
                 len(grid) >= MIN_COLUMNS
                 and all(f is not None for f in fitted)
-                and _cells_are_values(cells)
+                and all(_cells_are_values(row) for row in cells)
                 and _density(cells) >= MIN_DENSITY
             ):
                 found.append((i, i + len(block), grid))

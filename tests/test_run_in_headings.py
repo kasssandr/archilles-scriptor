@@ -137,3 +137,18 @@ def test_a_german_ordinal_is_not_a_marked_heading():
     assert heading_level(out[0][0].lstrip(MARK), marked=True) == 0
     assert heading_level("3 Methodology", marked=True) == 1
     assert heading_level("4.1 Experiment 1: Retrieval Mode", marked=True) == 2
+
+
+def test_a_title_broken_before_an_ordinal_is_not_cut():
+    """Zuckerman's bibliography breaks an italic title across two printed lines:
+    '… Das Wesen der Monarchie vom 9. bis zum' / '16. Jahrhundert, 2 vols. Weimar
+    1939.' The second line opens with what looks like a section number, and
+    cutting there leaves 'Jahrhundert , 2 vols.' — a space before the comma.
+
+    Same rule as for the mark: a subsection, or a number without a period.
+    """
+    lines = ["16. Jahrhundert, 2 vols. Weimar 1939. 2nd ed. rev. 1960."]
+
+    out = split_emphasised_headings(lines, [17], [None], [55.0])
+
+    assert out[0] == lines
