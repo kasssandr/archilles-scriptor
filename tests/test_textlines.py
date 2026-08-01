@@ -220,13 +220,14 @@ def test_emphasis_across_two_fragments_counts_the_joining_space():
     assert result.emphases == [len("2.3 Tool-Calling Architectures")]
 
 
-def test_a_line_set_across_the_page_is_read_last():
+def test_a_line_set_across_the_page_is_read_ahead_of_it():
     """arXiv stamps its preprints down the left margin: 'arXiv:2605.15184v1
     [cs.CL] 14 May 2026' in a box 27pt wide and 353pt tall.
 
     Its baseline puts it in the middle of the first paragraph, where it breaks a
     sentence in half. It is not deleted — it says where the paper came from — but
-    it is read after the page, not inside it.
+    it is read ahead of the page, not inside it. Ahead, because the foot of the
+    page carries the printed page number, and that number is the citation.
     """
     page = SourcePage(
         index=1,
@@ -246,7 +247,7 @@ def test_a_line_set_across_the_page_is_read_last():
     result = reconstruct(page)
 
     assert result.lines == [
+        "arXiv:2605.15184v1 [cs.CL] 14 May 2026",
         "Modern LLM agents increasingly rely on RAG",
         "to access external knowledge at inference time",
-        "arXiv:2605.15184v1 [cs.CL] 14 May 2026",
     ]

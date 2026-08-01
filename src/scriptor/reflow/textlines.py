@@ -170,7 +170,10 @@ def reconstruct(
 
     # Lines set across the page — arXiv's margin stamp, a rotated plate caption —
     # carry a baseline that puts them in the middle of a paragraph. They are read
-    # after the page instead of inside it; deleting them would lose what they say.
+    # ahead of the page instead of inside it; deleting them would lose what they
+    # say. Ahead, not after, because the foot of the page is where the printed
+    # page number sits, and that number is the citation: a stamp behind it takes
+    # the last line the label detection looks at.
     upright = [ln for ln in page.lines if not _sideways(ln)]
     sideways = [ln for ln in page.lines if _sideways(ln)]
     page = SourcePage(
@@ -180,7 +183,7 @@ def reconstruct(
 
     blocks = reading_order(page, gutter) if gutter is not None else [page.lines]
     if sideways:
-        blocks = blocks + [[ln] for ln in sideways]
+        blocks = [[ln] for ln in sideways] + blocks
     clusters = [cluster for block in blocks for cluster in _cluster(block, tolerance)]
 
     threshold = (page.width or 0.0) * WIDE_GAP_FRACTION
