@@ -502,8 +502,11 @@ _TRAILING_MARKERS = re.compile(r"(\s*\[\d{1,3}\])+$")
 
 
 # Numbered heading at the start of a paragraph: "3.4. Probleme um Welf VI."
-# Heading level = number of periods in the numbering + 1.
-HEADING_RE = re.compile(r"^(\d+(?:\.\d+){0,3})\.\s+[A-ZÄÖÜ]")
+# Heading level = number of periods in the numbering + 1. Each group is at most
+# two digits, which keeps a year out: a bibliography entry continues "… and
+# Stéphane Clinchant. 2021. SPLADE v2: Sparse Lexical …", and a document with
+# 2021 sections does not exist.
+HEADING_RE = re.compile(r"^(\d{1,2}(?:\.\d{1,2}){0,3})\.\s+[A-ZÄÖÜ]")
 HEADING_MAX_LEN = 80
 
 
