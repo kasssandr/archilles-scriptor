@@ -86,21 +86,6 @@ def test_the_mark_is_only_given_to_numbered_titles():
     assert out[0] == lines
 
 
-def test_the_second_line_of_a_broken_heading_is_marked_too():
-    """'4.1 Experiment 1: Retrieval Mode, Harness, and' / 'Tool Calling Method':
-    the emphasis runs over both lines, the number stands only on the first."""
-    lines = ["4.1 Experiment 1: Retrieval Mode, Harness, and", "Tool Calling Method",
-             "Wir isolieren zunaechst den Einfluss des Modus."]
-
-    out = split_emphasised_headings(
-        lines, [len(lines[0]), len(lines[1]), 0], [None] * 3, [55.0] * 3
-    )
-
-    assert out[0] == [MARK + "4.1 Experiment 1: Retrieval Mode, Harness, and",
-                      MARK + "Tool Calling Method",
-                      "Wir isolieren zunaechst den Einfluss des Modus."]
-
-
 def test_an_emphasised_line_after_ordinary_prose_gets_no_mark():
     """Only a heading's own continuation inherits the mark, not any emphasis."""
     lines = ["Ein gewoehnlicher Absatz endet hier.", "Römische Geschichte"]
@@ -152,3 +137,36 @@ def test_a_title_broken_before_an_ordinal_is_not_cut():
     out = split_emphasised_headings(lines, [17], [None], [55.0])
 
     assert out[0] == lines
+
+
+def test_an_unnumbered_heading_is_recognised_by_its_type():
+    """Sen et al. sets "Abstract", "Keywords", "References" and the appendix head
+    "A Per-Category Accuracy" bold at 10.91pt over 9.06pt body — no number
+    anywhere. Type alone carries them, so both grade and emphasis are required:
+    an italic work title at body size stays a work title.
+    """
+    lines = ["Abstract", "References", "Römische Geschichte", "A Per-Category Accuracy"]
+    sizes = [10.91, 10.91, 9.06, 10.91]
+    emph = [len(lines[0]), len(lines[1]), len(lines[2]), len(lines[3])]
+
+    out = split_emphasised_headings(lines, emph, sizes, [55.0] * 4, body_size=9.06)
+
+    assert out[0] == [MARK + "Abstract", MARK + "References",
+                      "Römische Geschichte", MARK + "A Per-Category Accuracy"]
+    assert heading_level("Abstract", marked=True) == 1
+    assert heading_level("A Per-Category Accuracy", marked=True) == 1
+
+
+def test_a_heading_broken_over_two_lines_is_joined_where_it_is_cut():
+    """The continuation carries no number of its own and is joined right here,
+    so nothing downstream has to know that a heading can span two lines."""
+    lines = ["4.1 Experiment 1: Retrieval Mode, Harness, and", "Tool Calling Method",
+             "Wir isolieren zunaechst den Einfluss des Modus."]
+
+    out = split_emphasised_headings(
+        lines, [len(lines[0]), len(lines[1]), 0], [None] * 3, [55.0] * 3
+    )
+
+    assert out[0] == [MARK + "4.1 Experiment 1: Retrieval Mode, Harness, and "
+                             "Tool Calling Method",
+                      "Wir isolieren zunaechst den Einfluss des Modus."]

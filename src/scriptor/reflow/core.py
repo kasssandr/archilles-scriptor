@@ -525,6 +525,11 @@ MARKED_HEADING_RE = re.compile(
     r"^(?:(\d{1,2}(?:\.\d{1,2}){1,3})\.?|(\d{1,2}))\s+[^\W\d_]"
 )
 
+# The list bullets this corpus prints, at the head of a line. Dashes are left
+# out: a line opening with one is far more often a dialogue or a dash than an
+# item, and breaking there would cut prose apart.
+BULLET_RE = re.compile(r"^[•▪◦‣]\s*\S")
+
 # Imported by value so the hot line loop does not import per line.
 from scriptor.reflow.headings import MARK as HEADING_MARK  # noqa: E402
 from scriptor.reflow.tables import BREAK as TABLE_BREAK  # noqa: E402
@@ -541,7 +546,12 @@ def heading_level(line: str, *, marked: bool = False) -> int:
         return 0
     if marked:
         m = MARKED_HEADING_RE.match(line)
-        return (m.group(1) or m.group(2)).count(".") + 1 if m else 0
+        if m:
+            return (m.group(1) or m.group(2)).count(".") + 1
+        # Marked and unnumbered: "Abstract", "References", "A Per-Category
+        # Accuracy" — the top level of their document. A line opening with a digit
+        # is not one of them: "16. Jahrhundert" is an ordinal in a work title.
+        return 0 if line[:1].isdigit() else 1
     m = HEADING_RE.match(line)
     if not m:
         return 0
@@ -670,19 +680,15 @@ def reconstruct_body(
                     end_paragraph()
                     pending_page_marker = saved_marker
 
-            # The second line of a heading broken across two printed lines: set
-            # apart like the first, but carrying no number of its own.
-            if (
-                marked
-                and not cur_chunks
-                and not pending_hyphen
-                and paragraphs
-                and para_levels[-1] > 0
-                and heading_level(stripped, marked=True) == 0
-                and len(paragraphs[-1]) + len(stripped) <= HEADING_MAX_LEN
-            ):
-                paragraphs[-1] = f"{paragraphs[-1]} {stripped}"
-                continue
+            # A bullet opens an item, and an item is a paragraph. Without this the
+            # first item of a list runs on from the sentence that introduces it —
+            # the bullet shares its printed line with its own text, so no line
+            # break marks the boundary the way it does for every item after it.
+            if BULLET_RE.match(stripped) and cur_chunks and not pending_hyphen:
+                saved_marker = pending_page_marker
+                pending_page_marker = None
+                end_paragraph()
+                pending_page_marker = saved_marker
 
             # Numbered heading at the start of a paragraph (only if no word is
             # still open and no paragraph is running) -> its own block.
@@ -1287,7 +1293,15 @@ def main(
     for lines, emph, sizes, indents in zip(
         page_lines, page_emphases, page_sizes, page_indents
     ):
-        result = split_emphasised_headings(lines, emph, sizes, indents)
+        result = split_emphasised_headings(
+            # The type size only opens a heading where the document is set in
+            # columns. It is calibrated on articles, where "Abstract" is bold at
+            # 10.91pt over a 9.06pt body; an OCR layer reports size and weight
+            # too loosely for it — Zuckerman's front matter turns "Jan" into a
+            # chapter. Numbered headings are unaffected and keep working there.
+            lines, emph, sizes, indents,
+            body_size=doc_body_size if gutter is not None else None,
+        )
         cut_headings += len(result[0]) - len(lines)
         new_lines.append(result[0])
         new_sizes.append(result[1])

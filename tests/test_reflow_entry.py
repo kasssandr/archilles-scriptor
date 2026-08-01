@@ -196,3 +196,26 @@ def test_a_heading_broken_over_two_lines_stays_one_heading(tmp_path):
 
     text = out.read_text(encoding="utf-8")
     assert "## 4.1 Experiment 1: Retrieval Mode, Harness, and Tool Calling Method" in text
+
+
+def test_a_bullet_opens_a_paragraph(tmp_path):
+    """Sen et al. p.1: "The paper contributes in three ways: • Retrieval, harness,
+    and presentation. …" — the first item of a list runs on from the sentence that
+    introduces it, because the bullet sits on the same printed line as its text."""
+    pages_dir = tmp_path / "pages"
+    pages_dir.mkdir()
+    _write(pages_dir, 1, [
+        ("Der einleitende Satz nennt drei Beitraege der Arbeit:", 30.0, 40.0),
+        ("• Erstens die Evidenz zur Wahl des Verfahrens und", 30.0, 52.0),
+        ("seiner Wirkung im laufenden Betrieb der Agenten.", 36.0, 64.0),
+        ("• Zweitens die Charakterisierung des Verhaltens bei", 30.0, 76.0),
+        ("wachsendem Anteil irrelevanter Nachbarschaft.", 36.0, 88.0),
+    ])
+
+    out = tmp_path / "paper.md"
+    main(str(pages_dir), str(out))
+
+    text = out.read_text(encoding="utf-8")
+    assert "drei Beitraege der Arbeit: • Erstens" not in text
+    assert "\n• Erstens die Evidenz" in text
+    assert "\n• Zweitens die Charakterisierung" in text

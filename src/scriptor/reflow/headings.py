@@ -46,11 +46,19 @@ MAX_HEADING_CHARS = 90
 MARK = ""
 
 
+# How much larger than the body a line must be set before its type alone makes it
+# a heading. Sen et al. sets "Abstract", "References" and the appendix head at
+# 10.91pt over a 9.06pt body — no number anywhere, and nothing else says heading.
+HEADING_SIZE_RATIO = 1.15
+
+
 def split_emphasised_headings(
     lines: list[str],
     emphases: list[int],
     sizes: list[float | None],
     indents: list[float | None],
+    *,
+    body_size: float | None = None,
 ) -> tuple[list[str], list[float | None], list[float | None]]:
     """Cut each run-in heading off the paragraph it opens.
 
@@ -70,22 +78,34 @@ def split_emphasised_headings(
         head, rest = line[:run].strip(), line[run:].strip()
 
         # A heading too long for one line: the emphasis runs on, the number does
-        # not. Only a heading's own continuation inherits the mark — emphasis
-        # after ordinary prose is a work title, not a second line.
+        # not. Joined right here, so nothing downstream has to know that a heading
+        # can span two lines. Only a heading's own continuation is taken this way —
+        # emphasis after ordinary prose is a work title, not a second line.
         if after_heading and not rest and head and not SECTION_NUMBER_RE.match(head):
-            out_lines.append(MARK + head)
-            out_sizes.append(size)
-            out_indents.append(indent)
-            continue
+            if len(out_lines[-1]) + len(head) <= MAX_HEADING_CHARS:
+                out_lines[-1] = f"{out_lines[-1]} {head}"
+                continue
         after_heading = False
+
+        # Type alone, where there is no number to go by: set larger than the body
+        # *and* set apart. Both, because either on its own is common in prose.
+        unnumbered = (
+            body_size
+            and size
+            and size >= body_size * HEADING_SIZE_RATIO
+            and run >= len(line.strip())
+        )
 
         if (
             run
             and head
             and len(head) <= MAX_HEADING_CHARS
-            and SECTION_NUMBER_RE.match(head)
+            and (SECTION_NUMBER_RE.match(head) or unnumbered)
         ):
-            after_heading = not rest
+            # Only a numbered heading can run onto a second line. One recognised
+            # by its type alone is a whole heading — "Abstract" does not continue
+            # into "References".
+            after_heading = not rest and bool(SECTION_NUMBER_RE.match(head))
             if rest:
                 out_lines.extend([MARK + head, rest])
                 out_sizes.extend([size, size])

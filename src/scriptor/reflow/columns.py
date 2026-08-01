@@ -55,6 +55,10 @@ LANE_TOLERANCE = 2.0
 # the table check in ``reading_order``. Same order as ``textlines.BASELINE_TOLERANCE``.
 BASELINE_GROUP = 1.0
 
+# Share of its column a line must fill before it counts as running text rather
+# than as part of a page's head matter. An author's name fills a third of it.
+HEAD_WIDTH_SHARE = 0.6
+
 
 @dataclass(frozen=True)
 class Gutter:
@@ -169,6 +173,28 @@ def find_gutter(
     return None
 
 
+def _is_plain_columns(lines: list[Line], gutter: Gutter) -> bool:
+    """Does this baseline hold at most one line per column, as prose does?"""
+    seen: set[str] = set()
+    for line in lines:
+        side = column_of(line, gutter)
+        if side in seen:
+            return False
+        if side is not None:
+            seen.add(side)
+    return True
+
+
+def _spans_lane(line: Line, gutter: Gutter) -> bool:
+    """Does the line reach past both edges of the lane — a title, a wide table?"""
+    if line.box is None:
+        return False
+    return (
+        gutter.x0 - line.box.x0 > LANE_TOLERANCE
+        and line.box.x1 - gutter.x1 > LANE_TOLERANCE
+    )
+
+
 def column_of(line: Line, gutter: Gutter) -> str | None:
     """``"left"``, ``"right"``, or ``None`` for a line no column owns.
 
@@ -216,21 +242,85 @@ def reading_order(page: SourcePage, gutter: Gutter) -> list[list[Line]]:
     )
     in_table = {id(ln) for i in tabular for ln in groups[i]}
 
+    # The topmost and bottommost baseline, when nothing shares it, belongs to the
+    # page and not to a column: that is where the running head and the folio sit.
+    # Sen et al. prints its head at x=525 on every page, right of the lane — read
+    # as a line of the right column it lands between the two columns, in the
+    # middle of the running text, where the running-element stripper (which looks
+    # at the head of the page) can no longer see it.
+    # …but only where that line stays on one side of the lane or inside it. A
+    # line spanning the measure up there is a title or a table caption, and those
+    # are floats, not furniture.
+    page_furniture = {
+        id(group[0])
+        for group in (groups[0], groups[-1])
+        if len(group) == 1 and len(groups) > 1 and not _spans_lane(group[0], gutter)
+    }
+
+    # The head of page one is set in its own measure — ACM puts five authors in
+    # three columns there, which the two-column rule reads as prose and posts
+    # into the running text ("…how retrieval strategy interacts Elias Lumer
+    # PricewaterhouseCoopers, U.S."). It ends at the first baseline that is both
+    # set in the document's two columns and filling one: a name is short, a line
+    # of prose reaches the edge of its column.
+    head_matter: set[int] = set()
+    column_width = gutter.x0 - min(ln.box.x0 for ln in ordered)
+    for group in groups:
+        if _is_plain_columns(group, gutter) and any(
+            ln.box.x1 - ln.box.x0 >= column_width * HEAD_WIDTH_SHARE for ln in group
+        ):
+            break
+        head_matter.update(id(ln) for ln in group)
+
+    # Furniture is taken out before the bands are built, or it would merge with
+    # whatever follows it: on page 5 the running head and the caption of Table 1
+    # sit on consecutive baselines, and a shared band would carry the caption to
+    # the head of the page with it.
+    head: list[list[Line]] = []
+    foot: list[list[Line]] = []
+    for line in ordered:
+        if id(line) in page_furniture:
+            (head if line is groups[0][0] else foot).append([line])
+    ordered = [ln for ln in ordered if id(ln) not in page_furniture]
+
     bands: list[tuple[bool, list[Line]]] = []
     for line in ordered:
-        columnar = id(line) not in in_table and column_of(line, gutter) is not None
+        columnar = (
+            id(line) not in in_table
+            and id(line) not in page_furniture
+            and id(line) not in head_matter
+            and column_of(line, gutter) is not None
+        )
         if bands and bands[-1][0] == columnar:
             bands[-1][1].append(line)
         else:
             bands.append((columnar, [line]))
 
-    blocks: list[list[Line]] = []
+    # Furniture keeps its place, floats move behind the text. A table set across
+    # the measure is an insertion, not a turn in the argument: read where the page
+    # prints it, Sen's Table 1 lands between "…operates under very" and "different
+    # framing across harnesses" and cuts a sentence that runs across the page
+    # break. Read after the columns, the prose is whole and the table still sits
+    # on its own page, ahead of the folio that closes it.
+    floats: list[list[Line]] = []
+    sides: dict[str, list[Line]] = {"left": [], "right": []}
+    seen_column = False
+
     for columnar, lines in bands:
         if not columnar:
-            blocks.append(lines)
+            if not seen_column and page.index <= 1:
+                # Above the first line of columned text, on the page that opens
+                # the document: the title block. Anywhere else a band up there is
+                # a table or a figure the text flows past — a float.
+                head.append(lines)
+            else:
+                floats.append(lines)
             continue
-        for side in ("left", "right"):
-            block = [ln for ln in lines if column_of(ln, gutter) == side]
-            if block:
-                blocks.append(block)
-    return blocks
+        seen_column = True
+        # Collected per side across the whole page, not per band: a float
+        # interrupts a column on paper but not in the sentence running through it.
+        for line in lines:
+            sides[column_of(line, gutter)].append(line)
+
+    columns = [block for block in (sides["left"], sides["right"]) if block]
+    return head + columns + floats + foot

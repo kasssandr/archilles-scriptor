@@ -59,6 +59,13 @@ def _is_entry(line: str) -> bool:
     return bool(ENTRY_RE.match(line.strip()))
 
 
+def _bare(line: str) -> str:
+    """The line without the heading mark ``reflow/headings`` may have put on it."""
+    from scriptor.reflow.headings import MARK
+
+    return line.strip().lstrip(MARK)
+
+
 def _flat(pages: list[Page]) -> list[tuple[int, int, str, float | None]]:
     """(page, index, line, size) for every line of the document, in order."""
     return [
@@ -76,7 +83,7 @@ def _block_start(flat: list[tuple[int, int, str, float | None]]) -> int | None:
     entries cannot be cut into entries anyway.
     """
     for k, (_p, _i, line, _size) in enumerate(flat):
-        if not HEADING_RE.match(line.strip()):
+        if not HEADING_RE.match(_bare(line)):
             continue
         for j in range(k + 1, min(k + 1 + LOOKAHEAD, len(flat))):
             if _is_entry(flat[j][2]):
