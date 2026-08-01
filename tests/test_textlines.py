@@ -218,3 +218,35 @@ def test_emphasis_across_two_fragments_counts_the_joining_space():
 
     assert result.lines == ["2.3 Tool-Calling Architectures"]
     assert result.emphases == [len("2.3 Tool-Calling Architectures")]
+
+
+def test_a_line_set_across_the_page_is_read_last():
+    """arXiv stamps its preprints down the left margin: 'arXiv:2605.15184v1
+    [cs.CL] 14 May 2026' in a box 27pt wide and 353pt tall.
+
+    Its baseline puts it in the middle of the first paragraph, where it breaks a
+    sentence in half. It is not deleted — it says where the paper came from — but
+    it is read after the page, not inside it.
+    """
+    page = SourcePage(
+        index=1,
+        width=612.0,
+        lines=[
+            _frag("Modern LLM agents increasingly rely on RAG", 55.0, 300.0),
+            Line(
+                spans=[Span("arXiv:2605.15184v1 [cs.CL] 14 May 2026",
+                            box=Box(10.9, 219.3, 37.6, 572.6), size=9.0)],
+                box=Box(10.9, 219.3, 37.6, 572.6),
+                baseline=250.0,
+            ),
+            _frag("to access external knowledge at inference time", 55.0, 312.0),
+        ],
+    )
+
+    result = reconstruct(page)
+
+    assert result.lines == [
+        "Modern LLM agents increasingly rely on RAG",
+        "to access external knowledge at inference time",
+        "arXiv:2605.15184v1 [cs.CL] 14 May 2026",
+    ]

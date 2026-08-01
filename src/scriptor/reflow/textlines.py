@@ -111,6 +111,22 @@ def _emphasis_run(cluster: list[Line]) -> int:
     return run
 
 
+# Characters a line needs before its box shape means anything. A single glyph is
+# taller than it is wide in most faces, and says nothing about its direction.
+SIDEWAYS_MIN_CHARS = 4
+
+
+def _sideways(line: Line) -> bool:
+    """Is this line set across the page rather than along it?
+
+    Measured, not declared: the backend reports no direction, but 40 characters
+    in a box 27pt wide and 353pt tall can only be running down the margin.
+    """
+    if line.box is None or len(line.text.strip()) < SIDEWAYS_MIN_CHARS:
+        return False
+    return (line.box.y1 - line.box.y0) > (line.box.x1 - line.box.x0)
+
+
 def _has_wide_gap(cluster: list[Line], threshold: float) -> bool:
     return any(
         b.box.x0 - a.box.x1 > threshold for a, b in zip(cluster, cluster[1:])
@@ -152,7 +168,19 @@ def reconstruct(
         # baseline would move the ones that do not to an arbitrary place.
         return _passthrough(page)
 
+    # Lines set across the page — arXiv's margin stamp, a rotated plate caption —
+    # carry a baseline that puts them in the middle of a paragraph. They are read
+    # after the page instead of inside it; deleting them would lose what they say.
+    upright = [ln for ln in page.lines if not _sideways(ln)]
+    sideways = [ln for ln in page.lines if _sideways(ln)]
+    page = SourcePage(
+        index=page.index, lines=upright, width=page.width, height=page.height,
+        source=page.source, label=page.label,
+    )
+
     blocks = reading_order(page, gutter) if gutter is not None else [page.lines]
+    if sideways:
+        blocks = blocks + [[ln] for ln in sideways]
     clusters = [cluster for block in blocks for cluster in _cluster(block, tolerance)]
 
     threshold = (page.width or 0.0) * WIDE_GAP_FRACTION
