@@ -27,6 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from scriptor.page import Line, SourcePage
+from scriptor.reflow.columns import Gutter, reading_order
 
 # Points. Fragments of one printed line scatter by ~0.4pt on the baseline. Two
 # points is already too generous: on the baseline it merges two real lines of Seeck
@@ -47,12 +48,18 @@ class Reconstruction:
     wide_gap_lines: int     # printed lines holding a suspiciously wide gap
     sizes: list[float | None] = None    # dominant size per printed line, parallel to ``lines``
     indents: list[float | None] = None  # left edge (x0) per printed line, parallel to ``lines``
+    # Characters at the head of the line the typesetter set apart (bold or
+    # italic). A run-in heading is exactly that: "3.2.1 Lexical Search (Grep)."
+    # in italics, the prose of the same printed line in roman.
+    emphases: list[int] = None
 
     def __post_init__(self) -> None:
         if self.sizes is None:
             self.sizes = [None] * len(self.lines)
         if self.indents is None:
             self.indents = [None] * len(self.lines)
+        if self.emphases is None:
+            self.emphases = [0] * len(self.lines)
 
 
 def _passthrough(page: SourcePage) -> Reconstruction:
@@ -83,24 +90,59 @@ def _cluster_size(cluster: list[Line]) -> float | None:
     return max(weights.items(), key=lambda kv: (kv[1], kv[0]))[0]
 
 
+def _emphasis_run(cluster: list[Line]) -> int:
+    """Characters at the head of the printed line set in bold or italic.
+
+    Counted over the cluster in reading order and stopped at the first roman
+    span, because what matters is the *head* of the line: an italic work title
+    in the middle of a sentence says nothing about the line's role.
+    """
+    run = 0
+    for i, line in enumerate(cluster):
+        if i:
+            # The space assembly puts between two fragments belongs to the run,
+            # or a heading handed over as "2.3" + "Tool-Calling Architectures"
+            # would be cut one character short of its own last letter.
+            run += 1
+        for span in line.spans:
+            if not (span.bold or span.italic):
+                return run
+            run += len(span.text)
+    return run
+
+
+# Characters a line needs before its box shape means anything. A single glyph is
+# taller than it is wide in most faces, and says nothing about its direction.
+SIDEWAYS_MIN_CHARS = 4
+
+# How much taller than wide. Merely taller is not enough: Zuckerman p.399 carries
+# an OCR scrap, "•־־׳־ 399", in a box 24pt wide and 30pt tall, and treating that
+# as a stamp lifts it into the text the label detection had been dropping it from.
+# A stamp runs down the margin — arXiv's is thirteen times taller than it is wide.
+SIDEWAYS_RATIO = 3.0
+
+
+def _sideways(line: Line) -> bool:
+    """Is this line set across the page rather than along it?
+
+    Measured, not declared: the backend reports no direction, but 40 characters
+    in a box 27pt wide and 353pt tall can only be running down the margin.
+    """
+    if line.box is None or len(line.text.strip()) < SIDEWAYS_MIN_CHARS:
+        return False
+    width = line.box.x1 - line.box.x0
+    return width > 0 and (line.box.y1 - line.box.y0) / width >= SIDEWAYS_RATIO
+
+
 def _has_wide_gap(cluster: list[Line], threshold: float) -> bool:
     return any(
         b.box.x0 - a.box.x1 > threshold for a, b in zip(cluster, cluster[1:])
     )
 
 
-def reconstruct(
-    page: SourcePage, *, tolerance: float = BASELINE_TOLERANCE
-) -> Reconstruction:
-    """Group the fragments of ``page`` into printed lines."""
-    if not page.lines:
-        return _passthrough(page)
-    if any(line.baseline is None or line.box is None for line in page.lines):
-        # A half-measured page stays untouched: sorting the lines that do carry a
-        # baseline would move the ones that do not to an arbitrary place.
-        return _passthrough(page)
-
-    ordered = sorted(page.lines, key=lambda line: (line.baseline, line.box.x0))
+def _cluster(lines: list[Line], tolerance: float) -> list[list[Line]]:
+    """The printed lines of one block, in reading order."""
+    ordered = sorted(lines, key=lambda line: (line.baseline, line.box.x0))
 
     clusters: list[list[Line]] = []
     for line in ordered:
@@ -111,6 +153,45 @@ def reconstruct(
 
     for cluster in clusters:
         cluster.sort(key=lambda line: line.box.x0)
+    return clusters
+
+
+def reconstruct(
+    page: SourcePage,
+    *,
+    tolerance: float = BASELINE_TOLERANCE,
+    gutter: Gutter | None = None,
+) -> Reconstruction:
+    """Group the fragments of ``page`` into printed lines.
+
+    With a ``gutter`` the page is cut into column blocks first and each block is
+    clustered on its own, because two columns share one baseline grid: clustering
+    across the lane would join the left column's line to the right column's.
+    """
+    if not page.lines:
+        return _passthrough(page)
+    if any(line.baseline is None or line.box is None for line in page.lines):
+        # A half-measured page stays untouched: sorting the lines that do carry a
+        # baseline would move the ones that do not to an arbitrary place.
+        return _passthrough(page)
+
+    # Lines set across the page — arXiv's margin stamp, a rotated plate caption —
+    # carry a baseline that puts them in the middle of a paragraph. They are read
+    # ahead of the page instead of inside it; deleting them would lose what they
+    # say. Ahead, not after, because the foot of the page is where the printed
+    # page number sits, and that number is the citation: a stamp behind it takes
+    # the last line the label detection looks at.
+    upright = [ln for ln in page.lines if not _sideways(ln)]
+    sideways = [ln for ln in page.lines if _sideways(ln)]
+    page = SourcePage(
+        index=page.index, lines=upright, width=page.width, height=page.height,
+        source=page.source, label=page.label,
+    )
+
+    blocks = reading_order(page, gutter) if gutter is not None else [page.lines]
+    if sideways:
+        blocks = [[ln] for ln in sideways] + blocks
+    clusters = [cluster for block in blocks for cluster in _cluster(block, tolerance)]
 
     threshold = (page.width or 0.0) * WIDE_GAP_FRACTION
     inner = clusters[1:-1] if len(clusters) > 2 else []
@@ -120,12 +201,26 @@ def reconstruct(
         else 0
     )
 
+    # Cells sit on a grid the page holds over several rows; that grid only exists
+    # while the fragments still carry their boxes, so tables are folded here.
+    from scriptor.reflow.tables import fold_tables
+
+    rows = [[(line.box.x0, line.text) for line in cluster] for cluster in clusters]
+    lines, sizes, indents, emphases = fold_tables(
+        rows,
+        [" ".join(line.text for line in cluster) for cluster in clusters],
+        [_cluster_size(cluster) for cluster in clusters],
+        [cluster[0].box.x0 for cluster in clusters],
+        [_emphasis_run(cluster) for cluster in clusters],
+    )
+
     return Reconstruction(
-        lines=[" ".join(line.text for line in cluster) for cluster in clusters],
+        lines=lines,
         measured=True,
         wide_gap_lines=wide_gap_lines,
-        sizes=[_cluster_size(cluster) for cluster in clusters],
-        indents=[cluster[0].box.x0 for cluster in clusters],
+        sizes=sizes,
+        indents=indents,
+        emphases=emphases,
     )
 
 

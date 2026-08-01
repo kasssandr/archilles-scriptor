@@ -24,6 +24,30 @@ QUOTE_PAIRS = [("„", "“"), ('"', '"'), ("»", "«")]
 # Pandoc footnote definition line (single-line).
 FN_DEF_RE = re.compile(r"^\[\^\d+\]:")
 
+# A bibliography entry, as ``reflow/references.py`` leaves it: one entry, one
+# paragraph, opening with its own number. Stricter than the rule over there,
+# because here there is no reference block around the line to vouch for it — a
+# name and a year have to stand in the text itself, or "[3] ist der Beleg für die
+# vorstehende Behauptung" would be protected as a citation.
+REFERENCE_ENTRY_RE = re.compile(
+    r"^\[(\d{1,3})\]\s+[A-ZÄÖÜ].*\b(?:1[5-9]\d\d|20\d\d|21\d\d)\b"
+)
+
+# A citation in the running text: "[5]", "[5, 10]", "[18, 20, 29]".
+CITATION_RE = re.compile(r"\[(\d{1,3}(?:\s*,\s*\d{1,3})*)\]")
+
+
+def anchor_id(number: str) -> str:
+    """The name an entry answers to, in both worlds.
+
+    A translated bibliography is a list nothing points at: the markers stay in
+    the prose and lead nowhere. So each entry is anchored twice under this one
+    name — as an HTML ``id``, which Pandoc and every web renderer follow, and as
+    Obsidian's block id at the end of the line. One link target reaches it
+    either way, because a circumflex is legal in an HTML id.
+    """
+    return f"^ref-{number}"
+
 # Confidence flags from the 2-B layer: [?FN:…] / [??FN:…] (optional leading space).
 FLAG_RE = re.compile(r" ?\[\?\??FN:[^\]]*\]")
 
@@ -93,8 +117,33 @@ def prepare_translation(markdown: str) -> str:
     everywhere; on footnote-definition lines, additionally tag quoted
     titles. Idempotent; structural Pandoc markers are left untouched."""
     text = strip_flags(markdown)
+    lines = text.split("\n")
+    listed = {m.group(1) for line in lines if (m := REFERENCE_ENTRY_RE.match(line))}
+
+    def link_citations(line: str) -> str:
+        """Point each citation at its entry. Only what the bibliography lists:
+        a count or a year range in brackets stays what it is."""
+        def repl(m: re.Match) -> str:
+            nums = [n.strip() for n in m.group(1).split(",")]
+            if not all(n in listed for n in nums):
+                return m.group(0)
+            return "[" + ", ".join(f"[{n}](#{anchor_id(n)})" for n in nums) + "]"
+
+        return CITATION_RE.sub(repl, line)
+
     out_lines: list[str] = []
-    for line in text.split("\n"):
+    for line in lines:
+        entry = REFERENCE_ENTRY_RE.match(line)
+        if entry:
+            # Whole-line protection, and no inner tagging afterwards: a citation
+            # is one unit — author, title, venue, year — and every part of it is
+            # a thing a translator must leave alone.
+            ref = anchor_id(entry.group(1))
+            out_lines.append(
+                f'<span id="{ref}"></span>{DNT_OPEN}{line}{DNT_CLOSE} {ref}'
+            )
+            continue
+        line = link_citations(line)
         line = protect_urls(line)
         if FN_DEF_RE.match(line):
             line = protect_quoted(line)

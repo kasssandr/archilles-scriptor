@@ -166,3 +166,110 @@ def test_an_empty_page_reconstructs_to_nothing():
     result = reconstruct(SourcePage(index=1))
     assert result.lines == []
     assert result.measured is False
+
+
+def _styled(parts, x0, baseline):
+    """A printed line from (text, bold, italic) parts, laid out left to right."""
+    spans, x = [], x0
+    for text, bold, italic in parts:
+        width = 6 * len(text)
+        spans.append(Span(text, box=Box(x, baseline - 7.0, x + width, baseline + 2.0),
+                          size=9.0, bold=bold, italic=italic))
+        x += width
+    box = Box(x0, baseline - 7.0, x, baseline + 2.0)
+    return Line(spans=spans, box=box, baseline=baseline)
+
+
+def test_the_emphasised_head_of_a_line_is_measured():
+    """Sen et al. p.3 sets a run-in heading in italics and the prose that follows
+    in roman, on one printed line: '3.2.1 Lexical Search (Grep). The grep tool …'
+    """
+    page = SourcePage(
+        index=1,
+        width=612.0,
+        lines=[
+            _styled([("3.2.1 Lexical Search (Grep).", False, True),
+                     (" The grep retrieval tool loads", False, False)], 55.0, 90.0),
+            _styled([("2.3 Tool-Calling Architectures", True, False)], 55.0, 110.0),
+            _styled([("Orthogonal to the choice of harness", False, False)], 55.0, 130.0),
+        ],
+    )
+
+    result = reconstruct(page)
+
+    assert result.emphases == [28, 30, 0]
+    assert result.lines[0] == "3.2.1 Lexical Search (Grep). The grep retrieval tool loads"
+
+
+def test_emphasis_across_two_fragments_counts_the_joining_space():
+    """Sen et al. hands over the number and the title as separate fragments:
+    '2.3' and 'Tool-Calling Architectures'. Assembly puts a space between them,
+    and the emphasis run has to cover it, or the heading loses its last letter."""
+    page = SourcePage(
+        index=1,
+        width=612.0,
+        lines=[
+            _styled([("2.3", True, False)], 55.0, 90.0),
+            _styled([("Tool-Calling Architectures", True, False)], 75.0, 90.0),
+        ],
+    )
+
+    result = reconstruct(page)
+
+    assert result.lines == ["2.3 Tool-Calling Architectures"]
+    assert result.emphases == [len("2.3 Tool-Calling Architectures")]
+
+
+def test_a_line_set_across_the_page_is_read_ahead_of_it():
+    """arXiv stamps its preprints down the left margin: 'arXiv:2605.15184v1
+    [cs.CL] 14 May 2026' in a box 27pt wide and 353pt tall.
+
+    Its baseline puts it in the middle of the first paragraph, where it breaks a
+    sentence in half. It is not deleted — it says where the paper came from — but
+    it is read ahead of the page, not inside it. Ahead, because the foot of the
+    page carries the printed page number, and that number is the citation.
+    """
+    page = SourcePage(
+        index=1,
+        width=612.0,
+        lines=[
+            _frag("Modern LLM agents increasingly rely on RAG", 55.0, 300.0),
+            Line(
+                spans=[Span("arXiv:2605.15184v1 [cs.CL] 14 May 2026",
+                            box=Box(10.9, 219.3, 37.6, 572.6), size=9.0)],
+                box=Box(10.9, 219.3, 37.6, 572.6),
+                baseline=250.0,
+            ),
+            _frag("to access external knowledge at inference time", 55.0, 312.0),
+        ],
+    )
+
+    result = reconstruct(page)
+
+    assert result.lines == [
+        "arXiv:2605.15184v1 [cs.CL] 14 May 2026",
+        "Modern LLM agents increasingly rely on RAG",
+        "to access external knowledge at inference time",
+    ]
+
+
+def test_a_slightly_tall_scrap_is_not_a_margin_stamp():
+    """Zuckerman p.399 carries an OCR scrap at the edge, '•־־׳־ 399', whose box is
+    a little taller than wide. Treated as a stamp it survives into the text, where
+    the page-label detection had been quietly dropping it.
+
+    A stamp runs down the whole margin: it is *much* taller than it is wide.
+    """
+    box = Box(20.0, 700.0, 44.0, 730.0)          # 24pt wide, 30pt tall
+    page = SourcePage(
+        index=1,
+        width=332.0,
+        lines=[
+            _frag("prose line of the page", 30.0, 100.0),
+            Line(spans=[Span("•־־׳־ 399", box=box, size=9.0)], box=box, baseline=725.0),
+        ],
+    )
+
+    result = reconstruct(page)
+
+    assert result.lines[-1] == "•־־׳־ 399"

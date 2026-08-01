@@ -129,3 +129,68 @@ def test_briefing_mentions_convention_and_removal():
     assert "<dnt>" in BRIEFING and "</dnt>" in BRIEFING
     assert "untagged" in BRIEFING.lower()
     assert "remove" in BRIEFING.lower()
+
+
+# --- REFERENCE ENTRIES --------------------------------------------------------
+
+def test_a_reference_entry_is_protected_whole():
+    """Sen et al. [23]: without protection a translator renders "BEIR: A
+    Heterogenous Benchmark for Zero-shot Evaluation of Information Retrieval
+    Models" into German and the citation stops being findable."""
+    src = (
+        "[23] Nandan Thakur, Nils Reimers, and Iryna Gurevych. 2021. BEIR: A "
+        "Heterogenous Benchmark for Zero-shot Evaluation of Information Retrieval "
+        "Models. In Advances in Neural Information Processing Systems."
+    )
+
+    out = prepare_translation(src)
+
+    assert out == f'<span id="^ref-23"></span><dnt>{src}</dnt> ^ref-23'
+
+
+def test_protecting_a_reference_entry_is_idempotent():
+    src = "[7] Zhengbao Jiang. 2023. Active Retrieval Augmented Generation. https://x.org"
+    once = prepare_translation(src)
+    assert prepare_translation(once) == once
+    assert once.count("<dnt>") == once.count("</dnt>") == 1
+
+
+def test_a_footnote_marker_in_prose_is_not_a_reference_entry():
+    """Body text opens with a placed marker often enough; it is not a citation."""
+    src = "[3] ist der Beleg für die vorstehende Behauptung im laufenden Text."
+    assert prepare_translation(src) == src
+
+
+def test_reference_entries_are_anchored_for_both_renderers():
+    """An entry carries the same name twice: an HTML id every renderer follows,
+    and Obsidian's block id at the end of the line. One link target serves both,
+    because a circumflex is legal in an HTML id."""
+    src = "[5] Yunfan Gao and Yun Xiong. 2024. Retrieval-Augmented Generation."
+
+    out = prepare_translation(src)
+
+    assert out.startswith('<span id="^ref-5"></span><dnt>[5] Yunfan Gao')
+    assert out.endswith("</dnt> ^ref-5")
+
+
+def test_citations_in_the_prose_become_links():
+    src = (
+        "[5] Yunfan Gao. 2024. Retrieval-Augmented Generation.\n"
+        "[10] Patrick Lewis. 2020. Retrieval-Augmented Generation for NLP.\n"
+        "Agenten nutzen Wissen zur Inferenzzeit [5, 10], um zu schliessen."
+    )
+
+    out = prepare_translation(src).split("\n")[2]
+
+    assert out == (
+        "Agenten nutzen Wissen zur Inferenzzeit "
+        "[[5](#^ref-5), [10](#^ref-10)], um zu schliessen."
+    )
+
+
+def test_a_number_without_an_entry_is_left_alone():
+    """Only what the bibliography actually lists becomes a link — a year range or
+    a count in brackets stays what it is."""
+    src = "[5] Yunfan Gao. 2024. Retrieval.\nDie Stichprobe umfasst [116] Fragen."
+
+    assert prepare_translation(src).split("\n")[1] == "Die Stichprobe umfasst [116] Fragen."

@@ -501,20 +501,61 @@ SENT_END = re.compile(r"[.!?»“”\"’']$")
 _TRAILING_MARKERS = re.compile(r"(\s*\[\d{1,3}\])+$")
 
 
-# Numbered heading at the start of a paragraph: "3.4. Probleme um Welf VI."
-# Heading level = number of periods in the numbering + 1.
-HEADING_RE = re.compile(r"^(\d+(?:\.\d+){0,3})\.\s+[A-ZÄÖÜ]")
+# Numbered heading at the start of a paragraph: "3.4. Probleme um Welf VI." and,
+# as scholarly articles number them, "2.1 Retrieval Strategies" without the
+# period. Heading level = number of periods in the numbering + 1.
+#
+# Each group is at most two digits, which keeps a year out: a bibliography entry
+# continues "… and Stéphane Clinchant. 2021. SPLADE v2: Sparse Lexical …", and a
+# document with 2021 sections does not exist. Dropping the period costs the
+# single-number case: "44 The Surrender of Narbonne" is Zuckerman's folio and its
+# running head, not chapter 44, so a number without a period needs a subsection
+# to prove it is one.
+HEADING_RE = re.compile(
+    r"^(?:(\d{1,2}(?:\.\d{1,2}){0,3})\.|(\d{1,2}(?:\.\d{1,2}){1,3}))\s+[A-ZÄÖÜ]"
+)
 HEADING_MAX_LEN = 80
 
 
-def heading_level(line: str) -> int:
-    """0 if not a heading, otherwise level 1-4."""
+# What emphasis alone is allowed to turn into a heading: a subsection ("4.1 …",
+# with or without a period) or a single number *without* one ("3 Methodology", the
+# way articles set them). A single number with a period stays out — "16. Jahrhundert"
+# is an ordinal, and a scan whose italics are unreliable prints plenty of those.
+MARKED_HEADING_RE = re.compile(
+    r"^(?:(\d{1,2}(?:\.\d{1,2}){1,3})\.?|(\d{1,2}))\s+[^\W\d_]"
+)
+
+# The list bullets this corpus prints, at the head of a line. Dashes are left
+# out: a line opening with one is far more often a dialogue or a dash than an
+# item, and breaking there would cut prose apart.
+BULLET_RE = re.compile(r"^[•▪◦‣]\s*\S")
+
+# Imported by value so the hot line loop does not import per line.
+from scriptor.reflow.headings import MARK as HEADING_MARK  # noqa: E402
+from scriptor.reflow.tables import BREAK as TABLE_BREAK  # noqa: E402
+
+
+def heading_level(line: str, *, marked: bool = False) -> int:
+    """0 if not a heading, otherwise level 1-4.
+
+    ``marked`` says the typesetter set this whole line apart (``reflow/headings``).
+    That is what a single number without a period needs: by text alone it cannot
+    be told from a folio in front of a running head.
+    """
     if len(line) > HEADING_MAX_LEN:
         return 0
+    if marked:
+        m = MARKED_HEADING_RE.match(line)
+        if m:
+            return (m.group(1) or m.group(2)).count(".") + 1
+        # Marked and unnumbered: "Abstract", "References", "A Per-Category
+        # Accuracy" — the top level of their document. A line opening with a digit
+        # is not one of them: "16. Jahrhundert" is an ordinal in a work title.
+        return 0 if line[:1].isdigit() else 1
     m = HEADING_RE.match(line)
     if not m:
         return 0
-    return m.group(1).count(".") + 1
+    return (m.group(1) or m.group(2)).count(".") + 1
 
 
 def reconstruct_body(
@@ -621,17 +662,40 @@ def reconstruct_body(
         n = len(p.body_lines)
         for i, ln in enumerate(p.body_lines):
             stripped = ln.rstrip()
+            # The typographic mark travels with the line and never into the text.
+            marked = stripped.startswith(HEADING_MARK)
+            stripped = stripped.lstrip(HEADING_MARK)
             if not stripped.strip():
                 # Empty line in the middle of the body -> end of paragraph
                 end_paragraph()
                 continue
+
+            # A line the typesetter set apart continues nothing: it closes the
+            # paragraph still running. Columns end mid-sentence often enough that
+            # requiring an empty paragraph would swallow half the headings.
+            if marked and not pending_hyphen and cur_chunks:
+                if heading_level(stripped, marked=True) > 0:
+                    saved_marker = pending_page_marker
+                    pending_page_marker = None
+                    end_paragraph()
+                    pending_page_marker = saved_marker
+
+            # A bullet opens an item, and an item is a paragraph. Without this the
+            # first item of a list runs on from the sentence that introduces it —
+            # the bullet shares its printed line with its own text, so no line
+            # break marks the boundary the way it does for every item after it.
+            if BULLET_RE.match(stripped) and cur_chunks and not pending_hyphen:
+                saved_marker = pending_page_marker
+                pending_page_marker = None
+                end_paragraph()
+                pending_page_marker = saved_marker
 
             # Numbered heading at the start of a paragraph (only if no word is
             # still open and no paragraph is running) -> its own block.
             # A pending page marker is NOT pulled into the heading, but stays
             # noted for the following paragraph.
             if not cur_chunks and not pending_hyphen:
-                lvl = heading_level(stripped)
+                lvl = heading_level(stripped, marked=marked)
                 if lvl > 0:
                     saved_marker = pending_page_marker
                     pending_page_marker = None
@@ -1096,6 +1160,15 @@ def render_book(
         result += "\n\n" + "\n\n".join(state["defs"])
     if fmt == "md" and anchor_targets:
         result = inject_page_anchors(result, anchor_targets)
+    # Both internal marks are resolved here, where every render path meets. The
+    # heading mark is dropped (reconstruct_body has read it off the line it
+    # belongs to); a folded table's row breaks become the newlines they stand
+    # for, and the table needs a blank line around it to be one in Markdown.
+    result = result.replace(HEADING_MARK, "")
+    if TABLE_BREAK in result:
+        result = re.sub(
+            rf"[ \t]*{TABLE_BREAK}[ \t]*", "\n", result
+        )
     return result + "\n", audit
 
 
@@ -1141,7 +1214,20 @@ def main(
     # today's behaviour. Which of the two happened is reported, never assumed: a
     # line-length histogram built from fragments yields plausible, wrong paragraphs
     # and says nothing about it.
-    reconstructions = [reconstruct(sp) for sp in source_pages]
+    # Two columns share one baseline grid, so the assembly above has to know about
+    # the lane before it clusters, not after: joining across it interleaves the two
+    # columns word for word. The lane is measured over the whole document, because
+    # a single page's full-width table would hide it.
+    from scriptor.reflow.columns import find_gutter
+
+    gutter = find_gutter(source_pages)
+    if gutter is not None:
+        print(
+            f"Two-column layout: gutter at {gutter.x0:.1f}–{gutter.x1:.1f}pt; "
+            f"columns are read one after the other",
+            file=sys.stderr,
+        )
+    reconstructions = [reconstruct(sp, gutter=gutter) for sp in source_pages]
     measured = sum(1 for r in reconstructions if r.measured)
     print(
         f"{measured} of {len(reconstructions)} pages reassembled from geometry",
@@ -1183,6 +1269,73 @@ def main(
         else list(r.indents)
         for s, r in zip(splits, reconstructions)
     ]
+    page_sizes = [
+        (r.sizes[: s.split_at] + [None] * (len(s.body) - s.split_at))
+        if s
+        else list(r.sizes)
+        for s, r in zip(splits, reconstructions)
+    ]
+
+    # Run-in headings, cut off the paragraph they open. The emphasis is measured
+    # on the printed line, so this has to happen while lines, sizes and edges are
+    # still parallel — afterwards the heading is an ordinary numbered line and
+    # ``heading_level`` reads it like any other.
+    from scriptor.reflow.headings import split_emphasised_headings
+
+    page_emphases = [
+        (r.emphases[: s.split_at] + [0] * (len(s.body) - s.split_at))
+        if s
+        else list(r.emphases)
+        for s, r in zip(splits, reconstructions)
+    ]
+    cut_headings = 0
+    new_lines, new_sizes, new_indents = [], [], []
+    for lines, emph, sizes, indents in zip(
+        page_lines, page_emphases, page_sizes, page_indents
+    ):
+        result = split_emphasised_headings(
+            # The type size only opens a heading where the document is set in
+            # columns. It is calibrated on articles, where "Abstract" is bold at
+            # 10.91pt over a 9.06pt body; an OCR layer reports size and weight
+            # too loosely for it — Zuckerman's front matter turns "Jan" into a
+            # chapter. Numbered headings are unaffected and keep working there.
+            lines, emph, sizes, indents,
+            body_size=doc_body_size if gutter is not None else None,
+        )
+        cut_headings += len(result[0]) - len(lines)
+        new_lines.append(result[0])
+        new_sizes.append(result[1])
+        new_indents.append(result[2])
+    page_lines, page_sizes, page_indents = new_lines, new_sizes, new_indents
+    if cut_headings:
+        print(
+            f"Run-in headings separated from their paragraph: {cut_headings}",
+            file=sys.stderr,
+        )
+
+    # A bibliography is set with a hanging indent — the entry at the column edge,
+    # its continuations indented — which is the paragraph indent read backwards.
+    # Joining the entries here, while lines, sizes and edges are still parallel,
+    # keeps both the indent rule and the short-line rule off them.
+    from scriptor.reflow.references import merge_reference_entries
+
+    joined = merge_reference_entries(
+        list(zip(page_lines, page_sizes, page_indents)), body_size=doc_body_size
+    )
+    entries = sum(
+        1
+        for (before, _s, _i), (after, _s2, _i2) in zip(
+            zip(page_lines, page_sizes, page_indents), joined
+        )
+        for _ in range(len(before) - len(after))
+    )
+    if entries:
+        print(
+            f"Reference list: {plural(entries, 'line')} joined into their entries",
+            file=sys.stderr,
+        )
+    page_lines = [lines for lines, _s, _i in joined]
+    page_indents = [indents for _l, _s, indents in joined]
 
     # The catalogue's outline, believed entry by entry where the page confirms
     # the title: the confirmed chapter starts become headings, and the chapter
