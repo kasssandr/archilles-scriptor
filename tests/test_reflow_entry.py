@@ -139,3 +139,60 @@ def test_a_two_column_document_is_read_column_by_column(tmp_path, capsys):
         "Seite 1 rechte Spalte Zeile 0"
     )
     assert "Two-column layout: gutter at" in capsys.readouterr().err
+
+
+def _bold(text, x0, baseline, size=9.0):
+    box = Box(x0, baseline - 7.0, x0 + 6 * len(text), baseline + 2.0)
+    return Line(spans=[Span(text, box=box, size=size, bold=True)], box=box,
+                baseline=baseline)
+
+
+def test_a_heading_ends_the_paragraph_it_follows(tmp_path):
+    """A column ends mid-sentence often enough that the running paragraph is
+    still open when the next heading arrives. The typesetter set it apart, so it
+    closes what is open instead of being swallowed by it."""
+    pages_dir = tmp_path / "pages"
+    pages_dir.mkdir()
+    page = SourcePage(
+        index=1, width=300.0, height=400.0, source="pymupdf",
+        lines=[
+            _frag("Ein Absatz aus mehreren Zeilen, damit die Seite als", 30.0, 20.0),
+            _frag("laufender Text erkannt wird und nicht als Rohseite,", 30.0, 32.0),
+            _frag("denn nur dort werden Absaetze ueberhaupt gebildet und", 30.0, 44.0),
+            _frag("Der vorige Absatz laeuft ohne Satzzeichen weiter und", 30.0, 56.0),
+            _bold("3 Methodology", 30.0, 76.0),
+            _frag("Der neue Abschnitt beginnt hier mit eigenem Text und", 30.0, 96.0),
+            _frag("laeuft ueber mehrere Zeilen weiter bis zum Ende hier.", 30.0, 108.0),
+        ],
+    )
+    (pages_dir / "00000001.json").write_text(dumps(page), encoding="utf-8")
+
+    out = tmp_path / "paper.md"
+    main(str(pages_dir), str(out))
+
+    text = out.read_text(encoding="utf-8")
+    assert "\n# 3 Methodology\n" in text
+    assert "weiter und 3 Methodology" not in text
+
+
+def test_a_heading_broken_over_two_lines_stays_one_heading(tmp_path):
+    pages_dir = tmp_path / "pages"
+    pages_dir.mkdir()
+    page = SourcePage(
+        index=1, width=300.0, height=400.0, source="pymupdf",
+        lines=[
+            _frag("Ein Absatz aus mehreren Zeilen, damit die Seite als", 30.0, 20.0),
+            _frag("laufender Text erkannt wird und nicht als Rohseite.", 30.0, 32.0),
+            _bold("4.1 Experiment 1: Retrieval Mode, Harness, and", 30.0, 52.0),
+            _bold("Tool Calling Method", 30.0, 64.0),
+            _frag("Wir isolieren zunaechst den Einfluss des Modus und", 30.0, 84.0),
+            _frag("berichten die Ergebnisse in der folgenden Tabelle.", 30.0, 96.0),
+        ],
+    )
+    (pages_dir / "00000001.json").write_text(dumps(page), encoding="utf-8")
+
+    out = tmp_path / "paper.md"
+    main(str(pages_dir), str(out))
+
+    text = out.read_text(encoding="utf-8")
+    assert "## 4.1 Experiment 1: Retrieval Mode, Harness, and Tool Calling Method" in text

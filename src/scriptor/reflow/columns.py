@@ -51,6 +51,10 @@ SEARCH_BAND = (0.25, 0.75)
 # ending 1pt inside the gutter is a long word in justified type, not a title.
 LANE_TOLERANCE = 2.0
 
+# Points within which two fragments count as sitting on one printed baseline, for
+# the table check in ``reading_order``. Same order as ``textlines.BASELINE_TOLERANCE``.
+BASELINE_GROUP = 1.0
+
 
 @dataclass(frozen=True)
 class Gutter:
@@ -196,9 +200,25 @@ def reading_order(page: SourcePage, gutter: Gutter) -> list[list[Line]]:
     """
     ordered = sorted(page.lines, key=lambda line: (line.baseline, line.box.x0))
 
+    # A full-measure table is invisible cell by cell: "Model" sits left of the
+    # lane and "89.3" right of it, so the rule below would tear every row in two.
+    # Its grid gives it away, and its rows are read as bands.
+    from scriptor.reflow.tables import spanning_rows
+
+    groups: list[list[Line]] = []
+    for line in ordered:
+        if groups and abs(line.baseline - groups[-1][0].baseline) <= BASELINE_GROUP:
+            groups[-1].append(line)
+        else:
+            groups.append([line])
+    tabular = spanning_rows(
+        [[(ln.box.x0, ln.text) for ln in group] for group in groups], gutter
+    )
+    in_table = {id(ln) for i in tabular for ln in groups[i]}
+
     bands: list[tuple[bool, list[Line]]] = []
     for line in ordered:
-        columnar = column_of(line, gutter) is not None
+        columnar = id(line) not in in_table and column_of(line, gutter) is not None
         if bands and bands[-1][0] == columnar:
             bands[-1][1].append(line)
         else:

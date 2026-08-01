@@ -166,3 +166,55 @@ def test_an_empty_page_reconstructs_to_nothing():
     result = reconstruct(SourcePage(index=1))
     assert result.lines == []
     assert result.measured is False
+
+
+def _styled(parts, x0, baseline):
+    """A printed line from (text, bold, italic) parts, laid out left to right."""
+    spans, x = [], x0
+    for text, bold, italic in parts:
+        width = 6 * len(text)
+        spans.append(Span(text, box=Box(x, baseline - 7.0, x + width, baseline + 2.0),
+                          size=9.0, bold=bold, italic=italic))
+        x += width
+    box = Box(x0, baseline - 7.0, x, baseline + 2.0)
+    return Line(spans=spans, box=box, baseline=baseline)
+
+
+def test_the_emphasised_head_of_a_line_is_measured():
+    """Sen et al. p.3 sets a run-in heading in italics and the prose that follows
+    in roman, on one printed line: '3.2.1 Lexical Search (Grep). The grep tool …'
+    """
+    page = SourcePage(
+        index=1,
+        width=612.0,
+        lines=[
+            _styled([("3.2.1 Lexical Search (Grep).", False, True),
+                     (" The grep retrieval tool loads", False, False)], 55.0, 90.0),
+            _styled([("2.3 Tool-Calling Architectures", True, False)], 55.0, 110.0),
+            _styled([("Orthogonal to the choice of harness", False, False)], 55.0, 130.0),
+        ],
+    )
+
+    result = reconstruct(page)
+
+    assert result.emphases == [28, 30, 0]
+    assert result.lines[0] == "3.2.1 Lexical Search (Grep). The grep retrieval tool loads"
+
+
+def test_emphasis_across_two_fragments_counts_the_joining_space():
+    """Sen et al. hands over the number and the title as separate fragments:
+    '2.3' and 'Tool-Calling Architectures'. Assembly puts a space between them,
+    and the emphasis run has to cover it, or the heading loses its last letter."""
+    page = SourcePage(
+        index=1,
+        width=612.0,
+        lines=[
+            _styled([("2.3", True, False)], 55.0, 90.0),
+            _styled([("Tool-Calling Architectures", True, False)], 75.0, 90.0),
+        ],
+    )
+
+    result = reconstruct(page)
+
+    assert result.lines == ["2.3 Tool-Calling Architectures"]
+    assert result.emphases == [len("2.3 Tool-Calling Architectures")]

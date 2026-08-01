@@ -48,12 +48,18 @@ class Reconstruction:
     wide_gap_lines: int     # printed lines holding a suspiciously wide gap
     sizes: list[float | None] = None    # dominant size per printed line, parallel to ``lines``
     indents: list[float | None] = None  # left edge (x0) per printed line, parallel to ``lines``
+    # Characters at the head of the line the typesetter set apart (bold or
+    # italic). A run-in heading is exactly that: "3.2.1 Lexical Search (Grep)."
+    # in italics, the prose of the same printed line in roman.
+    emphases: list[int] = None
 
     def __post_init__(self) -> None:
         if self.sizes is None:
             self.sizes = [None] * len(self.lines)
         if self.indents is None:
             self.indents = [None] * len(self.lines)
+        if self.emphases is None:
+            self.emphases = [0] * len(self.lines)
 
 
 def _passthrough(page: SourcePage) -> Reconstruction:
@@ -82,6 +88,27 @@ def _cluster_size(cluster: list[Line]) -> float | None:
     if not weights:
         return None
     return max(weights.items(), key=lambda kv: (kv[1], kv[0]))[0]
+
+
+def _emphasis_run(cluster: list[Line]) -> int:
+    """Characters at the head of the printed line set in bold or italic.
+
+    Counted over the cluster in reading order and stopped at the first roman
+    span, because what matters is the *head* of the line: an italic work title
+    in the middle of a sentence says nothing about the line's role.
+    """
+    run = 0
+    for i, line in enumerate(cluster):
+        if i:
+            # The space assembly puts between two fragments belongs to the run,
+            # or a heading handed over as "2.3" + "Tool-Calling Architectures"
+            # would be cut one character short of its own last letter.
+            run += 1
+        for span in line.spans:
+            if not (span.bold or span.italic):
+                return run
+            run += len(span.text)
+    return run
 
 
 def _has_wide_gap(cluster: list[Line], threshold: float) -> bool:
@@ -136,12 +163,26 @@ def reconstruct(
         else 0
     )
 
+    # Cells sit on a grid the page holds over several rows; that grid only exists
+    # while the fragments still carry their boxes, so tables are folded here.
+    from scriptor.reflow.tables import fold_tables
+
+    rows = [[(line.box.x0, line.text) for line in cluster] for cluster in clusters]
+    lines, sizes, indents, emphases = fold_tables(
+        rows,
+        [" ".join(line.text for line in cluster) for cluster in clusters],
+        [_cluster_size(cluster) for cluster in clusters],
+        [cluster[0].box.x0 for cluster in clusters],
+        [_emphasis_run(cluster) for cluster in clusters],
+    )
+
     return Reconstruction(
-        lines=[" ".join(line.text for line in cluster) for cluster in clusters],
+        lines=lines,
         measured=True,
         wide_gap_lines=wide_gap_lines,
-        sizes=[_cluster_size(cluster) for cluster in clusters],
-        indents=[cluster[0].box.x0 for cluster in clusters],
+        sizes=sizes,
+        indents=indents,
+        emphases=emphases,
     )
 
 
