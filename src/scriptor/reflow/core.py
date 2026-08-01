@@ -1141,7 +1141,20 @@ def main(
     # today's behaviour. Which of the two happened is reported, never assumed: a
     # line-length histogram built from fragments yields plausible, wrong paragraphs
     # and says nothing about it.
-    reconstructions = [reconstruct(sp) for sp in source_pages]
+    # Two columns share one baseline grid, so the assembly above has to know about
+    # the lane before it clusters, not after: joining across it interleaves the two
+    # columns word for word. The lane is measured over the whole document, because
+    # a single page's full-width table would hide it.
+    from scriptor.reflow.columns import find_gutter
+
+    gutter = find_gutter(source_pages)
+    if gutter is not None:
+        print(
+            f"Two-column layout: gutter at {gutter.x0:.1f}–{gutter.x1:.1f}pt; "
+            f"columns are read one after the other",
+            file=sys.stderr,
+        )
+    reconstructions = [reconstruct(sp, gutter=gutter) for sp in source_pages]
     measured = sum(1 for r in reconstructions if r.measured)
     print(
         f"{measured} of {len(reconstructions)} pages reassembled from geometry",

@@ -9,8 +9,8 @@ def _frag(text, x0, baseline):
     return Line(spans=[Span(text, box=box, size=9.0)], box=box, baseline=baseline)
 
 
-def _write(pages_dir, index, fragments):
-    page = SourcePage(index=index, width=300.0, height=400.0, source="pymupdf",
+def _write(pages_dir, index, fragments, *, width=300.0):
+    page = SourcePage(index=index, width=width, height=400.0, source="pymupdf",
                       lines=[_frag(*f) for f in fragments])
     (pages_dir / f"{index:08d}.json").write_text(dumps(page), encoding="utf-8")
 
@@ -67,3 +67,34 @@ def test_a_column_wide_gap_is_reported(tmp_path, capsys):
 
     err = capsys.readouterr().err
     assert "column-wide horizontal gap" in err
+
+
+def _two_column_fragments(page, rows=12):
+    """A page set the way Sen et al. is: two columns on one shared baseline grid.
+
+    The page number sits in the text so the running-element stripper does not take
+    the top line for a running head.
+    """
+    fragments = []
+    for i in range(rows):
+        y = 60.0 + i * 12.0
+        fragments.append((f"Seite {page} linke Spalte Zeile {i} Text", 55.0, y))
+        fragments.append((f"Seite {page} rechte Spalte Zeile {i} Text", 320.0, y))
+    return fragments
+
+
+def test_a_two_column_document_is_read_column_by_column(tmp_path, capsys):
+    pages_dir = tmp_path / "pages"
+    pages_dir.mkdir()
+    for index in (1, 2, 3):
+        _write(pages_dir, index, _two_column_fragments(index), width=612.0)
+
+    out = tmp_path / "paper.txt"
+    main(str(pages_dir), str(out))
+
+    text = out.read_text(encoding="utf-8")
+    assert "linke Spalte Zeile 0 Text Seite 1 rechte Spalte" not in text
+    assert text.index("Seite 1 linke Spalte Zeile 11") < text.index(
+        "Seite 1 rechte Spalte Zeile 0"
+    )
+    assert "Two-column layout: gutter at" in capsys.readouterr().err

@@ -27,6 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from scriptor.page import Line, SourcePage
+from scriptor.reflow.columns import Gutter, reading_order
 
 # Points. Fragments of one printed line scatter by ~0.4pt on the baseline. Two
 # points is already too generous: on the baseline it merges two real lines of Seeck
@@ -89,18 +90,9 @@ def _has_wide_gap(cluster: list[Line], threshold: float) -> bool:
     )
 
 
-def reconstruct(
-    page: SourcePage, *, tolerance: float = BASELINE_TOLERANCE
-) -> Reconstruction:
-    """Group the fragments of ``page`` into printed lines."""
-    if not page.lines:
-        return _passthrough(page)
-    if any(line.baseline is None or line.box is None for line in page.lines):
-        # A half-measured page stays untouched: sorting the lines that do carry a
-        # baseline would move the ones that do not to an arbitrary place.
-        return _passthrough(page)
-
-    ordered = sorted(page.lines, key=lambda line: (line.baseline, line.box.x0))
+def _cluster(lines: list[Line], tolerance: float) -> list[list[Line]]:
+    """The printed lines of one block, in reading order."""
+    ordered = sorted(lines, key=lambda line: (line.baseline, line.box.x0))
 
     clusters: list[list[Line]] = []
     for line in ordered:
@@ -111,6 +103,30 @@ def reconstruct(
 
     for cluster in clusters:
         cluster.sort(key=lambda line: line.box.x0)
+    return clusters
+
+
+def reconstruct(
+    page: SourcePage,
+    *,
+    tolerance: float = BASELINE_TOLERANCE,
+    gutter: Gutter | None = None,
+) -> Reconstruction:
+    """Group the fragments of ``page`` into printed lines.
+
+    With a ``gutter`` the page is cut into column blocks first and each block is
+    clustered on its own, because two columns share one baseline grid: clustering
+    across the lane would join the left column's line to the right column's.
+    """
+    if not page.lines:
+        return _passthrough(page)
+    if any(line.baseline is None or line.box is None for line in page.lines):
+        # A half-measured page stays untouched: sorting the lines that do carry a
+        # baseline would move the ones that do not to an arbitrary place.
+        return _passthrough(page)
+
+    blocks = reading_order(page, gutter) if gutter is not None else [page.lines]
+    clusters = [cluster for block in blocks for cluster in _cluster(block, tolerance)]
 
     threshold = (page.width or 0.0) * WIDE_GAP_FRACTION
     inner = clusters[1:-1] if len(clusters) > 2 else []
