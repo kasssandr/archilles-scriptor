@@ -90,3 +90,71 @@ def test_fetch_is_idempotent_when_file_already_matches(tmp_path, monkeypatch):
 
     monkeypatch.setattr(authoring, "_download", _explode)
     assert authoring.fetch_pdf(meta, dest) == dest
+
+
+# page material and skeleton ----------------------------------------------
+
+import tomllib
+
+from scriptor.eval.authoring import (
+    read_page_refs,
+    render_skeleton,
+    write_page_material,
+)
+from scriptor.eval.corpus import loads_selection, loads_source
+
+_SRC = """
+{"band_id": "demo", "url": "https://example.invalid/d.pdf",
+ "sha256": "%s", "license": "CC-BY-4.0", "license_class": "free",
+ "bibliography": "Demo, D. 2020. Demo."}
+""" % ("a" * 64)
+
+_SEL = """
+{"band_id": "demo", "seed": 42, "body_range": [1, 3],
+ "label_source": "physical", "sampled": ["1", "3"],
+ "targeted": [{"page": "2", "reason": "note runs over"}]}
+"""
+
+
+def _tiny_pdf(path):
+    """Three pages of real text, so the textlayer has something to give."""
+    import pymupdf
+    doc = pymupdf.open()
+    for n in range(3):
+        page = doc.new_page()
+        page.insert_text((72, 100), f"Page {n + 1} body text for the corpus.")
+    doc.save(path)
+    doc.close()
+    return path
+
+
+def test_read_page_refs_falls_back_to_physical_numbers(tmp_path):
+    pdf = _tiny_pdf(tmp_path / "d.pdf")
+    refs, label_source = read_page_refs(pdf)
+    assert [r.index for r in refs] == [1, 2, 3]
+    assert [r.label for r in refs] == ["1", "2", "3"]
+    assert label_source == "physical"
+
+
+def test_write_page_material_emits_png_and_text(tmp_path):
+    pdf = _tiny_pdf(tmp_path / "d.pdf")
+    out = tmp_path / "pages"
+    written = write_page_material(pdf, ["1", "3"], out, dpi=72)
+    assert (out / "1.png").exists() and (out / "1.txt").exists()
+    assert (out / "3.png").exists() and (out / "3.txt").exists()
+    assert not (out / "2.png").exists()
+    assert "body text" in (out / "1.txt").read_text(encoding="utf-8")
+    assert len(written) == 4
+
+
+def test_skeleton_is_valid_toml_listing_exactly_the_selected_pages():
+    skel = render_skeleton(loads_source(_SRC), loads_selection(_SEL))
+    parsed = tomllib.loads(skel)
+    assert parsed["volume"] == "demo"
+    assert parsed["pages"] == ["1", "3", "2"]
+    assert "footnotes" not in parsed        # the sample block is commented out
+
+
+def test_skeleton_carries_the_targeted_reason_as_a_hint():
+    skel = render_skeleton(loads_source(_SRC), loads_selection(_SEL))
+    assert "note runs over" in skel

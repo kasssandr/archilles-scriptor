@@ -17,7 +17,9 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from scriptor.eval.corpus import SourceMeta
+import pymupdf
+
+from scriptor.eval.corpus import Selection, SourceMeta
 
 _CHUNK = 1 << 20
 _UA = "scriptor-eval/1.0 (benchmark corpus fetch)"
@@ -103,3 +105,95 @@ def fetch_pdf(meta: SourceMeta, dest: Path) -> Path:
         dest.unlink(missing_ok=True)
         raise
     return dest
+
+
+# page material and skeleton ----------------------------------------------
+
+
+def read_page_refs(pdf: Path) -> tuple[list[PageRef], str]:
+    """Every page with the label its catalogue prints, plus where labels came from.
+
+    A document without PageLabels gets physical numbers as labels, and says so
+    — silently substituting them would make an authored page reference
+    ambiguous later.
+    """
+    refs: list[PageRef] = []
+    catalogue_labels = 0
+    with pymupdf.open(pdf) as doc:
+        for i, page in enumerate(doc, start=1):
+            label = (page.get_label() or "").strip()
+            if label:
+                catalogue_labels += 1
+            refs.append(PageRef(index=i, label=label or str(i)))
+    return refs, ("catalogue" if catalogue_labels else "physical")
+
+
+def write_page_material(
+    pdf: Path, labels: list[str], out_dir: Path, dpi: int = 150
+) -> list[Path]:
+    """Write <label>.png and <label>.txt for each selected page.
+
+    The image is what the operator reads; the text is only there to copy
+    definition strings from, so that authoring is transcription rather than
+    typing. Neither carries any structural interpretation.
+    """
+    refs, _ = read_page_refs(pdf)
+    by_label = {r.label: r.index for r in refs}
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    with pymupdf.open(pdf) as doc:
+        for label in labels:
+            if label not in by_label:
+                raise ValueError(f"page label {label!r} is not in this document")
+            page = doc[by_label[label] - 1]
+            png = out_dir / f"{label}.png"
+            page.get_pixmap(dpi=dpi).save(png)
+            txt = out_dir / f"{label}.txt"
+            txt.write_text(page.get_text(), encoding="utf-8")
+            written.extend([png, txt])
+    return written
+
+
+_SKELETON_HEAD = '''\
+# Ground truth for {band_id} -- {bibliography}
+# Licence: {license} ({license_class})
+#
+# Author this against pages/<label>.png, NOT against any converter output.
+# pages/<label>.txt holds the raw textlayer; copy definition text from there.
+#
+# Per footnote, printed on the page:
+#   page               the printed label, as a string
+#   num                the printed, page-local number
+#   definition_starts  first ~15-40 characters of the note text
+#   status             intact | marker_lost | damaged
+#   anchor_after       text right before the marker in the body (optional,
+#                      omit when the marker is destroyed and you cannot tell)
+
+volume = "{band_id}"
+pages = [{pages}]
+
+# Copy this block per footnote and remove the leading '# ':
+# [[footnotes]]
+# page = "{first_page}"
+# num = 1
+# definition_starts = ""
+# status = "intact"
+# anchor_after = ""
+'''
+
+
+def render_skeleton(meta: SourceMeta, selection: Selection) -> str:
+    """A truth.toml the operator fills in; it asserts nothing by itself."""
+    pages = selection.all_pages
+    body = _SKELETON_HEAD.format(
+        band_id=meta.band_id, bibliography=meta.bibliography,
+        license=meta.license, license_class=meta.license_class,
+        pages=", ".join(f'"{p}"' for p in pages),
+        first_page=pages[0] if pages else "1",
+    )
+    if selection.targeted:
+        notes = ["", "# Pages chosen on purpose, and what to look for:"]
+        notes += [f"#   {t.page}: {t.reason}" for t in selection.targeted]
+        body += "\n".join(notes) + "\n"
+    return body
