@@ -221,3 +221,49 @@ status = "intact"
     res = check_truth(loads_truth(bad), loads_selection(_SEL_CHECK), bad)
     assert not res.ok
     assert any("twice" in p or "duplicate" in p for p in res.problems)
+
+
+# cli ----------------------------------------------------------------------
+
+from scriptor.cli import main
+
+
+def test_cli_author_creates_selection_skeleton_and_material(tmp_path, capsys):
+    band = tmp_path / "demo"
+    band.mkdir()
+    (band / "source.json").write_text(_SRC, encoding="utf-8")
+    _tiny_pdf(band / "source.pdf")
+
+    rc = main(["eval", "author", "--band", str(band), "--sample", "2",
+               "--seed", "42", "--dpi", "72"])
+    assert rc == 0
+    assert (band / "selection.json").exists()
+    assert (band / "truth.toml").exists()
+    assert len(list((band / "pages").glob("*.png"))) == 2
+
+
+def test_cli_author_never_overwrites_existing_truth(tmp_path):
+    band = tmp_path / "demo"
+    band.mkdir()
+    (band / "source.json").write_text(_SRC, encoding="utf-8")
+    _tiny_pdf(band / "source.pdf")
+    main(["eval", "author", "--band", str(band), "--sample", "2",
+          "--seed", "42", "--dpi", "72"])
+    (band / "truth.toml").write_text('volume="demo"\npages=["1"]\n', encoding="utf-8")
+
+    main(["eval", "author", "--band", str(band), "--dpi", "72"])
+    assert (band / "truth.toml").read_text(encoding="utf-8") == \
+        'volume="demo"\npages=["1"]\n'
+
+
+def test_cli_check_reports_problems_and_returns_nonzero(tmp_path, capsys):
+    band = tmp_path / "demo"
+    band.mkdir()
+    (band / "source.json").write_text(_SRC, encoding="utf-8")
+    (band / "selection.json").write_text(_SEL_CHECK, encoding="utf-8")
+    (band / "truth.toml").write_text(
+        _GOOD.replace('empty_pages = ["2"]\n', ""), encoding="utf-8")
+
+    rc = main(["eval", "check", "--band", str(band)])
+    assert rc == 1
+    assert "empty_pages" in capsys.readouterr().err
