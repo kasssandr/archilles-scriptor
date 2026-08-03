@@ -2,7 +2,10 @@
 # Licence: CC-BY-4.0 (free)
 #
 # Author this against pages/pNNN.png, NOT against any converter output.
-# pages/pNNN.txt holds the raw textlayer; copy definition text from there.
+# pages/pNNN.txt holds the raw textlayer; copy definition text from there to
+# save typing -- but read it back against the image. Extraction drops spaces,
+# notably between words in Greek and other non-Latin passages, and a truth
+# that copies such a defect measures the defect instead of the page.
 #
 # Two kinds of page number are in play, and they are not interchangeable:
 #   pNNN            the physical page in the PDF -- the file name
@@ -25,7 +28,7 @@
 # A selected page carrying no footnote at all goes into `empty_pages`.
 
 volume = "bauer-aneignung"
-pages = []
+pages = ["88"]
 empty_pages = []
 
 [physical_pages]
@@ -37,11 +40,16 @@ empty_pages = []
 # "" = 90   # p090.png, catalogue says "89"
 # "" = 133   # p133.png, catalogue says "132"
 # "" = 144   # p144.png, catalogue says "143"
-# "" = 88   # p088.png, catalogue says "87" -- marked in the PDF by the operator: Überlauf 88/89
-# "" = 106   # p106.png, catalogue says "105" -- marked in the PDF by the operator: Überlauf 106/107
-# "" = 111   # p111.png, catalogue says "110" -- marked in the PDF by the operator: Überlauf 111/112
-# "" = 126   # p126.png, catalogue says "125" -- marked in the PDF by the operator: Überlauf 126/127
-# "" = 137   # p137.png, catalogue says "136" -- marked in the PDF by the operator: Überlauf 137/138
+"88" = 88   # p088.png, catalogue says "87" -- operator marked a note running over onto p. 89
+# "" = 89   # p089.png, catalogue says "88" -- receiving page: carries the continuation of the note that begins on p. 88, plus its own notes
+# "" = 106   # p106.png, catalogue says "105" -- operator marked a note running over onto p. 107
+# "" = 107   # p107.png, catalogue says "106" -- receiving page: carries the continuation of the note that begins on p. 106, plus its own notes
+# "" = 111   # p111.png, catalogue says "110" -- operator marked a note running over onto p. 112
+# "" = 112   # p112.png, catalogue says "111" -- receiving page: carries the continuation of the note that begins on p. 111, plus its own notes
+# "" = 126   # p126.png, catalogue says "125" -- operator marked a note running over onto p. 127
+# "" = 127   # p127.png, catalogue says "126" -- receiving page: carries the continuation of the note that begins on p. 126, plus its own notes
+# "" = 137   # p137.png, catalogue says "136" -- operator marked a note running over onto p. 138
+# "" = 138   # p138.png, catalogue says "137" -- receiving page: carries the continuation of the note that begins on p. 137, plus its own notes
 
 # Copy this block per footnote and remove the leading '# ':
 # [[footnotes]]
@@ -50,3 +58,57 @@ empty_pages = []
 # definition_starts = ""
 # status = "intact"
 # anchor_after = ""
+
+# ---------------------------------------------------------------- p088 ----
+# Worked example. Page 88 prints six notes, numbered 275-280 running through
+# the book rather than restarting per page. All six markers are visible in
+# the body, so all six are "intact".
+#
+# Note 280 breaks off mid-sentence and continues on p. 89, which is why that
+# page was added to the selection. The continuation itself carries no number
+# of its own and is recorded on p. 89 as part of that page's authoring.
+
+[[footnotes]]
+page = "88"
+num = 275
+definition_starts = "So hat Raffael meist nur die Hände"
+status = "intact"
+anchor_after = "für ihn typisch waren."
+
+[[footnotes]]
+page = "88"
+num = 276
+definition_starts = "Zilsel, Die Entstehung des Geniebegriffes"
+status = "intact"
+anchor_after = "in seinem Stil zu malen."
+
+[[footnotes]]
+page = "88"
+num = 277
+definition_starts = "Cennini, Das Buch von der Kunst"
+status = "intact"
+anchor_after = "kannst!“."
+
+[[footnotes]]
+page = "88"
+num = 278
+# The raw text reads "Disgeno" where the page prints "Disegno" -- the snippet
+# stops short of it rather than carrying an extraction slip into the truth.
+definition_starts = "1563 wurde die Accademia"
+status = "intact"
+# the marker sits before the comma, not after it
+anchor_after = "16. Jahrhunderts entstanden"
+
+[[footnotes]]
+page = "88"
+num = 279
+definition_starts = "Darauf basierte unter anderem das Ausbildungsmodell"
+status = "intact"
+anchor_after = "so von ihnen zu lernen."
+
+[[footnotes]]
+page = "88"
+num = 280
+definition_starts = "Mit der Wiederbelebung der Antike"
+status = "intact"
+anchor_after = "„Wiedergeburt“)."

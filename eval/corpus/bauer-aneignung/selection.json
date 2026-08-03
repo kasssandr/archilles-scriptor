@@ -18,23 +18,43 @@
   "targeted": [
     {
       "page": 88,
-      "reason": "marked in the PDF by the operator: Überlauf 88/89"
+      "reason": "operator marked a note running over onto p. 89"
+    },
+    {
+      "page": 89,
+      "reason": "receiving page: carries the continuation of the note that begins on p. 88, plus its own notes"
     },
     {
       "page": 106,
-      "reason": "marked in the PDF by the operator: Überlauf 106/107"
+      "reason": "operator marked a note running over onto p. 107"
+    },
+    {
+      "page": 107,
+      "reason": "receiving page: carries the continuation of the note that begins on p. 106, plus its own notes"
     },
     {
       "page": 111,
-      "reason": "marked in the PDF by the operator: Überlauf 111/112"
+      "reason": "operator marked a note running over onto p. 112"
+    },
+    {
+      "page": 112,
+      "reason": "receiving page: carries the continuation of the note that begins on p. 111, plus its own notes"
     },
     {
       "page": 126,
-      "reason": "marked in the PDF by the operator: Überlauf 126/127"
+      "reason": "operator marked a note running over onto p. 127"
+    },
+    {
+      "page": 127,
+      "reason": "receiving page: carries the continuation of the note that begins on p. 126, plus its own notes"
     },
     {
       "page": 137,
-      "reason": "marked in the PDF by the operator: Überlauf 137/138"
+      "reason": "operator marked a note running over onto p. 138"
+    },
+    {
+      "page": 138,
+      "reason": "receiving page: carries the continuation of the note that begins on p. 137, plus its own notes"
     }
   ]
 }

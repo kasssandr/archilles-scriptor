@@ -49,8 +49,17 @@ Record the evidence in `source.json`.
 Bauer, Eva-Maria: *Die Aneignung von Bildern*. Nomos.
 doi:10.5771/9783748909576 · CC-BY-4.0 (stated on PDF p. 4) · 348 pages.
 
-13 pages selected: 8 drawn at seed 42 from the body range 19–324, plus 5
-targeted pages the operator had marked in the PDF as page-crossing notes.
+18 pages selected: 8 drawn at seed 42 from the body range 19–324, plus 5
+pages the operator had marked in the PDF as carrying page-crossing notes —
+**and the 5 receiving pages that follow them**.
+
+The receiving pages were an afterthought that turned out to be the point. A
+note that breaks off on p. 88 and resumes on p. 89 cannot be measured from
+p. 88 alone: whether a converter appends the continuation or files it as a
+separate note is only visible on the page that receives it. Row 3 without
+receiving pages records the phenomenon without being able to test it.
+
+Page 88 is authored as a worked example; the remaining 17 pages are open.
 
 Two things this volume established:
 
