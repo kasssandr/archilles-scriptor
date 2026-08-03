@@ -229,3 +229,90 @@ def test_the_bare_regex_still_serves_pages_without_geometry():
     # The TXT path has no sizes to consult; there the convention is all we have.
     pg = parse_page("\n".join(_LIST_PAGE_LINES))
     assert set(pg.footnotes) == {1, 2}
+
+
+# ----------------------------------------------------------------------
+# The "NN Text" convention, and what sits below the block
+# ----------------------------------------------------------------------
+# Bauer (Nomos) prints its definitions as a superscript number followed by a
+# space -- no bracket, no full stop -- and puts a running head, the folio and
+# a publisher watermark *below* the footnote block. Neither the convention nor
+# the trailing furniture was handled, so on that volume the geometry cut no
+# block at all on any of its 348 pages.
+
+_BAUER_BODY = [
+    "ter traf die Entscheidungen bezueglich der Komposition und der Motive,",
+    "die Schueler fuehrten die einzelnen Arbeiten aus. Der Meister vervoll-",
+    "mente des Gedankenguts der Antike: Die Formensprache bei Baudenkmae-",
+]
+_BAUER_NOTES = [
+    "275 So hat Raffael meist nur die Haende und Gesichter selbst gemalt,",
+    "malt, Whistler, Raffaels Haende, in: Gnann (Hrsg.), Raffael, 2017.",
+    "276 Zilsel, Die Entstehung des Geniebegriffes, 1926, S. 211 ff.",
+]
+
+
+def _bauer_page():
+    """Body, notes, running head, folio and watermark -- in printed order."""
+    lines, sizes = [], []
+    for t in _BAUER_BODY:
+        lines.append(t); sizes.append(10.0)
+    for t in _BAUER_NOTES:
+        lines.append(t); sizes.append(8.7)
+    lines.append("Zweites Kapitel: Die veraenderte Nutzung von Aneignungen")
+    sizes.append(9.0)
+    lines.append("88"); sizes.append(10.25)
+    lines.append("https://doi.org/10.5771/9783748909576 - Open Access -")
+    sizes.append(3.0)
+    return lines, sizes
+
+
+def test_definition_may_be_a_bare_number_and_a_space():
+    from scriptor.reflow.footnotes import match_definition
+    assert match_definition("275 So hat Raffael meist nur die Haende")
+    # a continuation line that merely opens with digits is not a definition
+    assert not match_definition("27, S. 53.")
+    assert not match_definition("2017, S. 41, 42.")
+
+
+def test_block_is_found_although_furniture_sits_below_it():
+    lines, sizes = _bauer_page()
+    split = split_small_type_block(lines, sizes, body_size=10.0)
+    assert split is not None, "the watermark below the folio must not hide the block"
+    assert split.notes[0].startswith("275 So hat Raffael")
+    assert split.notes[-1].startswith("276 Zilsel")
+    # the body keeps its own lines, and the hyphenated last one is intact
+    assert split.body[:3] == _BAUER_BODY
+    assert split.body[2].endswith("Baudenkmae-")
+
+
+def test_the_first_note_does_not_glue_onto_a_hyphenated_body_line():
+    lines, sizes = _bauer_page()
+    split = split_small_type_block(lines, sizes, body_size=10.0)
+    pg = parse_page("\n".join(split.body), fn_block=split.notes, geometry_verified=True)
+    body = " ".join(pg.body_lines)
+    assert "Baudenkmae-275" not in body and "Baudenkmae275" not in body
+    assert "So hat Raffael" not in body, "the note belongs to the apparatus, not the body"
+    assert 275 in pg.footnotes and 276 in pg.footnotes
+
+
+def test_geometry_that_found_a_block_also_settles_the_body():
+    """A cut block is an answer too, not only an empty one.
+
+    35056 p. 15 prints two real notes at the foot *and* a numbered list in the
+    body. Once the geometry cut the notes, the bare "NN)" convention used to
+    run again over the body and swallow everything from the first list item
+    on: 48 body lines became 11. Geometry has the last word either way.
+    """
+    body = [
+        "Der Bericht nennt vier Handlungsfelder fuer die Zusammenarbeit.",
+        "1) ",
+        "Unterstuetzung des Transfermodells hin zu einem demokratischen Staat.",
+        "2) ",
+        "Intensivierung des Engagements der deutschen Wirtschaft.",
+    ]
+    notes = ["10 Brasilien, Russland, Indien, China, Suedafrika."]
+    pg = parse_page("\n".join(body), fn_block=notes, geometry_verified=True)
+    assert len(pg.body_lines) == len(body), "the numbered list belongs to the body"
+    assert set(pg.footnotes) == {10}
+    assert "Intensivierung des Engagements" in " ".join(pg.body_lines)
