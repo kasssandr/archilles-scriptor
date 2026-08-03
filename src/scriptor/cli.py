@@ -149,6 +149,19 @@ def build_parser() -> argparse.ArgumentParser:
     evs.add_argument("--golden-dir", type=Path, action="append", required=True)
     evs.add_argument("--outputs-dir", type=Path, required=True)
     evs.add_argument("--out", type=Path, required=True)
+
+    evf = evsub.add_parser("fetch", help="download a band's PDF and verify its checksum")
+    evf.add_argument("--band", type=Path, required=True, help="band directory holding source.json")
+
+    eva = evsub.add_parser("author", help="prepare page images, raw text and a truth skeleton")
+    eva.add_argument("--band", type=Path, required=True)
+    eva.add_argument("--sample", type=int, default=None,
+                     help="draw N body pages at random (writes selection.json once)")
+    eva.add_argument("--seed", type=int, default=42)
+    eva.add_argument("--dpi", type=int, default=150)
+
+    evc = evsub.add_parser("check", help="accept an authored band against its selection")
+    evc.add_argument("--band", type=Path, required=True)
     return p
 
 
@@ -285,12 +298,76 @@ def _dispatch(args, parser) -> int:
             print(render_markdown([rep]))
             if args.json:
                 args.json.write_text(render_json([rep]), encoding="utf-8")
+        elif args.eval_cmd in ("fetch", "author", "check"):
+            return _dispatch_authoring(args)
         else:
             reports = evaluate_suite(args.golden_dir, args.outputs_dir)
             args.out.write_text(render_markdown(reports), encoding="utf-8")
             print(f"Wrote {args.out} ({len(reports)} rows)", file=sys.stderr)
     else:  # pragma: no cover
         parser.error(f"unknown command {args.cmd!r}")
+    return 0
+
+
+def _dispatch_authoring(args) -> int:
+    """fetch / author / check: the operator's side of the benchmark corpus."""
+    import json
+
+    from scriptor.eval import authoring
+    from scriptor.eval.corpus import load_selection, load_source
+    from scriptor.eval.ground_truth import load_truth
+
+    band = args.band
+    meta = load_source(band / "source.json")
+    pdf = band / "source.pdf"
+
+    if args.eval_cmd == "fetch":
+        authoring.fetch_pdf(meta, pdf)
+        print(f"{meta.band_id}: {pdf} verified", file=sys.stderr)
+        return 0
+
+    if args.eval_cmd == "check":
+        raw = (band / "truth.toml").read_text(encoding="utf-8")
+        result = authoring.check_truth(
+            load_truth(band / "truth.toml"), load_selection(band / "selection.json"), raw
+        )
+        if result.ok:
+            print(f"{meta.band_id}: accepted", file=sys.stderr)
+            return 0
+        for problem in result.problems:
+            print(f"error: {problem}", file=sys.stderr)
+        return 1
+
+    # author
+    selection_path = band / "selection.json"
+    refs = authoring.read_page_refs(pdf)
+    if args.sample is not None and not selection_path.exists():
+        chosen = authoring.choose_pages(refs, (1, len(refs)), args.sample, args.seed)
+        selection_path.write_text(
+            json.dumps({
+                "band_id": meta.band_id, "seed": args.seed,
+                "body_range": [1, len(refs)],
+                "sampled": chosen, "targeted": [],
+            }, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        print(f"{meta.band_id}: wrote {selection_path} "
+              f"-- set body_range and targeted pages by hand, then re-run",
+              file=sys.stderr)
+
+    selection = load_selection(selection_path)
+    authoring.write_page_material(pdf, selection.all_pages, band / "pages", dpi=args.dpi)
+    truth_path = band / "truth.toml"
+    if truth_path.exists():
+        print(f"{meta.band_id}: {truth_path} kept as it is", file=sys.stderr)
+    else:
+        catalogue = {r.index: r.catalogue_label for r in refs}
+        truth_path.write_text(
+            authoring.render_skeleton(meta, selection, catalogue), encoding="utf-8"
+        )
+        print(f"{meta.band_id}: wrote {truth_path}", file=sys.stderr)
+    print(f"{meta.band_id}: {len(selection.all_pages)} pages ready in {band / 'pages'}",
+          file=sys.stderr)
     return 0
 
 
