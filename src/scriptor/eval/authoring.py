@@ -11,8 +11,16 @@ the metric modules must not.
 """
 from __future__ import annotations
 
+import hashlib
 import random
+import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
+
+from scriptor.eval.corpus import SourceMeta
+
+_CHUNK = 1 << 20
+_UA = "scriptor-eval/1.0 (benchmark corpus fetch)"
 
 
 @dataclass(frozen=True)
@@ -41,3 +49,57 @@ def choose_pages(
     picked = random.Random(seed).sample(pool, count)
     picked.sort(key=lambda r: r.index)
     return [r.label for r in picked]
+
+
+# fetching -----------------------------------------------------------------
+
+
+class ChecksumError(RuntimeError):
+    """The fetched file is not the one the corpus was built against."""
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(_CHUNK), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def verify_checksum(path: Path, expected: str) -> None:
+    actual = _sha256(Path(path))
+    if actual != expected.lower():
+        raise ChecksumError(
+            f"{path}: expected sha256 {expected.lower()}, got {actual}"
+        )
+
+
+def _download(url: str, dest: Path) -> None:
+    request = urllib.request.Request(url, headers={"User-Agent": _UA})
+    with urllib.request.urlopen(request) as response, open(dest, "wb") as out:
+        while chunk := response.read(_CHUNK):
+            out.write(chunk)
+
+
+def fetch_pdf(meta: SourceMeta, dest: Path) -> Path:
+    """Fetch the band's PDF unless a matching copy is already there.
+
+    A mismatching download is deleted rather than kept: a corpus entry whose
+    bytes differ from the recorded checksum would silently invalidate every
+    page reference authored against it.
+    """
+    dest = Path(dest)
+    if dest.exists():
+        try:
+            verify_checksum(dest, meta.sha256)
+            return dest
+        except ChecksumError:
+            dest.unlink()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    _download(meta.url, dest)
+    try:
+        verify_checksum(dest, meta.sha256)
+    except ChecksumError:
+        dest.unlink(missing_ok=True)
+        raise
+    return dest

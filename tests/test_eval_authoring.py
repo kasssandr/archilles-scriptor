@@ -49,3 +49,44 @@ def test_asking_for_more_than_available_is_refused():
 def test_labels_are_returned_not_indices():
     chosen = choose_pages(_refs(60), body_range=(5, 60), count=3, seed=1)
     assert all(isinstance(c, str) for c in chosen)
+
+
+# fetching -----------------------------------------------------------------
+
+import hashlib
+
+from scriptor.eval.authoring import ChecksumError, verify_checksum
+
+
+def test_verify_checksum_accepts_matching_file(tmp_path):
+    f = tmp_path / "a.pdf"
+    f.write_bytes(b"%PDF-1.7 fake")
+    digest = hashlib.sha256(b"%PDF-1.7 fake").hexdigest()
+    verify_checksum(f, digest)          # must not raise
+
+
+def test_verify_checksum_refuses_wrong_file(tmp_path):
+    f = tmp_path / "a.pdf"
+    f.write_bytes(b"%PDF-1.7 fake")
+    with pytest.raises(ChecksumError):
+        verify_checksum(f, "0" * 64)
+
+
+def test_fetch_is_idempotent_when_file_already_matches(tmp_path, monkeypatch):
+    from scriptor.eval import authoring
+    from scriptor.eval.corpus import SourceMeta
+
+    payload = b"%PDF-1.7 already here"
+    dest = tmp_path / "source.pdf"
+    dest.write_bytes(payload)
+    meta = SourceMeta(
+        band_id="b", url="https://example.invalid/x.pdf",
+        sha256=hashlib.sha256(payload).hexdigest(),
+        license="CC-BY-4.0", license_class="free", bibliography="B.",
+    )
+
+    def _explode(*a, **k):                     # downloading would be a bug here
+        raise AssertionError("must not download when the file already matches")
+
+    monkeypatch.setattr(authoring, "_download", _explode)
+    assert authoring.fetch_pdf(meta, dest) == dest
