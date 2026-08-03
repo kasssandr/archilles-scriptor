@@ -1,0 +1,52 @@
+# Ground truth for mehr-themistios -- Mehr, Simone. Ganz Rhetor, ganz Philosoph: Themistios als Lobredner auf Valens. De Gruyter.
+# Licence: CC-BY-NC-ND-4.0 (restricted)
+#
+# Author this against pages/pNNN.png, NOT against any converter output.
+# pages/pNNN.txt holds the raw textlayer; copy definition text from there to
+# save typing -- but read it back against the image. Extraction drops spaces,
+# notably between words in Greek and other non-Latin passages, and a truth
+# that copies such a defect measures the defect instead of the page.
+#
+# Two kinds of page number are in play, and they are not interchangeable:
+#   pNNN            the physical page in the PDF -- the file name
+#   printed label   the number or numeral printed on that page -- the truth
+# They frequently disagree. Read the label off the image; where a catalogue
+# entry exists it is offered below as a hint, and it may well be wrong.
+#
+# Fill in `pages` with the printed labels in reading order, and map each one
+# to its physical page under [physical_pages].
+#
+# Per footnote, printed on the page:
+#   page               the printed label, as a string
+#   num                the number as printed -- page-local in some volumes,
+#                      running through the whole book in others; copy what
+#                      stands there, do not renumber
+#   definition_starts  first ~15-40 characters of the note text
+#   status             intact | marker_lost | damaged
+#   anchor_after       text right before the marker in the body (optional,
+#                      omit when the marker is destroyed and you cannot tell)
+# A selected page carrying no footnote at all goes into `empty_pages`.
+
+volume = "mehr-themistios"
+pages = []
+empty_pages = []
+
+[physical_pages]
+# "" = 21   # p021.png, no catalogue entry
+# "" = 41   # p041.png, no catalogue entry
+# "" = 43   # p043.png, no catalogue entry
+# "" = 50   # p050.png, no catalogue entry
+# "" = 72   # p072.png, no catalogue entry
+# "" = 77   # p077.png, no catalogue entry
+# "" = 85   # p085.png, no catalogue entry
+# "" = 178   # p178.png, no catalogue entry
+# "" = 190   # p190.png, no catalogue entry -- densest polytonic Greek in the volume (297 characters)
+# "" = 198   # p198.png, no catalogue entry -- second densest polytonic passage (238 characters)
+
+# Copy this block per footnote and remove the leading '# ':
+# [[footnotes]]
+# page = ""
+# num = 1
+# definition_starts = ""
+# status = "intact"
+# anchor_after = ""

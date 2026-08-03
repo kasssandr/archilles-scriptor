@@ -174,7 +174,10 @@ _SKELETON_HEAD = '''\
 # Licence: {license} ({license_class})
 #
 # Author this against pages/pNNN.png, NOT against any converter output.
-# pages/pNNN.txt holds the raw textlayer; copy definition text from there.
+# pages/pNNN.txt holds the raw textlayer; copy definition text from there to
+# save typing -- but read it back against the image. Extraction drops spaces,
+# notably between words in Greek and other non-Latin passages, and a truth
+# that copies such a defect measures the defect instead of the page.
 #
 # Two kinds of page number are in play, and they are not interchangeable:
 #   pNNN            the physical page in the PDF -- the file name

@@ -1,0 +1,28 @@
+{
+  "band_id": "mehr-themistios",
+  "seed": 42,
+  "body_range": [
+    15,
+    265
+  ],
+  "sampled": [
+    21,
+    41,
+    43,
+    50,
+    72,
+    77,
+    85,
+    178
+  ],
+  "targeted": [
+    {
+      "page": 190,
+      "reason": "densest polytonic Greek in the volume (297 characters)"
+    },
+    {
+      "page": 198,
+      "reason": "second densest polytonic passage (238 characters)"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "band_id": "mehr-themistios",
+  "url": "https://doi.org/10.1515/9783111013244",
+  "sha256": "1867a179aed5cbd4e392639dd1d6abe78bcd71b5dcfc585aa7b8207d8d6ab1c7",
+  "license": "CC-BY-NC-ND-4.0",
+  "license_class": "restricted",
+  "bibliography": "Mehr, Simone. Ganz Rhetor, ganz Philosoph: Themistios als Lobredner auf Valens. De Gruyter.",
+  "matrix_rows": [
+    1,
+    11
+  ]
+}
