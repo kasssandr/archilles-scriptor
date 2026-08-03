@@ -1,0 +1,52 @@
+# Ground truth for bauer-aneignung -- Bauer, Eva-Maria. Die Aneignung von Bildern. Nomos. doi:10.5771/9783748909576
+# Licence: CC-BY-4.0 (free)
+#
+# Author this against pages/pNNN.png, NOT against any converter output.
+# pages/pNNN.txt holds the raw textlayer; copy definition text from there.
+#
+# Two kinds of page number are in play, and they are not interchangeable:
+#   pNNN            the physical page in the PDF -- the file name
+#   printed label   the number or numeral printed on that page -- the truth
+# They frequently disagree. Read the label off the image; where a catalogue
+# entry exists it is offered below as a hint, and it may well be wrong.
+#
+# Fill in `pages` with the printed labels in reading order, and map each one
+# to its physical page under [physical_pages].
+#
+# Per footnote, printed on the page:
+#   page               the printed label, as a string
+#   num                the number as printed -- page-local in some volumes,
+#                      running through the whole book in others; copy what
+#                      stands there, do not renumber
+#   definition_starts  first ~15-40 characters of the note text
+#   status             intact | marker_lost | damaged
+#   anchor_after       text right before the marker in the body (optional,
+#                      omit when the marker is destroyed and you cannot tell)
+# A selected page carrying no footnote at all goes into `empty_pages`.
+
+volume = "bauer-aneignung"
+pages = []
+empty_pages = []
+
+[physical_pages]
+# "" = 31   # p031.png, catalogue says "30"
+# "" = 35   # p035.png, catalogue says "34"
+# "" = 63   # p063.png, catalogue says "62"
+# "" = 71   # p071.png, catalogue says "70"
+# "" = 76   # p076.png, catalogue says "75"
+# "" = 90   # p090.png, catalogue says "89"
+# "" = 133   # p133.png, catalogue says "132"
+# "" = 144   # p144.png, catalogue says "143"
+# "" = 88   # p088.png, catalogue says "87" -- marked in the PDF by the operator: Überlauf 88/89
+# "" = 106   # p106.png, catalogue says "105" -- marked in the PDF by the operator: Überlauf 106/107
+# "" = 111   # p111.png, catalogue says "110" -- marked in the PDF by the operator: Überlauf 111/112
+# "" = 126   # p126.png, catalogue says "125" -- marked in the PDF by the operator: Überlauf 126/127
+# "" = 137   # p137.png, catalogue says "136" -- marked in the PDF by the operator: Überlauf 137/138
+
+# Copy this block per footnote and remove the leading '# ':
+# [[footnotes]]
+# page = ""
+# num = 1
+# definition_starts = ""
+# status = "intact"
+# anchor_after = ""

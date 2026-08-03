@@ -34,3 +34,9 @@ eval/golden-local/
 eval/outputs/
 eval/excite/
 eval/BENCHMARK-draft.md
+
+# benchmark corpus: the metadata and the truth are committed, the material is
+# not -- source.json carries URL and checksum so the PDF can be fetched again,
+# and page images are derived data that would only bloat the history.
+eval/corpus/*/source.pdf
+eval/corpus/*/pages/

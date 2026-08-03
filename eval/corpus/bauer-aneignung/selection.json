@@ -1,0 +1,40 @@
+{
+  "band_id": "bauer-aneignung",
+  "seed": 42,
+  "body_range": [
+    19,
+    324
+  ],
+  "sampled": [
+    31,
+    35,
+    63,
+    71,
+    76,
+    90,
+    133,
+    144
+  ],
+  "targeted": [
+    {
+      "page": 88,
+      "reason": "marked in the PDF by the operator: Überlauf 88/89"
+    },
+    {
+      "page": 106,
+      "reason": "marked in the PDF by the operator: Überlauf 106/107"
+    },
+    {
+      "page": 111,
+      "reason": "marked in the PDF by the operator: Überlauf 111/112"
+    },
+    {
+      "page": 126,
+      "reason": "marked in the PDF by the operator: Überlauf 126/127"
+    },
+    {
+      "page": 137,
+      "reason": "marked in the PDF by the operator: Überlauf 137/138"
+    }
+  ]
+}

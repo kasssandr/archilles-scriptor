@@ -187,7 +187,9 @@ _SKELETON_HEAD = '''\
 #
 # Per footnote, printed on the page:
 #   page               the printed label, as a string
-#   num                the printed, page-local number
+#   num                the number as printed -- page-local in some volumes,
+#                      running through the whole book in others; copy what
+#                      stands there, do not renumber
 #   definition_starts  first ~15-40 characters of the note text
 #   status             intact | marker_lost | damaged
 #   anchor_after       text right before the marker in the body (optional,
