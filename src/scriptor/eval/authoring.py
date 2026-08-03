@@ -31,30 +31,34 @@ _UA = "scriptor-eval/1.0 (benchmark corpus fetch)"
 
 @dataclass(frozen=True)
 class PageRef:
-    """One physical page and the label its catalogue prints for it."""
-    index: int      # 1-based file ordinal
-    label: str      # printed label, always a string ("xiv", "14")
+    """One physical page and whatever the file's catalogue claims about it.
+
+    The catalogue label is a claim, not the truth: it is frequently absent,
+    sometimes partial, and sometimes disagrees with the number printed on the
+    page. It is carried here so the skeleton can offer it as a hint, never so
+    that it can be used as an answer.
+    """
+    index: int                      # 1-based file ordinal
+    catalogue_label: str | None     # what PageLabels says, if anything
 
 
 def choose_pages(
     refs: list[PageRef], body_range: tuple[int, int], count: int, seed: int
-) -> list[str]:
-    """Draw `count` page labels from the body range, reproducibly.
+) -> list[int]:
+    """Draw `count` physical pages from the body range, reproducibly.
 
     The body range is the operator's documented decision about where running
     text begins and ends; guessing it would mean sorting registers and blank
     pages by heuristic, which is exactly the kind of judgement this module
-    must not make. Returns labels in printed order.
+    must not make. Returns physical page numbers in ascending order.
     """
     first, last = body_range
-    pool = [r for r in refs if first <= r.index <= last]
+    pool = [r.index for r in refs if first <= r.index <= last]
     if count > len(pool):
         raise ValueError(
             f"asked for {count} pages but the body range holds only {len(pool)}"
         )
-    picked = random.Random(seed).sample(pool, count)
-    picked.sort(key=lambda r: r.index)
-    return [r.label for r in picked]
+    return sorted(random.Random(seed).sample(pool, count))
 
 
 # fetching -----------------------------------------------------------------
@@ -114,46 +118,52 @@ def fetch_pdf(meta: SourceMeta, dest: Path) -> Path:
 # page material and skeleton ----------------------------------------------
 
 
-def read_page_refs(pdf: Path) -> tuple[list[PageRef], str]:
-    """Every page with the label its catalogue prints, plus where labels came from.
+def read_page_refs(pdf: Path) -> list[PageRef]:
+    """Every physical page, with the catalogue's claim about it where it has one.
 
-    A document without PageLabels gets physical numbers as labels, and says so
-    — silently substituting them would make an authored page reference
-    ambiguous later.
+    A page without a PageLabels entry reports None rather than a substitute.
+    Filling the gap with the physical number would invent a label that is
+    neither in the catalogue nor on the page — exactly the confusion this
+    module exists to avoid.
     """
     refs: list[PageRef] = []
-    catalogue_labels = 0
     with pymupdf.open(pdf) as doc:
         for i, page in enumerate(doc, start=1):
             label = (page.get_label() or "").strip()
-            if label:
-                catalogue_labels += 1
-            refs.append(PageRef(index=i, label=label or str(i)))
-    return refs, ("catalogue" if catalogue_labels else "physical")
+            refs.append(PageRef(index=i, catalogue_label=label or None))
+    return refs
+
+
+def page_stem(physical: int) -> str:
+    """File stem for one physical page: zero-padded so listings sort right."""
+    return f"p{physical:03d}"
 
 
 def write_page_material(
-    pdf: Path, labels: list[str], out_dir: Path, dpi: int = 150
+    pdf: Path, pages: list[int], out_dir: Path, dpi: int = 150
 ) -> list[Path]:
-    """Write <label>.png and <label>.txt for each selected page.
+    """Write pNNN.png and pNNN.txt for each selected physical page.
 
     The image is what the operator reads; the text is only there to copy
     definition strings from, so that authoring is transcription rather than
-    typing. Neither carries any structural interpretation.
+    typing. Neither carries any structural interpretation, and neither is
+    named after a label that has yet to be read off the page.
     """
-    refs, _ = read_page_refs(pdf)
-    by_label = {r.label: r.index for r in refs}
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     with pymupdf.open(pdf) as doc:
-        for label in labels:
-            if label not in by_label:
-                raise ValueError(f"page label {label!r} is not in this document")
-            page = doc[by_label[label] - 1]
-            png = out_dir / f"{label}.png"
+        for physical in pages:
+            if not 1 <= physical <= len(doc):
+                raise ValueError(
+                    f"physical page {physical} is not in this document "
+                    f"(it has {len(doc)})"
+                )
+            page = doc[physical - 1]
+            stem = page_stem(physical)
+            png = out_dir / f"{stem}.png"
             page.get_pixmap(dpi=dpi).save(png)
-            txt = out_dir / f"{label}.txt"
+            txt = out_dir / f"{stem}.txt"
             txt.write_text(page.get_text(), encoding="utf-8")
             written.extend([png, txt])
     return written
@@ -163,8 +173,17 @@ _SKELETON_HEAD = '''\
 # Ground truth for {band_id} -- {bibliography}
 # Licence: {license} ({license_class})
 #
-# Author this against pages/<label>.png, NOT against any converter output.
-# pages/<label>.txt holds the raw textlayer; copy definition text from there.
+# Author this against pages/pNNN.png, NOT against any converter output.
+# pages/pNNN.txt holds the raw textlayer; copy definition text from there.
+#
+# Two kinds of page number are in play, and they are not interchangeable:
+#   pNNN            the physical page in the PDF -- the file name
+#   printed label   the number or numeral printed on that page -- the truth
+# They frequently disagree. Read the label off the image; where a catalogue
+# entry exists it is offered below as a hint, and it may well be wrong.
+#
+# Fill in `pages` with the printed labels in reading order, and map each one
+# to its physical page under [physical_pages].
 #
 # Per footnote, printed on the page:
 #   page               the printed label, as a string
@@ -173,13 +192,17 @@ _SKELETON_HEAD = '''\
 #   status             intact | marker_lost | damaged
 #   anchor_after       text right before the marker in the body (optional,
 #                      omit when the marker is destroyed and you cannot tell)
+# A selected page carrying no footnote at all goes into `empty_pages`.
 
 volume = "{band_id}"
-pages = [{pages}]
+pages = []
+empty_pages = []
 
+[physical_pages]
+{physical_hints}
 # Copy this block per footnote and remove the leading '# ':
 # [[footnotes]]
-# page = "{first_page}"
+# page = ""
 # num = 1
 # definition_starts = ""
 # status = "intact"
@@ -187,20 +210,28 @@ pages = [{pages}]
 '''
 
 
-def render_skeleton(meta: SourceMeta, selection: Selection) -> str:
-    """A truth.toml the operator fills in; it asserts nothing by itself."""
-    pages = selection.all_pages
-    body = _SKELETON_HEAD.format(
+def render_skeleton(
+    meta: SourceMeta, selection: Selection, catalogue: dict[int, str | None]
+) -> str:
+    """A truth.toml the operator fills in; it asserts nothing by itself.
+
+    `catalogue` maps physical page to the label the file claims for it. Those
+    claims appear only as commented hints: the benchmark measures printed
+    labels, and a catalogue that is absent, partial or simply wrong must not
+    be able to slip into the answer.
+    """
+    reasons = {t.page: t.reason for t in selection.targeted}
+    lines = []
+    for physical in selection.all_pages:
+        claim = catalogue.get(physical)
+        hint = f'catalogue says "{claim}"' if claim else "no catalogue entry"
+        note = f" -- {reasons[physical]}" if physical in reasons else ""
+        lines.append(f'# "" = {physical}   # {page_stem(physical)}.png, {hint}{note}')
+    return _SKELETON_HEAD.format(
         band_id=meta.band_id, bibliography=meta.bibliography,
         license=meta.license, license_class=meta.license_class,
-        pages=", ".join(f'"{p}"' for p in pages),
-        first_page=pages[0] if pages else "1",
+        physical_hints="\n".join(lines) + "\n" if lines else "",
     )
-    if selection.targeted:
-        notes = ["", "# Pages chosen on purpose, and what to look for:"]
-        notes += [f"#   {t.page}: {t.reason}" for t in selection.targeted]
-        body += "\n".join(notes) + "\n"
-    return body
 
 
 # acceptance ---------------------------------------------------------------
@@ -220,22 +251,40 @@ def check_truth(truth: GroundTruth, selection: Selection, raw_toml: str) -> Chec
     page and a genuinely empty one look the same.
     """
     problems: list[str] = []
+    raw = tomllib.loads(raw_toml)
+    mapping = {str(k): int(v) for k, v in raw.get("physical_pages", {}).items()}
     want = selection.all_pages
-    have = list(truth.pages)
+    labelled = set(mapping.values())
 
-    for page in want:
-        if page not in have:
-            problems.append(f"selected page {page!r} is missing from truth.pages")
-    for page in have:
-        if page not in want:
-            problems.append(f"page {page!r} is in truth.pages but was never selected")
-
-    empty = {str(p) for p in tomllib.loads(raw_toml).get("empty_pages", [])}
-    with_notes = {f.page for f in truth.footnotes}
-    for page in want:
-        if page not in with_notes and page not in empty:
+    for physical in want:
+        if physical not in labelled:
             problems.append(
-                f"page {page!r} has no footnote and is not listed in empty_pages"
+                f"physical page {physical} was selected but has no printed "
+                f"label in [physical_pages]"
+            )
+    for label, physical in mapping.items():
+        if physical not in want:
+            problems.append(
+                f"label {label!r} maps to physical page {physical}, which was "
+                f"never selected"
+            )
+    for label in truth.pages:
+        if label not in mapping:
+            problems.append(
+                f"label {label!r} is in truth.pages but missing from [physical_pages]"
+            )
+    for label in mapping:
+        if label not in truth.pages:
+            problems.append(
+                f"label {label!r} is in [physical_pages] but missing from truth.pages"
+            )
+
+    empty = {str(p) for p in raw.get("empty_pages", [])}
+    with_notes = {f.page for f in truth.footnotes}
+    for label in truth.pages:
+        if label not in with_notes and label not in empty:
+            problems.append(
+                f"page {label!r} has no footnote and is not listed in empty_pages"
             )
 
     for f in truth.footnotes:

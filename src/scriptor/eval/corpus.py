@@ -7,7 +7,12 @@ bands, so both must be strict: a wrong licence class would decide the wrong
 storage location, and an undocumented page choice would invite the charge of
 cherry-picking.
 
-Page labels are strings throughout. "xiv" and "14" are different pages.
+Selections address pages physically, by their ordinal in the file. The
+printed label is what the metrics ultimately measure, but it is a reading of
+the page rather than a property the file can be asked for: a PDF catalogue
+may be absent, partial, or plainly disagree with the paginated page. So the
+selection names PDF pages, and the operator supplies the printed labels in
+truth.toml while looking at the page images.
 """
 from __future__ import annotations
 
@@ -38,7 +43,7 @@ class SourceMeta:
 
 @dataclass(frozen=True)
 class TargetedPage:
-    page: str
+    page: int                       # physical page, 1-based file ordinal
     reason: str
 
 
@@ -47,13 +52,12 @@ class Selection:
     band_id: str
     seed: int
     body_range: tuple[int, int]
-    label_source: str               # "catalogue" | "physical"
-    sampled: list[str] = field(default_factory=list)
+    sampled: list[int] = field(default_factory=list)
     targeted: list[TargetedPage] = field(default_factory=list)
 
     @property
-    def all_pages(self) -> list[str]:
-        """Every page the operator has to author, sampled before targeted."""
+    def all_pages(self) -> list[int]:
+        """Every physical page the operator has to author, sampled first."""
         return list(self.sampled) + [t.page for t in self.targeted]
 
 
@@ -93,22 +97,22 @@ def loads_selection(text: str) -> Selection:
              "body_range must be a two-element list of physical page numbers")
     first, last = int(body[0]), int(body[1])
     _require(0 < first <= last, "body_range must be ascending and 1-based")
-    label_source = str(raw.get("label_source", "catalogue"))
-    _require(label_source in {"catalogue", "physical"},
-             f"unknown label_source {label_source!r}")
 
-    sampled = [str(p) for p in raw.get("sampled", [])]
+    sampled = [int(p) for p in raw.get("sampled", [])]
     targeted = []
     for t in raw.get("targeted", []):
-        page, reason = str(t.get("page", "")), str(t.get("reason", "")).strip()
-        _require(bool(page), "a targeted page needs a page label")
-        _require(bool(reason), f"targeted page {page!r} needs a reason in plain words")
+        _require("page" in t, "a targeted page needs a physical page number")
+        page, reason = int(t["page"]), str(t.get("reason", "")).strip()
+        _require(bool(reason), f"targeted page {page} needs a reason in plain words")
         targeted.append(TargetedPage(page=page, reason=reason))
 
     seen = sampled + [t.page for t in targeted]
+    for page in seen:
+        _require(first <= page <= last,
+                 f"selected page {page} lies outside the body range {first}-{last}")
     _require(len(seen) == len(set(seen)), "a page must not be selected twice")
     return Selection(str(raw["band_id"]), int(raw["seed"]), (first, last),
-                     label_source, sampled, targeted)
+                     sampled, targeted)
 
 
 def load_source(path: Path) -> SourceMeta:

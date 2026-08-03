@@ -340,15 +340,13 @@ def _dispatch_authoring(args) -> int:
 
     # author
     selection_path = band / "selection.json"
+    refs = authoring.read_page_refs(pdf)
     if args.sample is not None and not selection_path.exists():
-        refs, label_source = authoring.read_page_refs(pdf)
-        chosen = authoring.choose_pages(
-            refs, (1, len(refs)), args.sample, args.seed
-        )
+        chosen = authoring.choose_pages(refs, (1, len(refs)), args.sample, args.seed)
         selection_path.write_text(
             json.dumps({
                 "band_id": meta.band_id, "seed": args.seed,
-                "body_range": [1, len(refs)], "label_source": label_source,
+                "body_range": [1, len(refs)],
                 "sampled": chosen, "targeted": [],
             }, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
@@ -363,7 +361,10 @@ def _dispatch_authoring(args) -> int:
     if truth_path.exists():
         print(f"{meta.band_id}: {truth_path} kept as it is", file=sys.stderr)
     else:
-        truth_path.write_text(authoring.render_skeleton(meta, selection), encoding="utf-8")
+        catalogue = {r.index: r.catalogue_label for r in refs}
+        truth_path.write_text(
+            authoring.render_skeleton(meta, selection, catalogue), encoding="utf-8"
+        )
         print(f"{meta.band_id}: wrote {truth_path}", file=sys.stderr)
     print(f"{meta.band_id}: {len(selection.all_pages)} pages ready in {band / 'pages'}",
           file=sys.stderr)

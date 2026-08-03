@@ -5,9 +5,8 @@ from scriptor.eval.authoring import PageRef, choose_pages
 
 
 def _refs(n: int) -> list[PageRef]:
-    """n physical pages; the first four carry roman labels like real frontmatter."""
-    roman = ["i", "ii", "iii", "iv"]
-    return [PageRef(index=i + 1, label=roman[i] if i < 4 else str(i - 3))
+    """n physical pages; only some carry a catalogue label, as in real files."""
+    return [PageRef(index=i + 1, catalogue_label=(str(i - 3) if i >= 4 else None))
             for i in range(n)]
 
 
@@ -27,28 +26,19 @@ def test_different_seed_gives_different_pages():
 
 
 def test_selection_stays_inside_body_range():
-    refs = _refs(60)
-    chosen = choose_pages(refs, body_range=(5, 20), count=8, seed=42)
-    labels_in_range = {r.label for r in refs if 5 <= r.index <= 20}
-    assert set(chosen) <= labels_in_range
-    assert "i" not in chosen and "iv" not in chosen   # frontmatter excluded
+    chosen = choose_pages(_refs(60), body_range=(5, 20), count=8, seed=42)
+    assert all(5 <= p <= 20 for p in chosen)
 
 
-def test_result_is_sorted_by_physical_order():
-    refs = _refs(60)
-    chosen = choose_pages(refs, body_range=(5, 60), count=10, seed=42)
-    order = {r.label: r.index for r in refs}
-    assert [order[c] for c in chosen] == sorted(order[c] for c in chosen)
+def test_result_is_sorted_and_physical():
+    chosen = choose_pages(_refs(60), body_range=(5, 60), count=10, seed=42)
+    assert chosen == sorted(chosen)
+    assert all(isinstance(p, int) for p in chosen)
 
 
 def test_asking_for_more_than_available_is_refused():
     with pytest.raises(ValueError):
         choose_pages(_refs(60), body_range=(5, 10), count=20, seed=42)
-
-
-def test_labels_are_returned_not_indices():
-    chosen = choose_pages(_refs(60), body_range=(5, 60), count=3, seed=1)
-    assert all(isinstance(c, str) for c in chosen)
 
 
 # fetching -----------------------------------------------------------------
@@ -111,8 +101,8 @@ _SRC = """
 
 _SEL = """
 {"band_id": "demo", "seed": 42, "body_range": [1, 3],
- "label_source": "physical", "sampled": ["1", "3"],
- "targeted": [{"page": "2", "reason": "note runs over"}]}
+ "sampled": [1, 3],
+ "targeted": [{"page": 2, "reason": "note runs over"}]}
 """
 
 
@@ -128,35 +118,52 @@ def _tiny_pdf(path):
     return path
 
 
-def test_read_page_refs_falls_back_to_physical_numbers(tmp_path):
+def test_read_page_refs_reports_missing_catalogue_labels_as_none(tmp_path):
     pdf = _tiny_pdf(tmp_path / "d.pdf")
-    refs, label_source = read_page_refs(pdf)
+    refs = read_page_refs(pdf)
     assert [r.index for r in refs] == [1, 2, 3]
-    assert [r.label for r in refs] == ["1", "2", "3"]
-    assert label_source == "physical"
+    # a generated PDF has no PageLabels; that must not be papered over
+    assert [r.catalogue_label for r in refs] == [None, None, None]
 
 
-def test_write_page_material_emits_png_and_text(tmp_path):
+def test_page_material_is_named_by_physical_page(tmp_path):
     pdf = _tiny_pdf(tmp_path / "d.pdf")
     out = tmp_path / "pages"
-    written = write_page_material(pdf, ["1", "3"], out, dpi=72)
-    assert (out / "1.png").exists() and (out / "1.txt").exists()
-    assert (out / "3.png").exists() and (out / "3.txt").exists()
-    assert not (out / "2.png").exists()
-    assert "body text" in (out / "1.txt").read_text(encoding="utf-8")
+    written = write_page_material(pdf, [1, 3], out, dpi=72)
+    assert (out / "p001.png").exists() and (out / "p001.txt").exists()
+    assert (out / "p003.png").exists() and (out / "p003.txt").exists()
+    assert not (out / "p002.png").exists()
+    assert "body text" in (out / "p001.txt").read_text(encoding="utf-8")
     assert len(written) == 4
 
 
-def test_skeleton_is_valid_toml_listing_exactly_the_selected_pages():
-    skel = render_skeleton(loads_source(_SRC), loads_selection(_SEL))
+def test_page_material_refuses_a_page_outside_the_document(tmp_path):
+    pdf = _tiny_pdf(tmp_path / "d.pdf")
+    with pytest.raises(ValueError):
+        write_page_material(pdf, [99], tmp_path / "pages", dpi=72)
+
+
+def test_skeleton_is_valid_toml_with_an_empty_page_list():
+    skel = render_skeleton(loads_source(_SRC), loads_selection(_SEL),
+                           {1: None, 2: "ii", 3: None})
     parsed = tomllib.loads(skel)
     assert parsed["volume"] == "demo"
-    assert parsed["pages"] == ["1", "3", "2"]
-    assert "footnotes" not in parsed        # the sample block is commented out
+    # the operator fills these in from the page images; nothing is guessed
+    assert parsed["pages"] == []
+    assert parsed["physical_pages"] == {}
 
 
-def test_skeleton_carries_the_targeted_reason_as_a_hint():
-    skel = render_skeleton(loads_source(_SRC), loads_selection(_SEL))
+def test_skeleton_lists_every_selected_physical_page():
+    skel = render_skeleton(loads_source(_SRC), loads_selection(_SEL),
+                           {1: None, 2: "ii", 3: None})
+    for name in ("p001.png", "p002.png", "p003.png"):
+        assert name in skel
+
+
+def test_skeleton_offers_the_catalogue_label_only_as_a_hint():
+    skel = render_skeleton(loads_source(_SRC), loads_selection(_SEL),
+                           {1: None, 2: "ii", 3: None})
+    assert "catalogue says" in skel and '"ii"' in skel
     assert "note runs over" in skel
 
 
@@ -167,16 +174,20 @@ from scriptor.eval.ground_truth import loads_truth
 
 _SEL_CHECK = """
 {"band_id": "demo", "seed": 42, "body_range": [1, 3],
- "label_source": "physical", "sampled": ["1", "2"], "targeted": []}
+ "sampled": [1, 2], "targeted": []}
 """
 
 _GOOD = '''
 volume = "demo"
-pages = ["1", "2"]
-empty_pages = ["2"]
+pages = ["11", "12"]
+empty_pages = ["12"]
+
+[physical_pages]
+"11" = 1
+"12" = 2
 
 [[footnotes]]
-page = "1"
+page = "11"
 num = 1
 definition_starts = "A note long enough to be found"
 status = "intact"
@@ -188,16 +199,31 @@ def test_complete_band_passes():
     assert res.ok and res.problems == []
 
 
-def test_missing_selected_page_is_reported():
-    bad = _GOOD.replace('pages = ["1", "2"]', 'pages = ["1"]').replace(
-        'empty_pages = ["2"]\n', "")
+def test_selected_physical_page_without_a_label_is_reported():
+    bad = _GOOD.replace('"12" = 2\n', "").replace(
+        'pages = ["11", "12"]', 'pages = ["11"]').replace(
+        'empty_pages = ["12"]\n', "")
     res = check_truth(loads_truth(bad), loads_selection(_SEL_CHECK), bad)
     assert not res.ok
-    assert any("2" in p for p in res.problems)
+    assert any("physical page 2" in p for p in res.problems)
+
+
+def test_label_without_a_physical_page_is_reported():
+    bad = _GOOD.replace('"12" = 2\n', "")
+    res = check_truth(loads_truth(bad), loads_selection(_SEL_CHECK), bad)
+    assert not res.ok
+    assert any("physical_pages" in p for p in res.problems)
+
+
+def test_physical_page_that_was_never_selected_is_reported():
+    bad = _GOOD.replace('"12" = 2', '"12" = 3')
+    res = check_truth(loads_truth(bad), loads_selection(_SEL_CHECK), bad)
+    assert not res.ok
+    assert any("never selected" in p for p in res.problems)
 
 
 def test_page_without_notes_and_without_empty_marker_is_reported():
-    bad = _GOOD.replace('empty_pages = ["2"]\n', "")
+    bad = _GOOD.replace('empty_pages = ["12"]\n', "")
     res = check_truth(loads_truth(bad), loads_selection(_SEL_CHECK), bad)
     assert not res.ok
     assert any("empty_pages" in p for p in res.problems)
@@ -213,7 +239,7 @@ def test_short_definition_is_reported():
 def test_duplicate_page_and_number_is_reported():
     bad = _GOOD + '''
 [[footnotes]]
-page = "1"
+page = "11"
 num = 1
 definition_starts = "Another note, same printed number"
 status = "intact"
@@ -239,7 +265,7 @@ def test_cli_author_creates_selection_skeleton_and_material(tmp_path, capsys):
     assert rc == 0
     assert (band / "selection.json").exists()
     assert (band / "truth.toml").exists()
-    assert len(list((band / "pages").glob("*.png"))) == 2
+    assert len(list((band / "pages").glob("p*.png"))) == 2
 
 
 def test_cli_author_never_overwrites_existing_truth(tmp_path):
@@ -249,11 +275,11 @@ def test_cli_author_never_overwrites_existing_truth(tmp_path):
     _tiny_pdf(band / "source.pdf")
     main(["eval", "author", "--band", str(band), "--sample", "2",
           "--seed", "42", "--dpi", "72"])
-    (band / "truth.toml").write_text('volume="demo"\npages=["1"]\n', encoding="utf-8")
+    (band / "truth.toml").write_text('volume="demo"\npages=[]\n', encoding="utf-8")
 
     main(["eval", "author", "--band", str(band), "--dpi", "72"])
     assert (band / "truth.toml").read_text(encoding="utf-8") == \
-        'volume="demo"\npages=["1"]\n'
+        'volume="demo"\npages=[]\n'
 
 
 def test_cli_check_reports_problems_and_returns_nonzero(tmp_path, capsys):
@@ -262,7 +288,7 @@ def test_cli_check_reports_problems_and_returns_nonzero(tmp_path, capsys):
     (band / "source.json").write_text(_SRC, encoding="utf-8")
     (band / "selection.json").write_text(_SEL_CHECK, encoding="utf-8")
     (band / "truth.toml").write_text(
-        _GOOD.replace('empty_pages = ["2"]\n', ""), encoding="utf-8")
+        _GOOD.replace('empty_pages = ["12"]\n', ""), encoding="utf-8")
 
     rc = main(["eval", "check", "--band", str(band)])
     assert rc == 1
