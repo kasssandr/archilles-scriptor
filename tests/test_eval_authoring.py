@@ -158,3 +158,66 @@ def test_skeleton_is_valid_toml_listing_exactly_the_selected_pages():
 def test_skeleton_carries_the_targeted_reason_as_a_hint():
     skel = render_skeleton(loads_source(_SRC), loads_selection(_SEL))
     assert "note runs over" in skel
+
+
+# acceptance ---------------------------------------------------------------
+
+from scriptor.eval.authoring import check_truth
+from scriptor.eval.ground_truth import loads_truth
+
+_SEL_CHECK = """
+{"band_id": "demo", "seed": 42, "body_range": [1, 3],
+ "label_source": "physical", "sampled": ["1", "2"], "targeted": []}
+"""
+
+_GOOD = '''
+volume = "demo"
+pages = ["1", "2"]
+empty_pages = ["2"]
+
+[[footnotes]]
+page = "1"
+num = 1
+definition_starts = "A note long enough to be found"
+status = "intact"
+'''
+
+
+def test_complete_band_passes():
+    res = check_truth(loads_truth(_GOOD), loads_selection(_SEL_CHECK), _GOOD)
+    assert res.ok and res.problems == []
+
+
+def test_missing_selected_page_is_reported():
+    bad = _GOOD.replace('pages = ["1", "2"]', 'pages = ["1"]').replace(
+        'empty_pages = ["2"]\n', "")
+    res = check_truth(loads_truth(bad), loads_selection(_SEL_CHECK), bad)
+    assert not res.ok
+    assert any("2" in p for p in res.problems)
+
+
+def test_page_without_notes_and_without_empty_marker_is_reported():
+    bad = _GOOD.replace('empty_pages = ["2"]\n', "")
+    res = check_truth(loads_truth(bad), loads_selection(_SEL_CHECK), bad)
+    assert not res.ok
+    assert any("empty_pages" in p for p in res.problems)
+
+
+def test_short_definition_is_reported():
+    bad = _GOOD.replace("A note long enough to be found", "too short")
+    res = check_truth(loads_truth(bad), loads_selection(_SEL_CHECK), bad)
+    assert not res.ok
+    assert any("definition_starts" in p for p in res.problems)
+
+
+def test_duplicate_page_and_number_is_reported():
+    bad = _GOOD + '''
+[[footnotes]]
+page = "1"
+num = 1
+definition_starts = "Another note, same printed number"
+status = "intact"
+'''
+    res = check_truth(loads_truth(bad), loads_selection(_SEL_CHECK), bad)
+    assert not res.ok
+    assert any("twice" in p or "duplicate" in p for p in res.problems)

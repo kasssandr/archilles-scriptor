@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import random
+import tomllib
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,9 @@ from pathlib import Path
 import pymupdf
 
 from scriptor.eval.corpus import Selection, SourceMeta
+from scriptor.eval.ground_truth import GroundTruth
+
+MIN_DEFINITION_CHARS = 15
 
 _CHUNK = 1 << 20
 _UA = "scriptor-eval/1.0 (benchmark corpus fetch)"
@@ -197,3 +201,55 @@ def render_skeleton(meta: SourceMeta, selection: Selection) -> str:
         notes += [f"#   {t.page}: {t.reason}" for t in selection.targeted]
         body += "\n".join(notes) + "\n"
     return body
+
+
+# acceptance ---------------------------------------------------------------
+
+
+@dataclass
+class CheckResult:
+    ok: bool
+    problems: list[str]
+
+
+def check_truth(truth: GroundTruth, selection: Selection, raw_toml: str) -> CheckResult:
+    """Accept a band only when its truth covers exactly the documented selection.
+
+    A page drawn at random that carries no footnote is a legitimate and
+    valuable case, but it has to be declared as empty: otherwise a forgotten
+    page and a genuinely empty one look the same.
+    """
+    problems: list[str] = []
+    want = selection.all_pages
+    have = list(truth.pages)
+
+    for page in want:
+        if page not in have:
+            problems.append(f"selected page {page!r} is missing from truth.pages")
+    for page in have:
+        if page not in want:
+            problems.append(f"page {page!r} is in truth.pages but was never selected")
+
+    empty = {str(p) for p in tomllib.loads(raw_toml).get("empty_pages", [])}
+    with_notes = {f.page for f in truth.footnotes}
+    for page in want:
+        if page not in with_notes and page not in empty:
+            problems.append(
+                f"page {page!r} has no footnote and is not listed in empty_pages"
+            )
+
+    for f in truth.footnotes:
+        if len(f.definition_starts.strip()) < MIN_DEFINITION_CHARS:
+            problems.append(
+                f"p. {f.page} note {f.num}: definition_starts is shorter than "
+                f"{MIN_DEFINITION_CHARS} characters"
+            )
+
+    seen: set[tuple[str, int]] = set()
+    for f in truth.footnotes:
+        key = (f.page, f.num)
+        if key in seen:
+            problems.append(f"p. {f.page} note {f.num} is listed twice")
+        seen.add(key)
+
+    return CheckResult(ok=not problems, problems=problems)
