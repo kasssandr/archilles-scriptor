@@ -197,6 +197,17 @@ _SKELETON_HEAD = '''\
 #   status             intact | marker_lost | damaged
 #   anchor_after       text right before the marker in the body (optional,
 #                      omit when the marker is destroyed and you cannot tell)
+#
+# When a note breaks off at the foot of the page and resumes on the next one,
+# `page` stays the page it begins on and two more fields record the rest:
+#   definition_ends    the last few words of the note, wherever it ends -- this
+#                      is what makes it checkable whether a converter kept the
+#                      note whole instead of only finding its opening
+#   continues_on       printed label of the page that receives the remainder,
+#                      i.e. the next page carrying text, which is not always
+#                      the next page. That page has to be authored too.
+# The continuation itself carries no number and gets no entry of its own.
+#
 # A selected page carrying no footnote at all goes into `empty_pages`.
 
 volume = "{band_id}"

@@ -21,11 +21,20 @@ class TruthError(ValueError):
 
 @dataclass(frozen=True)
 class TruthFootnote:
-    page: str                       # printed label
-    num: int                        # printed, page-local number
+    page: str                       # printed label where the note begins
+    num: int                        # the number as printed (page-local or running)
     definition_starts: str          # prefix of the definition text (>= ~15 chars)
     status: str                     # intact | marker_lost | damaged
     anchor_after: str | None = None # text immediately before the true anchor; None = position unknown
+    # A note may break off at the foot of one page and resume on the next.
+    # `page` stays the page it begins on, because that is where the anchor
+    # belongs and what every metric keys on. These two record the rest:
+    # `definition_ends` makes it checkable whether a converter kept the note
+    # whole rather than only finding its opening, and `continues_on` names the
+    # page that receives the remainder -- the next page *carrying text*, which
+    # is not always the next page.
+    definition_ends: str | None = None
+    continues_on: str | None = None
 
 
 @dataclass(frozen=True)
@@ -71,9 +80,18 @@ def loads_truth(text: str) -> GroundTruth:
             page=str(f["page"]), num=int(f["num"]),
             definition_starts=f["definition_starts"], status=f["status"],
             anchor_after=f.get("anchor_after"),
+            definition_ends=f.get("definition_ends"),
+            continues_on=str(f["continues_on"]) if "continues_on" in f else None,
         )
         _require(fn.status in FOOTNOTE_STATUSES, f"unknown status {fn.status!r}")
         _require(fn.page in page_set, f"footnote page {fn.page!r} not in pages")
+        if fn.continues_on is not None:
+            _require(fn.continues_on in page_set,
+                     f"footnote {fn.num} continues on page {fn.continues_on!r}, "
+                     f"which is not in pages -- the receiving page has to be "
+                     f"authored too, or the continuation cannot be checked")
+            _require(fn.continues_on != fn.page,
+                     f"footnote {fn.num} cannot continue on its own page {fn.page!r}")
         footnotes.append(fn)
 
     citations = []

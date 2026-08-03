@@ -28,7 +28,7 @@
 # A selected page carrying no footnote at all goes into `empty_pages`.
 
 volume = "bauer-aneignung"
-pages = ["88"]
+pages = ["88", "89"]
 empty_pages = []
 
 [physical_pages]
@@ -41,7 +41,7 @@ empty_pages = []
 # "" = 133   # p133.png, catalogue says "132"
 # "" = 144   # p144.png, catalogue says "143"
 "88" = 88   # p088.png, catalogue says "87" -- operator marked a note running over onto p. 89
-# "" = 89   # p089.png, catalogue says "88" -- receiving page: carries the continuation of the note that begins on p. 88, plus its own notes
+"89" = 89   # p089.png, catalogue says "88" -- receiving page: carries the continuation of the note that begins on p. 88, plus its own notes
 # "" = 106   # p106.png, catalogue says "105" -- operator marked a note running over onto p. 107
 # "" = 107   # p107.png, catalogue says "106" -- receiving page: carries the continuation of the note that begins on p. 106, plus its own notes
 # "" = 111   # p111.png, catalogue says "110" -- operator marked a note running over onto p. 112
@@ -110,5 +110,41 @@ anchor_after = "so von ihnen zu lernen."
 page = "88"
 num = 280
 definition_starts = "Mit der Wiederbelebung der Antike"
+# the note breaks off after "zeigt sich auch an der" and resumes at the top of
+# the apparatus on p. 89; its end is what shows whether a converter kept it whole
+definition_ends = "aetas obscura, für das Mittelalter."
+continues_on = "89"
 status = "intact"
 anchor_after = "„Wiedergeburt“)."
+# ---------------------------------------------------------------- p089 ----
+# The receiving page. Its own notes are 281-284; the continuation of 280
+# sits above them and carries no number, so it gets no entry here -- it is
+# recorded on p. 88 through definition_ends and continues_on.
+
+[[footnotes]]
+page = "89"
+num = 281
+definition_starts = "So Rebbelmund, Appropriation Art"
+status = "intact"
+anchor_after = "Weltanschauungen widergespiegelt."
+
+[[footnotes]]
+page = "89"
+num = 282
+definition_starts = "Kemp, Disegno. Beiträge zur Geschichte"
+status = "intact"
+anchor_after = "im Jahre 1547 geprägt."
+
+[[footnotes]]
+page = "89"
+num = 283
+definition_starts = "Vgl. Stoschek, Anfänge der vervielfältigten Kunst"
+status = "intact"
+anchor_after = "fachlichen Beurteilung des Kunstwerks."
+
+[[footnotes]]
+page = "89"
+num = 284
+definition_starts = "Ullrich, Raffinierte Kunst. Übung vor Reproduktionen"
+status = "intact"
+anchor_after = "dann nicht mehr notwendig."

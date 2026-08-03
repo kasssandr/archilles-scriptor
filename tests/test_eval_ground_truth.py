@@ -66,3 +66,47 @@ def test_invalid_truth_is_refused(mutation):
 def test_unknown_regime_is_refused():
     with pytest.raises(TruthError):
         loads_truth(MINIMAL.replace('regime = "r3"', 'regime = "r9"'))
+
+
+# page-crossing notes -------------------------------------------------------
+# A note that breaks off at the foot of one page and resumes on the next is a
+# variant nothing in the literature measures. Recording only where it starts
+# cannot show whether a converter kept it whole, so the truth carries the end
+# of the definition and the page that receives it.
+
+CROSSING = """
+volume = "d"
+pages = ["88", "89"]
+
+[[footnotes]]
+page = "88"
+num = 280
+definition_starts = "Mit der Wiederbelebung der Antike"
+definition_ends = "aetas obscura, für das Mittelalter."
+continues_on = "89"
+status = "intact"
+"""
+
+
+def test_footnote_records_its_end_and_continuation():
+    fn = loads_truth(CROSSING).footnotes[0]
+    assert fn.definition_ends == "aetas obscura, für das Mittelalter."
+    assert fn.continues_on == "89"
+
+
+def test_both_fields_are_optional():
+    fn = loads_truth(
+        'volume="d"\npages=["1"]\n[[footnotes]]\npage="1"\nnum=1\n'
+        'definition_starts="A note that stays put"\nstatus="intact"\n'
+    ).footnotes[0]
+    assert fn.definition_ends is None and fn.continues_on is None
+
+
+def test_continuation_page_must_be_a_known_page():
+    with pytest.raises(TruthError):
+        loads_truth(CROSSING.replace('continues_on = "89"', 'continues_on = "99"'))
+
+
+def test_note_must_not_continue_on_its_own_page():
+    with pytest.raises(TruthError):
+        loads_truth(CROSSING.replace('continues_on = "89"', 'continues_on = "88"'))

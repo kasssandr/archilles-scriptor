@@ -69,6 +69,17 @@ Two things this volume established:
   page. The catalogue is a hint in the skeleton, never an answer.
 - Its **footnotes run through the whole book** (275, 276, …) rather than
   restarting on each page. `num` records what is printed, page-local or not.
+- **It found a defect on its first run.** Where the last line of body text ends
+  in a hyphenated word, the first footnote of the page is glued onto the
+  fragment: `…die Formensprache bei Baudenkmä275 So hat Raffael…`. The
+  continuation ("lern und Skulpturen") waits on the next page and never
+  arrives, so the same defect destroys the page-crossing hyphenation as well.
+  Measured over the whole volume: **31 of 339 pages, 9 %**. Reproduce with
+  `scriptor all` on the source PDF and grep for `[a-zäöüß]{3}\d{1,3} [A-ZÄÖÜ]`.
+- What it does get right: the section number `2.`, which sits at x=68 on the
+  same baseline y=300 as its heading at x=81, is read *before* the heading.
+  Raw PyMuPDF block order puts it after the following paragraph; the baseline
+  clustering corrects that.
 
 ### mehr-themistios — rows 1, 11
 
