@@ -153,17 +153,6 @@ def split_small_type_block(
             break
         end = start          # this run carries no definition; look further up
 
-    # An apparatus is set in one size. Anything at the foot of the run set
-    # larger than the definitions themselves is furniture that merely happens
-    # to be small as well — a running head between notes and folio — and
-    # belongs to the body, not to the last note.
-    note_size = max(
-        sizes[i] for i in range(start, end)
-        if match_definition(lines[i]) and sizes[i] is not None
-    )
-    while end > start and sizes[end - 1] is not None and sizes[end - 1] > note_size:
-        end -= 1
-
     # Below the block there may be page furniture, but never running text: a
     # small run with body-sized prose underneath it is a set-off quotation in
     # the middle of the page, not the apparatus at its foot.

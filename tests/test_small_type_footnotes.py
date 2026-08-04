@@ -235,10 +235,17 @@ def test_the_bare_regex_still_serves_pages_without_geometry():
 # The "NN Text" convention, and what sits below the block
 # ----------------------------------------------------------------------
 # Bauer (Nomos) prints its definitions as a superscript number followed by a
-# space -- no bracket, no full stop -- and puts a running head, the folio and
-# a publisher watermark *below* the footnote block. Neither the convention nor
-# the trailing furniture was handled, so on that volume the geometry cut no
-# block at all on any of its 348 pages.
+# space -- no bracket, no full stop -- and sets the folio and a publisher
+# watermark below the footnote block. Neither the convention nor the trailing
+# furniture was handled, so on that volume the geometry cut no block at all on
+# any of its 348 pages.
+#
+# The running head belongs at the *top* of the page, measured: on p. 88 it sits
+# at baseline 47.6 of a 643pt page, above the body. It only reads as trailing
+# furniture in raw `get_text()` output, because Nomos writes it near the end of
+# the content stream -- which is also what a reader sees when copying the page
+# with the cursor. Reflow never sees that order: `reconstruct` sorts by
+# baseline, so these fixtures carry the printed order, not the stream order.
 
 _BAUER_BODY = [
     "ter traf die Entscheidungen bezueglich der Komposition und der Motive,",
@@ -253,18 +260,40 @@ _BAUER_NOTES = [
 
 
 def _bauer_page():
-    """Body, notes, running head, folio and watermark -- in printed order."""
-    lines, sizes = [], []
+    """Running head, body, notes, folio and watermark -- in printed order.
+
+    Sizes as measured on p. 88: 9.0 running head, 10.0 body, 8.7 apparatus,
+    10.25 folio, 3.0 watermark.
+    """
+    lines = ["Zweites Kapitel: Die veraenderte Nutzung von Aneignungen"]
+    sizes = [9.0]
     for t in _BAUER_BODY:
         lines.append(t); sizes.append(10.0)
     for t in _BAUER_NOTES:
         lines.append(t); sizes.append(8.7)
-    lines.append("Zweites Kapitel: Die veraenderte Nutzung von Aneignungen")
-    sizes.append(9.0)
     lines.append("88"); sizes.append(10.25)
     lines.append("https://doi.org/10.5771/9783748909576 - Open Access -")
     sizes.append(3.0)
     return lines, sizes
+
+
+def test_a_continuation_line_stays_in_the_block_although_it_measures_larger():
+    # EXCITE 11653 p. 4, an OCR layer: the engine reports 10.08pt for the
+    # continuation of note 3 and 6.48pt for the definitions it belongs to.
+    # Within a size-verified block, a line larger than the definitions is not
+    # furniture -- the folio is peeled off the foot long before this point.
+    lines = [
+        "Dieser liesse sich anhand von zwei Extremformen veranschaulichen:",
+        "2 Vgl. Wolbert (1995).",
+        "3 Zum Beduerfnis nach Ritualen in der modernen Gesellschaft vgl.",
+        "Bukow (1994), Schaer (1991), Stender (1994).",
+        "5",
+    ]
+    sizes = [12.0, 6.48, 6.48, 10.08, 10.08]
+    split = split_small_type_block(lines, sizes, body_size=12.0)
+    assert split is not None
+    assert split.notes[-1].startswith("Bukow"), "the continuation belongs to note 3"
+    assert split.body == [lines[0], "5"]
 
 
 def test_definition_may_be_a_bare_number_and_a_space():
@@ -281,9 +310,12 @@ def test_block_is_found_although_furniture_sits_below_it():
     assert split is not None, "the watermark below the folio must not hide the block"
     assert split.notes[0].startswith("275 So hat Raffael")
     assert split.notes[-1].startswith("276 Zilsel")
-    # the body keeps its own lines, and the hyphenated last one is intact
-    assert split.body[:3] == _BAUER_BODY
-    assert split.body[2].endswith("Baudenkmae-")
+    # the body keeps its own lines, and the hyphenated last one is intact. The
+    # running head stays with it: removing it is running_elements' job, and it
+    # has to see the head where the page prints it.
+    assert split.body[0].startswith("Zweites Kapitel")
+    assert split.body[1:4] == _BAUER_BODY
+    assert split.body[3].endswith("Baudenkmae-")
 
 
 def test_the_first_note_does_not_glue_onto_a_hyphenated_body_line():
