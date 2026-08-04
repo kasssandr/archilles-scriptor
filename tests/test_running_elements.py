@@ -8,6 +8,8 @@ was deleted (Braunfels case, open follow-ups #1).
 
 from scriptor.reflow.running_elements import (
     strip_running_elements,
+    detect_running_footers,
+    remove_running_footers_from_blocks,
     remove_running_headers,
     detect_running_headers,
     _extract_edge_page_number,
@@ -164,3 +166,48 @@ def test_footer_quoted_in_a_footnote_survives():
     for page in cleaned[1:]:
         assert _DIE_FOOTER not in page  # the real running footer goes
     assert _DIE_NOTE in cleaned[0]  # the footnote citing it stays
+
+
+# --- the footer inside a cut apparatus ----------------------------------------
+# Where the page geometry cut a footnote block, the running footer no longer
+# sits at the foot of the body: it sits in the last line of the block, together
+# with the folio. SSOAR 35056 is the case -- "36    Deutsches Institut für
+# Entwicklungspolitik" -- and there the detector saw the line on too few pages
+# to recognise it at all, while the block carried it straight into the notes.
+
+def _split_pages(n=4):
+    """n pages, each already divided into body text and a cut apparatus.
+
+    Every line differs from every other, notes included: text that merely
+    varies a number ("1 Vgl. Beleg 1." against "2 Vgl. Beleg 2.") is grouped
+    as one recurring element and would be detected as the footer itself.
+    """
+    bodies, blocks = [], []
+    for i in range(n):
+        bodies.append(f"{_DISTINCT[2 * i]}\n{_DISTINCT[2 * i + 1]}")
+        blocks.append([f"{i + 1} {_DISTINCT[2 * n + i]}", f"{i + 10}    {_DIE_FOOTER}"])
+    return bodies, blocks
+
+
+def test_footer_hidden_in_the_apparatus_is_detected():
+    bodies, blocks = _split_pages()
+    assert not detect_running_footers(bodies, min_occurrences=3), (
+        "ohne die Blöcke steht der Fußtitel auf keiner Seite am Fuß des Textes"
+    )
+    _, _, footers = strip_running_elements(bodies, footer_min=3, foot_blocks=blocks)
+    assert any(_strings_are_similar(f, _DIE_FOOTER) for f in footers)
+
+
+def test_footer_leaves_the_apparatus_and_hands_back_its_folio():
+    bodies, blocks = _split_pages()
+    _, _, footers = strip_running_elements(bodies, footer_min=3, foot_blocks=blocks)
+    cleaned, rescued = remove_running_footers_from_blocks(blocks, footers)
+    assert cleaned[0] == [f"1 {_DISTINCT[8]}"], "der Fußtitel gehört nicht zu Note 1"
+    assert rescued[0] == "10", "die Folio darf nicht mit dem Fußtitel verschwinden"
+
+
+def test_a_block_without_the_footer_is_left_alone():
+    blocks = [["1 Vgl. Beleg 1.", "und eine Fortsetzungszeile dazu."]]
+    cleaned, rescued = remove_running_footers_from_blocks(blocks, [_DIE_FOOTER])
+    assert cleaned[0] == blocks[0]
+    assert rescued[0] is None

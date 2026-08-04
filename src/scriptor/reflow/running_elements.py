@@ -208,18 +208,70 @@ def remove_running_footers(
     return cleaned_pages
 
 
+def remove_running_footers_from_blocks(
+    blocks: list[list[str] | None],
+    running_footers: list[str],
+    similarity_threshold: float = 0.85,
+) -> tuple[list[list[str] | None], list[str | None]]:
+    """Take the running footer out of a cut footnote block.
+
+    Where the page geometry cut an apparatus, the foot of the page went with
+    it: the running footer is then the last line of the block, not of the
+    body, and ``remove_running_footers`` never sees it. Left there it becomes
+    footnote text -- on SSOAR 35056, 15 of 34 definitions ended in the
+    publisher's name and three consisted of nothing else.
+
+    Returns the cleaned blocks and, per page, a page number that was embedded
+    in the removed line. That folio belongs to the body: it is the page's own
+    number, and dropping it with the footer would leave the page unlabelled.
+    """
+    cleaned_blocks: list[list[str] | None] = []
+    rescued: list[str | None] = []
+    for block in blocks:
+        if not block or not running_footers:
+            cleaned_blocks.append(block)
+            rescued.append(None)
+            continue
+        kept, folio = [], None
+        for line in block:
+            normalized = _normalize_header_line(line)
+            if normalized and any(
+                _strings_are_similar(normalized, f, similarity_threshold)
+                for f in running_footers
+            ):
+                folio = folio or _extract_edge_page_number(line)
+                continue
+            kept.append(line)
+        cleaned_blocks.append(kept)
+        rescued.append(folio)
+    return cleaned_blocks, rescued
+
+
 def strip_running_elements(
     pages_text: list[str],
     header_min: int = 3,
     footer_min: int | None = None,
     similarity_threshold: float = 0.85,
+    foot_blocks: list[list[str] | None] | None = None,
 ) -> tuple[list[str], list[str], list[str]]:
     """Convenience: detect + remove headers and footers in one call.
+
+    ``foot_blocks`` are footnote blocks the page geometry has already cut off.
+    They are not cleaned here -- that is
+    ``remove_running_footers_from_blocks`` -- but they take part in *detecting*
+    the footers: a volume whose apparatus swallows the running footer on most
+    of its pages would otherwise show it on too few to reach the threshold.
 
     Returns (cleaned_pages, detected_headers, detected_footers).
     """
     headers = detect_running_headers(pages_text, header_min, similarity_threshold)
     cleaned = remove_running_headers(pages_text, headers, similarity_threshold)
-    footers = detect_running_footers(cleaned, footer_min, similarity_threshold)
+    whole_pages = cleaned
+    if foot_blocks is not None:
+        whole_pages = [
+            text if not block else text + "\n" + "\n".join(block)
+            for text, block in zip(cleaned, foot_blocks)
+        ]
+    footers = detect_running_footers(whole_pages, footer_min, similarity_threshold)
     cleaned = remove_running_footers(cleaned, footers, similarity_threshold)
     return cleaned, headers, footers

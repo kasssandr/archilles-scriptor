@@ -1391,8 +1391,21 @@ def main(
     raw_texts = ["\n".join(lines) for lines in page_lines]
 
     # Remove running heads and footers document-wide, before parse_page runs.
-    from scriptor.reflow.running_elements import strip_running_elements
-    cleaned, headers, footers = strip_running_elements(raw_texts)
+    # Where the geometry cut an apparatus, the foot of the page went with it:
+    # the running footer is then the last line of the block, not of the body.
+    # It has to be detected over the whole page and removed from both halves,
+    # or it becomes footnote text -- and the folio embedded in it, which is
+    # the page's own number, disappears with it.
+    from scriptor.reflow.running_elements import (
+        remove_running_footers_from_blocks,
+        strip_running_elements,
+    )
+    cleaned, headers, footers = strip_running_elements(raw_texts, foot_blocks=fn_blocks)
+    fn_blocks, rescued_folios = remove_running_footers_from_blocks(fn_blocks, footers)
+    cleaned = [
+        text if folio is None else f"{text}\n{folio}"
+        for text, folio in zip(cleaned, rescued_folios)
+    ]
     if headers:
         print(f"Running headers removed ({len(headers)}): {headers[:3]}", file=sys.stderr)
     if footers:
