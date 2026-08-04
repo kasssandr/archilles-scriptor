@@ -7,7 +7,6 @@
   ],
   "sampled": [
     21,
-    41,
     43,
     50,
     72,
@@ -16,6 +15,14 @@
     178
   ],
   "targeted": [
+    {
+      "page": 24,
+      "reason": "replacement for p041, a blank verso between chapters I and II that carries no text and no printed number; drawn from the body range with replacement seed 43, first free page carrying text"
+    },
+    {
+      "page": 44,
+      "reason": "receiving page: carries the continuation of note 9, which begins on sampled p. 43, plus its own notes 10-13"
+    },
     {
       "page": 190,
       "reason": "densest polytonic Greek in the volume (297 characters)"

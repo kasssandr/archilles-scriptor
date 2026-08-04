@@ -303,11 +303,20 @@ def check_truth(truth: GroundTruth, selection: Selection, raw_toml: str) -> Chec
                 f"page {label!r} has no footnote and is not listed in empty_pages"
             )
 
+    # Enough text to find the note again in a converter's output -- unless the
+    # note itself is shorter than that. "178 A.a.O., S. 21." is all Bauer
+    # prints, and no amount of care can make it longer. Recording where the
+    # note ends is the operator's statement that it was copied whole; without
+    # it, a short snippet is indistinguishable from a hasty one.
     for f in truth.footnotes:
-        if len(f.definition_starts.strip()) < MIN_DEFINITION_CHARS:
+        if (
+            len(f.definition_starts.strip()) < MIN_DEFINITION_CHARS
+            and f.definition_ends is None
+        ):
             problems.append(
                 f"p. {f.page} note {f.num}: definition_starts is shorter than "
-                f"{MIN_DEFINITION_CHARS} characters"
+                f"{MIN_DEFINITION_CHARS} characters and definition_ends does "
+                f"not say the note ends there"
             )
 
     seen: set[tuple[str, int]] = set()

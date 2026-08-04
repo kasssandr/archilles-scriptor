@@ -7,14 +7,21 @@
 # notably between words in Greek and other non-Latin passages, and a truth
 # that copies such a defect measures the defect instead of the page.
 #
+# TWO DEFECTS OF THIS VOLUME'S TEXTLAYER, both measured:
+#   * The numbers in the apparatus are not digits. De Gruyter's house font
+#     sets them as private-use glyphs -- U+F131 U+F135 where the page prints
+#     15 -- with no space after them: "Dagron, Travaux et mémoire".
+#     Start definition_starts at the first letter and type `num` by hand.
+#   * Greek runs together: "καὶἐῶμὲν Ὅμηρον" for "καὶ ἐῶμεν Ὅμηρον". Read
+#     those passages off the image.
+# The markers in the body are unaffected; they are ordinary digits stuck to
+# the preceding word ("Terrorregime.1").
+#
 # Two kinds of page number are in play, and they are not interchangeable:
 #   pNNN            the physical page in the PDF -- the file name
 #   printed label   the number or numeral printed on that page -- the truth
-# They frequently disagree. Read the label off the image; where a catalogue
-# entry exists it is offered below as a hint, and it may well be wrong.
-#
-# Fill in `pages` with the printed labels in reading order, and map each one
-# to its physical page under [physical_pages].
+# They frequently disagree. Read the label off the image; this file declares
+# no catalogue entries at all, so every label below was read off the page.
 #
 # Per footnote, printed on the page:
 #   page               the printed label, as a string
@@ -25,23 +32,51 @@
 #   status             intact | marker_lost | damaged
 #   anchor_after       text right before the marker in the body (optional,
 #                      omit when the marker is destroyed and you cannot tell)
+#
+# When a note breaks off at the foot of the page and resumes on the next one,
+# `page` stays the page it begins on and two more fields record the rest:
+#   definition_ends    the last few words of the note, wherever it ends -- this
+#                      is what makes it checkable whether a converter kept the
+#                      note whole instead of only finding its opening. It is
+#                      also what says a note this short was copied whole.
+#   continues_on       printed label of the page that receives the remainder,
+#                      i.e. the next page carrying text, which is not always
+#                      the next page. That page has to be authored too.
+# The continuation itself carries no number and gets no entry of its own.
+#
 # A selected page carrying no footnote at all goes into `empty_pages`.
 
 volume = "mehr-themistios"
-pages = []
-empty_pages = []
+pages = [
+  "6", "9", "28", "29", "35", "57", "62", "70", "163", "175", "183",
+]
+# p077 carries no apparatus at all. What stands at the foot of it, three lines
+# set small, is the opening of a block quotation that runs on to the next page
+# -- and this volume sets its quotations in the same 8.0pt as its notes. Only
+# the indent tells them apart: a note sits on the margin of the type area, a
+# quotation is indented by about 17 points. Type size alone cannot decide this
+# page.
+empty_pages = ["62"]
 
+# Read off the running head, where this volume sets the folio at the outer
+# margin. The printed number is the physical page less 15 throughout.
 [physical_pages]
-# "" = 21   # p021.png, no catalogue entry
-# "" = 41   # p041.png, no catalogue entry
-# "" = 43   # p043.png, no catalogue entry
-# "" = 50   # p050.png, no catalogue entry
-# "" = 72   # p072.png, no catalogue entry
-# "" = 77   # p077.png, no catalogue entry
-# "" = 85   # p085.png, no catalogue entry
-# "" = 178   # p178.png, no catalogue entry
-# "" = 190   # p190.png, no catalogue entry -- densest polytonic Greek in the volume (297 characters)
-# "" = 198   # p198.png, no catalogue entry -- second densest polytonic passage (238 characters)
+"6" = 21   # p021.png
+"9" = 24   # p024.png -- replaces p041, a blank verso between chapters I and II
+"28" = 43   # p043.png
+"29" = 44   # p044.png -- receiving page: the tail of note 9 stands above its own notes 10-13
+"35" = 50   # p050.png
+"57" = 72   # p072.png
+"62" = 77   # p077.png
+"70" = 85   # p085.png
+# p178 opens chapter V. De Gruyter sets no running head on a chapter opening,
+# so this page prints no number at all; 163 is the count carried on silently,
+# which is what a reader supplies too. The volume's only page whose label was
+# not read but inferred -- deliberately kept, because a converter has to keep
+# counting here rather than read.
+"163" = 178   # p178.png
+"175" = 190   # p190.png -- densest polytonic Greek in the volume (297 characters)
+"183" = 198   # p198.png -- second densest polytonic passage (238 characters)
 
 # Copy this block per footnote and remove the leading '# ':
 # [[footnotes]]
@@ -50,3 +85,324 @@ empty_pages = []
 # definition_starts = ""
 # status = "intact"
 # anchor_after = ""
+
+[[footnotes]]
+page = "6"
+num = 15
+definition_starts = "Dagron, Travaux et mémoire 3, 1968, 36–48 schildert anhand"
+status = "intact"
+anchor_after = "‚zweite Senat‘ die für die Städte notwendigen Curialen abgezogen hätte."
+
+[[footnotes]]
+page = "6"
+num = 16
+definition_starts = "Straub, Herrscherideal 161."
+status = "intact"
+anchor_after = "Philosophie von der historischen Situation trennte.“"
+
+[[footnotes]]
+page = "6"
+num = 17
+definition_starts = "Straub, Herrscherideal 166."
+status = "intact"
+anchor_after = "herausstellt, wie etwa die „göttliche Sendung“."
+
+[[footnotes]]
+page = "9"
+num = 27
+definition_starts = "Die 2022 neu erschiene Übersetzung aller Reden des Themistios auf Valens:"
+status = "intact"
+anchor_after = "Grundlage für die Analyse der Panegyriken dar."
+
+[[footnotes]]
+page = "9"
+num = 28
+definition_starts = "Leppin/Portmann, Themistios 23."
+status = "intact"
+anchor_after = "etwa, dass der Philosophie „öffentliche Bedeutung zukomme“"
+
+[[footnotes]]
+page = "9"
+num = 29
+definition_starts = "Angela Pabst leistet Ähnliches in ihrer Übersetzung und ihrem Kommentar"
+status = "intact"
+anchor_after = "ohne Widerspruch zusammengebracht werden können."
+
+[[footnotes]]
+page = "9"
+num = 30
+definition_starts = "Daly, GRBS 12, 1971, 65–79; Daly, Historia 21,2, 1972, 351–379;"
+status = "intact"
+anchor_after = "Verbindung zwischen Themistios und den christlichen Ideen der Zeit."
+
+[[footnotes]]
+page = "9"
+num = 31
+definition_starts = "Daly, GRBS 12, 1971, 66."
+status = "intact"
+anchor_after = "norms and contemporary demands in this controversial area“."
+
+[[footnotes]]
+page = "9"
+num = 32
+definition_starts = "Daly, GBRS 12, 1971, 69."
+status = "intact"
+anchor_after = "„anomaly of a Christian emperor in a nominally pagan empire“ neutralisiert."
+
+[[footnotes]]
+page = "9"
+num = 33
+definition_starts = "Daly, Historia 21,2, 1972, 352."
+status = "intact"
+anchor_after = "scholar to the particular problems he observed as an official.“"
+
+[[footnotes]]
+page = "9"
+num = 34
+definition_starts = "Daly, Historia 21,2, 1972, 352."
+status = "intact"
+anchor_after = "bestimmte Probleme anzuwenden, um diese zu lösen."
+
+[[footnotes]]
+page = "28"
+num = 6
+definition_starts = "Stenger, Identität 117; damit stellt sich Themistios in die"
+status = "intact"
+anchor_after = "Ziel gewesen sei, „den Menschen einen praktischen Dienst zu erweisen“."
+
+[[footnotes]]
+page = "28"
+num = 7
+definition_starts = "Them. an. post. par. 1, 2–15."
+status = "intact"
+anchor_after = "sondern eher das Verständnis des Aristoteles erleichtern wolle."
+
+[[footnotes]]
+page = "28"
+num = 8
+definition_starts = "Schramm, Freundschaft 200."
+status = "intact"
+anchor_after = "an Gott (...) von der Ethik auf die Politik übertragen“."
+
+[[footnotes]]
+page = "28"
+num = 9
+# the raw text runs "ἐνταυθοῖμένειν" together where the page prints
+# "ἐνταυθοῖ μένειν" -- the snippet stops short of it rather than making an
+# extraction defect the thing every converter is measured against
+definition_starts = "Them. or. 22,265c: τούτους μὲν οὖν ἐατέον"
+status = "intact"
+anchor_after = "allein der Kaiser die homoiosis an Gott vollziehen."
+definition_ends = "zur Bedeutung der philanthropia in seinen Reden auf Valens s. Kap. IV."
+continues_on = "29"
+
+[[footnotes]]
+page = "29"
+num = 10
+# copied off the image, with the word spacing the page prints -- the textlayer
+# runs it together as "οὑτοσὶδὲὁἀνήρ". The snippet stops before the first
+# collision, so that it stays a key a correct converter can actually produce.
+definition_starts = "Dem. Const. 20a:"
+status = "intact"
+anchor_after = "sie statt dessen immer blühen und neu werden.10"
+
+[[footnotes]]
+page = "29"
+num = 11
+definition_starts = "Dagron, Travaux et mémoires 3, 1968, 59."
+status = "intact"
+anchor_after = "Themistios für den Kaiser einnahm, zeigen zu können."
+
+[[footnotes]]
+page = "29"
+num = 12
+definition_starts = "Dagron, Travaux et mémoires 3, 1968, 60: „Quelques passages sur"
+status = "intact"
+anchor_after = "darin polemische Anspielungen auf die Neuplatoniker."
+
+[[footnotes]]
+page = "29"
+num = 13
+definition_starts = "Dagron, Travaux et mémoires 3, 1968, 61."
+status = "intact"
+anchor_after = "von Konstantinopel eine „dignité ‚romaine‘“ geworden sei."
+
+[[footnotes]]
+page = "35"
+num = 42
+definition_starts = "Vgl. Athanassiadi/Frede, Pagan Monotheism; Al. Cameron, Last pagans."
+status = "intact"
+anchor_after = "Monotheismus auch in paganen Gottesvorstellungen nachweisen."
+
+[[footnotes]]
+page = "35"
+num = 43
+definition_starts = "Vgl. Elm, in: Baker-Brian/Tougher, Emperor and Author 3: „Recently"
+status = "intact"
+anchor_after = "nicht-christlicher Vorstellungen und deren Vertreter."
+
+[[footnotes]]
+page = "35"
+num = 44
+definition_starts = "Schorn, in: Baier, Legitimation 243–274; seine Studie bietet"
+status = "intact"
+anchor_after = "offen vor Constantius II. gehalten worden sei."
+
+[[footnotes]]
+page = "35"
+num = 45
+definition_starts = "ebenso: Drake, in: Baker-Brian/Tougher, Author and Emperor 42f.,"
+status = "intact"
+anchor_after = "Bringmann dagegen bezweifelt das"
+
+[[footnotes]]
+page = "35"
+num = 46
+definition_starts = "Bringmann, Julian 50f; Bringmann bezieht sich dabei auf"
+status = "intact"
+anchor_after = "Praktiken der Gottesverehrung streng vorgegangen sei."
+
+[[footnotes]]
+page = "35"
+num = 47
+definition_starts = "Bringmann, Julian 50–51."
+status = "intact"
+anchor_after = "Daher bezweifelt Bringmann, dass Julian diese Rede an Constantius adressiert habe."
+
+[[footnotes]]
+page = "57"
+num = 139
+definition_starts = "CTh 9,16,6 (5. Juli 358) (5. Juli 357 Seeck): Idem A. ad"
+status = "intact"
+anchor_after = "in Form der Konstitution 9,16,6 (5. Juli 358)."
+
+[[footnotes]]
+page = "57"
+num = 140
+definition_starts = "Fögen, Wahrsager 317."
+status = "intact"
+anchor_after = "den Kampf gegen alle Zeichendeuter."
+
+[[footnotes]]
+page = "57"
+num = 141
+definition_starts = "CTh 9,16,4 (25. Januar 357); Fögen, Wahrsager 317."
+status = "intact"
+anchor_after = "Auguren, Weissager, Chaldäer, Magier und die übrigen malefici.”"
+
+[[footnotes]]
+page = "57"
+num = 142
+definition_starts = "Amm. 29,2,4.: inde effectus est per orientales provincias, ut"
+status = "intact"
+anchor_after = "Ein solcher Schrecken hatte alle befallen."
+
+[[footnotes]]
+page = "57"
+num = 143
+definition_starts = "Amm. 29,1,41: deinde congesti innumeri codices et acerui voluminum"
+status = "intact"
+anchor_after = "Abhandlungen der freien Wissenschaften und der Rechtskunde."
+
+[[footnotes]]
+page = "70"
+num = 197
+definition_starts = "Aufgrund der Auswahl populärer Beispiele werden das die antiken Zuhörer"
+status = "intact"
+anchor_after = "antiken Sinn bräuchte, um ein guter Kaiser zu sein."
+
+[[footnotes]]
+page = "70"
+num = 198
+definition_starts = "Jul. caes. 333b–335a."
+status = "intact"
+anchor_after = "ausrufen lässt und damit zu dem gekrönten Philosophenkaiser erklärt."
+
+[[footnotes]]
+page = "70"
+num = 199
+definition_starts = "Heather/Moncur, Politics, Anm. 196, 195."
+status = "intact"
+anchor_after = "eines Erziehers, der nach Homer den jungen Achill erzogen habe."
+
+[[footnotes]]
+page = "70"
+num = 200
+definition_starts = "Athanassiadi-Fowden, Julian 121–160."
+status = "intact"
+anchor_after = "nach Einsicht und Kenntnis (ἐπιστήμη) zu erlangen."
+
+[[footnotes]]
+page = "163"
+num = 1
+definition_starts = "Errington, Chiron 30, 2000, 882; Omissi, Usurper 233."
+status = "intact"
+anchor_after = "gegenüber Prokop und seinen Anhängern als Terrorregime."
+
+[[footnotes]]
+page = "163"
+num = 2
+definition_starts = "Amm. 10,6–9; Zos. 4,8,4–5; Sokr. hist. eccl. 4,5;"
+status = "intact"
+anchor_after = "Darstellung bei Ammian, Zosimos und den nizänischen Kirchenhistorikern."
+
+[[footnotes]]
+page = "163"
+num = 3
+definition_starts = "Beispiele dafür s. Lenski, Valens 113; Demandt, Spätantike 145."
+status = "intact"
+anchor_after = "Urteil alles andere als ‚Milde‘ zugesprochen wird."
+
+[[footnotes]]
+page = "163"
+num = 4
+definition_starts = "Quellen für den Aufstand des Prokop: Amm. 26,5,8–10;"
+status = "intact"
+anchor_after = "Zuvor soll der Verlauf der Rebellion kurz umrissen werden."
+
+[[footnotes]]
+page = "163"
+num = 5
+definition_starts = "Amm. 26,6,18."
+definition_ends = "Amm. 26,6,18."   # the whole note; note 6 prints the same reference
+status = "intact"
+anchor_after = "mit der konstantinischen Dynastie stark hervor"
+
+[[footnotes]]
+page = "163"
+num = 6
+definition_starts = "Amm. 26,6,18."
+definition_ends = "Amm. 26,6,18."   # the whole note; word for word the same as note 5
+status = "intact"
+anchor_after = "und wurde am 28. September 365 zum Kaiser ausgerufen."
+
+[[footnotes]]
+page = "163"
+num = 7
+definition_starts = "Amm. 26,6–7."
+definition_ends = "Amm. 26,6–7."   # the whole note
+status = "intact"
+anchor_after = "Danach hat er schnell Thrakien und Bithynien"
+
+[[footnotes]]
+page = "175"
+num = 57
+# three collisions in one line -- "καὶἐῶμὲν", "καὶἩσίοδον", "καὶτοὺς" for
+# "καὶ ἐῶμεν", "καὶ Ἡσίοδον", "καὶ τοὺς". The reference alone identifies the note.
+definition_starts = "Them. or. 7,89d–90d:"
+status = "intact"
+anchor_after = "werden dann sie eingesetzt, um die Erde zu zerstören, wann immer sie erblüht."
+
+[[footnotes]]
+page = "183"
+num = 75
+definition_starts = "Them. or. 7,94b–95b: Περικλῆς μὲν οὖν ἐσεμνύνετο πρὸς Ἀθηναίους"
+status = "intact"
+anchor_after = "drohte er seinerseits ‚Wenn ich dich nicht zu meinem Freund mache!‘."
+
+[[footnotes]]
+page = "183"
+num = 76
+definition_starts = "Vgl.: Symm. or. 1,18: Probasti animum constantissimi ducis minus tibi"
+status = "intact"
+anchor_after = "als seine Kriegsgegner (τῶν πολεμησάντων (...) κρείττων)."
