@@ -64,6 +64,44 @@ def test_rates():
     assert res.silent_damage_rate == 0.25   # the lost one
 
 
+TWINS = loads_truth("""
+volume = "t"
+pages = ["163"]
+
+[[footnotes]]
+page = "163"
+num = 5
+anchor_after = "hob er seine Verwandtschaft hervor"
+definition_starts = "Amm. 26,6,18."
+definition_ends = "Amm. 26,6,18."
+status = "intact"
+
+[[footnotes]]
+page = "163"
+num = 6
+anchor_after = "zum Kaiser ausgerufen"
+definition_starts = "Amm. 26,6,18."
+definition_ends = "Amm. 26,6,18."
+status = "intact"
+""")
+
+TWIN_OUTPUT = """[p. 163] Prokop hob er seine Verwandtschaft hervor [^5] und wurde am
+28. September 365 zum Kaiser ausgerufen [^6] .
+
+[^5]: Amm. 26,6,18.
+
+[^6]: Amm. 26,6,18.
+"""
+
+
+def test_two_notes_printing_the_same_reference_are_told_apart_by_their_anchors():
+    # Themistios p. 163 prints "Amm. 26,6,18." twice, as notes 5 and 6. No
+    # snippet can separate them, so the first matching definition is the wrong
+    # answer for one of the two -- the anchor has to decide which is which.
+    res = evaluate_anchors(TWINS, parse_prepared(TWIN_OUTPUT))
+    assert [o.status for o in res.outcomes] == ["anchored_exact", "anchored_exact"]
+
+
 def test_misanchored_when_anchor_on_wrong_page():
     bad = OUTPUT.replace("at its end. [^2]", "at its end.").replace(
         "carries a note [^1]", "carries a note [^1] [^2]")

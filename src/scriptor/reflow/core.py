@@ -121,9 +121,13 @@ def parse_page(
     page_num = -1  # provisional; reconcile_page_numbers sets num and label
 
     # Footnote block: starting at the first line that begins with "NN)".
-    # Only consulted where the geometry could not answer the question itself.
+    # Only consulted where the geometry could not answer the question itself —
+    # and a cut block answers it just as much as an empty one does. Running the
+    # convention over a body the geometry already separated would let a
+    # numbered list ("1) …") swallow the page from its first item on, which is
+    # exactly the defect the empty case was fixed for.
     fn_start = None
-    if not (geometry_verified and fn_block is None):
+    if not geometry_verified:
         for i, ln in enumerate(lines):
             if FOOTNOTE_RE.match(ln):
                 fn_start = i

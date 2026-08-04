@@ -236,6 +236,19 @@ def test_short_definition_is_reported():
     assert any("definition_starts" in p for p in res.problems)
 
 
+def test_a_note_that_is_short_because_it_ends_there_is_accepted():
+    # Bauer p. 63 prints "178 A.a.O., S. 21." and nothing more. Demanding more
+    # characters than the page holds would make a correct truth unacceptable;
+    # recording where the note ends is what says it was copied whole.
+    short = _GOOD.replace(
+        'definition_starts = "A note long enough to be found"',
+        'definition_starts = "A.a.O., S. 21."\n'
+        'definition_ends = "A.a.O., S. 21."',
+    )
+    res = check_truth(loads_truth(short), loads_selection(_SEL_CHECK), short)
+    assert res.ok, res.problems
+
+
 def test_duplicate_page_and_number_is_reported():
     bad = _GOOD + '''
 [[footnotes]]

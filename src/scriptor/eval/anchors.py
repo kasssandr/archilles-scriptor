@@ -26,11 +26,35 @@ class AnchorResult:
 
 
 def _find_definition(doc: ParsedDoc, truth: TruthFootnote) -> DocFootnote | None:
+    """The note in the output this truth entry speaks about.
+
+    A snippet is a search key, not an identity. A volume may print the same
+    reference twice on one page -- Themistios p. 163 sets "Amm. 26,6,18." as
+    note 5 and again as note 6 -- and then the opening text cannot tell them
+    apart no matter how much of it is copied. Where several definitions match,
+    the anchor decides: the note meant here is the one whose marker sits just
+    behind `anchor_after`. Returning the first match instead would score one
+    of the twins as misanchored against a converter that placed both right.
+    """
     prefix = normalize(truth.definition_starts)
-    for fn in doc.footnotes:
-        if normalize(fn.definition).startswith(prefix):
-            return fn
-    return None
+    candidates = [
+        fn for fn in doc.footnotes if normalize(fn.definition).startswith(prefix)
+    ]
+    if len(candidates) <= 1:
+        return candidates[0] if candidates else None
+    if truth.anchor_after:
+        span = find_snippet(doc.body, truth.anchor_after)
+        if span is not None:
+            anchored = [fn for fn in candidates if fn.anchor_offset is not None]
+            if anchored:
+                # Behind the snippet beats in front of it, then proximity: a
+                # marker before its own anchor text belongs to another note.
+                return min(
+                    anchored,
+                    key=lambda fn: (fn.anchor_offset < span[1],
+                                    abs(fn.anchor_offset - span[1])),
+                )
+    return candidates[0]
 
 
 def _status(doc: ParsedDoc, t: TruthFootnote) -> str:

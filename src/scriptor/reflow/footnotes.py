@@ -19,6 +19,10 @@ FOOTNOTE_RE = re.compile(r"^(\d{1,3})\)\s?(.*)$")
 # in running prose (enumerations, years) to trust on bare text: it is only
 # applied inside a block the page geometry has already verified as small type.
 FOOTNOTE_DOT_RE = re.compile(r"^(\d{1,3})\.\s+(\S.*)$")
+# "NN Text…" — a superscript number the extractor flattened, with nothing but a
+# space after it. Requires the space, so a continuation line opening with
+# "27, S. 53." or "2017, S. 41" is not mistaken for a definition.
+FOOTNOTE_SPACE_RE = re.compile(r"^(\d{1,3})\s+(\S.*)$")
 # Marker in the finished body: already replaced with [NN] — recognised during reflow.
 PLACED_MARKER_RE = re.compile(r"\[(\d{1,3})\]")
 
@@ -32,8 +36,18 @@ SUPERSCRIPT_DIGITS = str.maketrans({
 
 
 def match_definition(line: str) -> re.Match | None:
-    """Definition start inside a size-verified footnote block: "NN)" or "NN."."""
-    return FOOTNOTE_RE.match(line) or FOOTNOTE_DOT_RE.match(line)
+    """Definition start inside a size-verified footnote block.
+
+    Three print conventions: "NN)", "NN." and a bare "NN " — the last one is
+    what a superscript number extracts to when the publisher sets no
+    punctuation after it (Nomos, De Gruyter). It is the loosest of the three
+    and is only ever consulted inside a block the geometry has already
+    verified as small type; on bare running text it would match any sentence
+    that opens with a number.
+    """
+    return (FOOTNOTE_RE.match(line)
+            or FOOTNOTE_DOT_RE.match(line)
+            or FOOTNOTE_SPACE_RE.match(line))
 
 
 # A footnote block is set measurably smaller than the body. OCR text layers
@@ -41,6 +55,10 @@ def match_definition(line: str) -> re.Match | None:
 # hold before a line counts as small (Zuckerman: 7.5pt against 9.0pt body).
 SMALL_TYPE_MIN_DELTA = 1.0    # points below the body size
 SMALL_TYPE_MAX_RATIO = 0.92   # fraction of the body size
+# A running head, a folio or a download watermark below the apparatus is
+# short. Body-sized prose of any length under a small run means the run was
+# a set-off quotation, not the footnote block.
+FURNITURE_MAX_CHARS = 30
 
 
 @dataclass
@@ -92,38 +110,62 @@ def split_small_type_block(
     if body_size is None:
         return None
 
-    def small(i: int) -> bool:
-        s = sizes[i]
+    def small_size(s: float | None) -> bool:
         return (
             s is not None
             and body_size - s >= SMALL_TYPE_MIN_DELTA
             and s <= body_size * SMALL_TYPE_MAX_RATIO
         )
 
+    def small(i: int) -> bool:
+        return small_size(sizes[i])
+
     # Peel bare page labels (and blank lines) off the very bottom; they sit
     # below the footnote block and belong to the body for label detection.
-    end = len(lines)
+    bottom = len(lines)
     tail: list[str] = []
-    while end > 0 and (
-        not lines[end - 1].strip() or detect_page_label(lines[end - 1]) is not None
+    while bottom > 0 and (
+        not lines[bottom - 1].strip()
+        or detect_page_label(lines[bottom - 1]) is not None
     ):
-        tail.insert(0, lines[end - 1])
-        end -= 1
+        tail.insert(0, lines[bottom - 1])
+        bottom -= 1
 
-    start = end
-    while start > 0 and small(start - 1):
-        start -= 1
-    if start == end:
-        return None
-    if start == 0:
-        # The whole page is small type: without body lines above, this could
-        # as well be a small-set contents page or preface whose "N. Title"
-        # lines would be swallowed as definitions. Too risky — leave it.
-        return None
+    # Then work upwards through the runs of small type until one holds a
+    # definition. Peeling folios alone is not enough: what sits below the
+    # apparatus varies by publisher — a running head, a download watermark —
+    # and any one of them would otherwise mask the block behind it.
+    end = bottom
+    while True:
+        while end > 0 and not small(end - 1):
+            end -= 1
+        if end == 0:
+            return None
+        start = end
+        while start > 0 and small(start - 1):
+            start -= 1
+        if start == 0:
+            # The whole page is small type: without body lines above, this could
+            # as well be a small-set contents page or preface whose "N. Title"
+            # lines would be swallowed as definitions. Too risky — leave it.
+            return None
+        if any(match_definition(lines[i]) for i in range(start, end)):
+            break
+        end = start          # this run carries no definition; look further up
+
+    # Below the block there may be page furniture, but never running text: a
+    # small run with body-sized prose underneath it is a set-off quotation in
+    # the middle of the page, not the apparatus at its foot.
+    for i in range(end, bottom):
+        if not small(i) and len(lines[i].strip()) > FURNITURE_MAX_CHARS:
+            return None
+
     notes = lines[start:end]
     if not any(match_definition(ln) for ln in notes):
         return None
-    return SmallTypeSplit(body=lines[:start] + tail, notes=notes, split_at=start)
+    return SmallTypeSplit(
+        body=lines[:start] + lines[end:bottom] + tail, notes=notes, split_at=start
+    )
 
 
 def substitute_markers(body_lines: list[str], footnotes: dict[int, str]) -> list[str]:

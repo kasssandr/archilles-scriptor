@@ -17,6 +17,10 @@
   ],
   "targeted": [
     {
+      "page": 32,
+      "reason": "receiving page: carries the continuation of note 39, which begins on sampled p. 31, plus its own notes"
+    },
+    {
       "page": 88,
       "reason": "operator marked a note running over onto p. 89"
     },

@@ -28,28 +28,35 @@
 # A selected page carrying no footnote at all goes into `empty_pages`.
 
 volume = "bauer-aneignung"
-pages = ["88", "89"]
+pages = [
+  "31", "32", "35", "63", "71", "76", "88", "89", "90", "106", "107",
+  "111", "112", "126", "127", "133", "137", "138", "144",
+]
 empty_pages = []
 
+# Every printed folio in this volume equals its physical page; the catalogue is
+# off by one throughout and is therefore no help here. Read off the foot of the
+# page, where Nomos sets the folio at 10.25pt below the apparatus.
 [physical_pages]
-# "" = 31   # p031.png, catalogue says "30"
-# "" = 35   # p035.png, catalogue says "34"
-# "" = 63   # p063.png, catalogue says "62"
-# "" = 71   # p071.png, catalogue says "70"
-# "" = 76   # p076.png, catalogue says "75"
-# "" = 90   # p090.png, catalogue says "89"
-# "" = 133   # p133.png, catalogue says "132"
-# "" = 144   # p144.png, catalogue says "143"
+"31" = 31   # p031.png, catalogue says "30"
+"32" = 32   # p032.png, catalogue says "31" -- receiving page: carries the continuation of note 39, which begins on p. 31, plus its own notes
+"35" = 35   # p035.png, catalogue says "34"
+"63" = 63   # p063.png, catalogue says "62"
+"71" = 71   # p071.png, catalogue says "70"
+"76" = 76   # p076.png, catalogue says "75"
 "88" = 88   # p088.png, catalogue says "87" -- operator marked a note running over onto p. 89
 "89" = 89   # p089.png, catalogue says "88" -- receiving page: carries the continuation of the note that begins on p. 88, plus its own notes
-# "" = 106   # p106.png, catalogue says "105" -- operator marked a note running over onto p. 107
-# "" = 107   # p107.png, catalogue says "106" -- receiving page: carries the continuation of the note that begins on p. 106, plus its own notes
-# "" = 111   # p111.png, catalogue says "110" -- operator marked a note running over onto p. 112
-# "" = 112   # p112.png, catalogue says "111" -- receiving page: carries the continuation of the note that begins on p. 111, plus its own notes
-# "" = 126   # p126.png, catalogue says "125" -- operator marked a note running over onto p. 127
-# "" = 127   # p127.png, catalogue says "126" -- receiving page: carries the continuation of the note that begins on p. 126, plus its own notes
-# "" = 137   # p137.png, catalogue says "136" -- operator marked a note running over onto p. 138
-# "" = 138   # p138.png, catalogue says "137" -- receiving page: carries the continuation of the note that begins on p. 137, plus its own notes
+"90" = 90   # p090.png, catalogue says "89"
+"106" = 106   # p106.png, catalogue says "105" -- operator marked a note running over onto p. 107
+"107" = 107   # p107.png, catalogue says "106" -- receiving page: carries the continuation of the note that begins on p. 106, plus its own notes
+"111" = 111   # p111.png, catalogue says "110" -- operator marked a note running over onto p. 112
+"112" = 112   # p112.png, catalogue says "111" -- receiving page: carries the continuation of the note that begins on p. 111, plus its own notes
+"126" = 126   # p126.png, catalogue says "125" -- operator marked a note running over onto p. 127
+"127" = 127   # p127.png, catalogue says "126" -- receiving page: carries the continuation of the note that begins on p. 126, plus its own notes
+"133" = 133   # p133.png, catalogue says "132"
+"137" = 137   # p137.png, catalogue says "136" -- operator marked a note running over onto p. 138
+"138" = 138   # p138.png, catalogue says "137" -- receiving page: carries the continuation of the note that begins on p. 137, plus its own notes
+"144" = 144   # p144.png, catalogue says "143"
 
 # Copy this block per footnote and remove the leading '# ':
 # [[footnotes]]
@@ -58,6 +65,146 @@ empty_pages = []
 # definition_starts = ""
 # status = "intact"
 # anchor_after = ""
+
+
+[[footnotes]]
+page = "31"
+num = 37
+definition_starts = "Appropriation und Eigentum sind nicht gleichzusetzen:"
+status = "intact"
+anchor_after = "als sozialer Prozess betrachtet."
+
+[[footnotes]]
+page = "31"
+num = 38
+definition_starts = "Zum Begriff und ausführlich zur Debatte"
+status = "intact"
+anchor_after = "Begriff der cultural appropriation"
+
+[[footnotes]]
+page = "31"
+num = 39
+definition_starts = "Dt.: Überlegenheit der Weißen;"
+status = "intact"
+anchor_after = "Debatten um die white supremacy"
+definition_ends = "Cornell Law Review 74 (1989), S. 993 ff."
+continues_on = "32"
+
+[[footnotes]]
+page = "32"
+num = 40
+definition_starts = "Ein Beispiel von kultureller Aneignung"
+status = "intact"
+anchor_after = "Macht über diese anderen Kulturen"
+
+[[footnotes]]
+page = "32"
+num = 41
+definition_starts = "Vgl. S. 33 ff."
+# the whole note, start to finish -- there is no more of it on the page
+definition_ends = "Vgl. S. 33 ff."
+status = "intact"
+anchor_after = "im nächsten Kapitel vorgestellt."
+
+[[footnotes]]
+page = "35"
+num = 46
+definition_starts = "Brinkmann, Formen der Kopie."
+status = "intact"
+anchor_after = "oder Wiederholung einer Vorlage."
+
+[[footnotes]]
+page = "35"
+num = 47
+definition_starts = "Mensger, Kontexte, Motive"
+status = "intact"
+anchor_after = "ein künstlerisches Prinzip."
+
+[[footnotes]]
+page = "35"
+num = 48
+definition_starts = "Roos/Mensger, Giorgio"
+status = "intact"
+anchor_after = "Schleifen durch Wiederholungen."
+
+[[footnotes]]
+page = "35"
+num = 49
+definition_starts = "Dazu auch bereits S. 28."
+status = "intact"
+anchor_after = "die Selbstaneignung jedoch nicht."
+
+[[footnotes]]
+page = "63"
+num = 176
+definition_starts = "Graham v. Prince, Memorandum"
+status = "intact"
+anchor_after = "das düstere Schwarzweißfoto von Graham."
+
+[[footnotes]]
+page = "63"
+num = 177
+definition_starts = "A.a.O., S. 3 und 16."
+status = "intact"
+anchor_after = "„likes“ und „comments“ zu erhalten."
+
+[[footnotes]]
+page = "63"
+num = 178
+definition_starts = "A.a.O., S. 21."
+definition_ends = "A.a.O., S. 21."   # the whole note
+status = "intact"
+anchor_after = "Substitut des ursprünglichen Werkes von dar."
+
+[[footnotes]]
+page = "63"
+num = 179
+definition_starts = "Graham v. Prince, Opinion"
+status = "intact"
+anchor_after = "eine Urheberrechtsverletzung vorliege."
+
+[[footnotes]]
+page = "63"
+num = 180
+definition_starts = "A.a.O., S. 19 f."
+status = "intact"
+anchor_after = "hätte anerkannt werden können."
+
+[[footnotes]]
+page = "63"
+num = 181
+definition_starts = "A.a.O., S. 24."
+definition_ends = "A.a.O., S. 24."   # the whole note
+status = "intact"
+anchor_after = "seinen potenziellen Markt beeinträchtigen."
+
+[[footnotes]]
+page = "71"
+num = 203
+definition_starts = "Ein Posting oder Post meint einen"
+status = "intact"
+anchor_after = "gespeichert werden und als selbständiges Posting"
+
+[[footnotes]]
+page = "71"
+num = 204
+definition_starts = "Diese Funktion, fremde Inhalte zu teilen, ist"
+status = "intact"
+anchor_after = "häufig in soziale Netzwerke eingebettet ist."
+
+[[footnotes]]
+page = "71"
+num = 205
+definition_starts = "Der Begriff des Framing oder Frame-Links wird"
+status = "intact"
+anchor_after = "Diese stellt einen Frame-Link her."
+
+[[footnotes]]
+page = "76"
+num = 230
+definition_starts = "Der Medienwissenschaftler Wershler sieht Memes"
+status = "intact"
+anchor_after = "Parodie oder Hommage vorliegen."
 
 # ---------------------------------------------------------------- p088 ----
 # Worked example. Page 88 prints six notes, numbered 275-280 running through
@@ -148,3 +295,368 @@ num = 284
 definition_starts = "Ullrich, Raffinierte Kunst. Übung vor Reproduktionen"
 status = "intact"
 anchor_after = "dann nicht mehr notwendig."
+
+[[footnotes]]
+page = "90"
+num = 285
+definition_starts = "So Almeroth, Kunst- und Antiquitätenfälschungen,"
+status = "intact"
+anchor_after = "und nicht mehr allein die Kirche"
+
+[[footnotes]]
+page = "90"
+num = 286
+definition_starts = "Gebauer/Wulf, Mimesis. Kultur, Kunst, Gesellschaft,"
+status = "intact"
+anchor_after = "Produktion von Kunst zu halten hatte."
+
+[[footnotes]]
+page = "90"
+num = 287
+definition_starts = "Stoschek, Anfänge der vervielfältigten Kunst und"
+status = "intact"
+anchor_after = "zwischen Künstlergraphik und Reproduktionsgraphik unterschieden."
+
+[[footnotes]]
+page = "90"
+num = 288
+definition_starts = "Die Sammelleidenschaft begann zunächst mit sog."
+status = "intact"
+anchor_after = "entstand auch eine Sammelleidenschaft"
+
+[[footnotes]]
+page = "106"
+num = 354
+definition_starts = "Han, Im Schwarm. Ansichten des Digitalen,"
+status = "intact"
+anchor_after = "ständig Bilder produziert und transformiert"
+
+[[footnotes]]
+page = "106"
+num = 355
+definition_starts = "Weibel, Ortlosigkeit und Bilderfülle. Auf"
+status = "intact"
+anchor_after = "zum anderen körperlos und materiallos zu transferieren.“"
+
+[[footnotes]]
+page = "106"
+num = 356
+definition_starts = "Burda, In media res. Zehn Kapitel zum Iconic Turn, 2010, S. 18 ff."
+status = "intact"
+anchor_after = "Digitalisierung durch Fernsehen und Internet,"
+
+[[footnotes]]
+page = "106"
+num = 357
+definition_starts = "Weibel, Ortlosigkeit und Bilderfülle. Auf dem Weg"
+status = "intact"
+anchor_after = "Einheit von Raum und Zeit zerstört."
+
+[[footnotes]]
+page = "106"
+num = 358
+definition_starts = "Burda, In media res. Zehn Kapitel zum Iconic Turn, 2010, S. 59."
+status = "intact"
+anchor_after = "visuelle Kommunikation in den Vordergrund gerückt."
+definition_ends = "Es ist daher mit vielen neuen wissenschaftlichen Beiträgen zu diesem Thema zu rechnen."
+continues_on = "107"
+
+[[footnotes]]
+page = "107"
+num = 359
+definition_starts = "Klass, Werkgenuss und Werknutzung in der digitalen Welt:"
+status = "intact"
+anchor_after = "die Umgestaltung und Kombination von Werken erheblich"
+
+[[footnotes]]
+page = "107"
+num = 360
+definition_starts = "Zur Begriffsdefinition vgl. S. 70."
+status = "intact"
+anchor_after = "werden. Maßgeblich sind soziale Netzwerke"
+
+[[footnotes]]
+page = "107"
+num = 361
+definition_starts = "Schmidt, Social Media, 2013, S. 26."
+status = "intact"
+anchor_after = "können Nutzer ihre eigene, persönliche Öffentlichkeit schaffen"
+
+[[footnotes]]
+page = "111"
+num = 374
+definition_starts = "Henry Jenkins prägte in Bezug auf die Digitalkultur"
+status = "intact"
+anchor_after = "durch eine produktive und partizipative"
+
+[[footnotes]]
+page = "111"
+num = 375
+definition_starts = "Wobei es sich bei Bildern nicht um Remixe, sondern"
+status = "intact"
+anchor_after = "auch für das Bild im Digitalen eine Remixkultur"
+
+[[footnotes]]
+page = "111"
+num = 376
+definition_starts = "Lessig, Remix. Making Art and Commerce Thrive in"
+status = "intact"
+anchor_after = "Der Begriff der Remixkultur geht zurück auf Lawrence Lessig"
+
+[[footnotes]]
+page = "111"
+num = 377
+definition_starts = "Ders., a.a.O., S. 28."
+status = "intact"
+anchor_after = "wenig gelebt, Kultur wird simpel konsumiert."
+
+[[footnotes]]
+page = "111"
+num = 378
+definition_starts = "Ders., a.a.O., S. 38."
+status = "intact"
+anchor_after = "„What before was both impossible and illegal is now just illegal.“"
+
+[[footnotes]]
+page = "111"
+num = 379
+definition_starts = "Definition nach Lessig: „ordinary citizen ‚read‘ their culture"
+status = "intact"
+anchor_after = "Ansonsten dominiert im Digitalen allerdings die RW-Kultur."
+definition_ends = "Commerce Thrive in the Hybrid Economy, 2008, S. 28."
+continues_on = "112"
+
+[[footnotes]]
+page = "112"
+num = 380
+definition_starts = "Kreutzer, Remix-Culture und Urheberrecht, in: Djordjevic/Dobusch"
+status = "intact"
+anchor_after = "Die Grenzen zwischen Urheber und Nutzer verschwimmen."
+
+[[footnotes]]
+page = "112"
+num = 381
+definition_starts = "Ders., a.a.O., S. 56."
+status = "intact"
+anchor_after = "diese Werke komplementär zueinander stehen, nicht kompetitiv."
+
+[[footnotes]]
+page = "112"
+num = 382
+definition_starts = "Begriff nach Dreier, Bilder im Zeitalter ihrer"
+status = "intact"
+anchor_after = "im Digitalen geht daher häufig eine Geste des Zeigens"
+
+[[footnotes]]
+page = "112"
+num = 383
+definition_starts = "Nach Han beendet die digitale Fotografie die Zeit der"
+status = "intact"
+anchor_after = "das habe ich gefunden, und damit sage ich etwas über x aus."
+
+[[footnotes]]
+page = "126"
+num = 429
+definition_starts = "Schack, Kunst und Recht, 3. Aufl. 2017, Rn. 224."
+status = "intact"
+anchor_after = "hieran, da kein menschlicher Schöpfungsakt vorläge"
+
+[[footnotes]]
+page = "126"
+num = 430
+definition_starts = "Ders., a.a.O., Rn. 15."
+status = "intact"
+anchor_after = "Gestaltung des Schutzgegenstandes vonnöten wäre."
+
+[[footnotes]]
+page = "126"
+num = 431
+definition_starts = "Maaßen, Plagiat, freie Benutzung oder Kunstzitat? Erscheinungsformen"
+status = "intact"
+anchor_after = "wenn etwas noch nicht da Gewesenes geschaffen worden sei."
+
+[[footnotes]]
+page = "126"
+num = 432
+definition_starts = "Schack, Kunst und Recht, 3. Aufl. 2017, Rn 16.; P. Raue,"
+status = "intact"
+anchor_after = "Kombination mehrerer Alltagsgegenstände zu einem Kunstwerk"
+
+[[footnotes]]
+page = "126"
+num = 433
+definition_starts = "Eine solche Kombination stellt jedoch nicht im engeren Sinne"
+status = "intact"
+anchor_after = "Fahrradsattel, der den Schädel darstellt."
+
+[[footnotes]]
+page = "126"
+num = 434
+definition_starts = "„Fountain (after Marcel Duchamp)“ von 1991. Durch"
+status = "intact"
+anchor_after = "Duchamp, die Sherrie Levine geschaffen hat"
+
+[[footnotes]]
+page = "126"
+num = 435
+definition_starts = "Es handelt sich dabei auch nicht um eine Bearbeitung oder"
+status = "intact"
+anchor_after = "hochwertiges Einzelstück. Es ist damit urheberrechtlich geschützt."
+definition_ends = "des § 23 oder § 24 UrhG genutzt werden kann."
+continues_on = "127"
+
+[[footnotes]]
+page = "127"
+num = 436
+definition_starts = "Kummer, Das urheberrechtlich schützbare Werk, 1968, S. 43:"
+status = "intact"
+anchor_after = "und Präsentation eines Gegenstandes liegen kann."
+
+[[footnotes]]
+page = "127"
+num = 437
+definition_starts = "Kehrli, Der urheberrechtliche Werkbegriff im Bereich der bildenden"
+status = "intact"
+anchor_after = "Präsentation einen innovativen Charakter erhält."
+
+[[footnotes]]
+page = "127"
+num = 438
+definition_starts = "Dreier/Schulze/Schulze, 6. Aufl. 2018, § 2 UrhG Rn. 154."
+status = "intact"
+anchor_after = "völlig neue Bedeutung, einen innovativen Charakter erhält."
+
+[[footnotes]]
+page = "127"
+num = 439
+definition_starts = "Haberstumpf, Nichtgegenständliche Werke im Urheberrecht, in: FS"
+status = "intact"
+anchor_after = "Haberstumpf spricht von einem Akt der Sinngebung"
+
+[[footnotes]]
+page = "133"
+num = 461
+definition_starts = "Dreier/Schulze/Schulze, 6. Aufl. 2018, § 72 UrhG Rn. 16."
+status = "intact"
+anchor_after = "aller Fotografien meist gleich ausgestaltet ist."
+
+[[footnotes]]
+page = "133"
+num = 462
+definition_starts = "Oder, wenn seine erste erlaubte öffentliche Wiedergabe"
+status = "intact"
+anchor_after = "50 Jahre nach Erscheinen des Lichtbildes"
+
+[[footnotes]]
+page = "133"
+num = 463
+definition_starts = "BGH GRUR 2019, S. 284, 287 Rn. 24 ff., 30 – Museumsfotos;"
+status = "intact"
+anchor_after = "handwerklich-technischen Leistung Lichtbildschutz genießen."
+
+[[footnotes]]
+page = "133"
+num = 464
+definition_starts = "Vgl. zu dieser Unterscheidung von abgebildetem Objekt,"
+status = "intact"
+anchor_after = "materielle Abbild als Reproduktion geschützt ist."
+
+[[footnotes]]
+page = "133"
+num = 465
+definition_starts = "Dreier/Schulze/Schulze, 6. Aufl. 2018, § 72 UrhG Rn. 5."
+status = "intact"
+anchor_after = "Laufbildschutz als Lichtbilder geschützt."
+
+[[footnotes]]
+page = "137"
+num = 478
+definition_starts = "So auch Huttenlauch, Appropriation Art. Kunst an den"
+status = "intact"
+anchor_after = "Werkes damit explizit ausgeschlossen."
+
+[[footnotes]]
+page = "137"
+num = 479
+definition_starts = "Ziegler, Urheberrechtsverletzungen durch Social Sharing, 2016, S. 138."
+status = "intact"
+anchor_after = "Verletzung des Namensnennungsrecht anzunehmen ist."
+
+[[footnotes]]
+page = "137"
+num = 480
+definition_starts = "Dies., a.a.O., S. 139; Ott, Urheber- und wettbewerbsrechtliche"
+status = "intact"
+anchor_after = "daher der Name des Urhebers nicht genannt werden."
+
+[[footnotes]]
+page = "137"
+num = 481
+definition_starts = "Vgl. Ott, Urheber- und wettbewerbsrechtliche Probleme von"
+status = "intact"
+anchor_after = "hier häufig eine Verletzung von § 13 UrhG in Betracht."
+definition_ends = "Urheberrechtsverletzungen durch Social Sharing, 2016, S. 140."
+continues_on = "138"
+
+[[footnotes]]
+page = "138"
+num = 482
+definition_starts = "Schack, Urheberrechtliche Gestaltung von Webseiten unter Einsatz"
+status = "intact"
+anchor_after = "die URL gewechselt wird, wenn der fremde Inhalt angeklickt wird."
+
+[[footnotes]]
+page = "138"
+num = 483
+definition_starts = "Ott, Urheber- und wettbewerbsrechtliche Probleme von Linking"
+status = "intact"
+anchor_after = "dazugehörige Textdatei, die die Urheberbezeichnung enthält."
+
+[[footnotes]]
+page = "138"
+num = 484
+definition_starts = "Ziegler, Urheberrechtsverletzungen durch Social Sharing, 2016, S. 141."
+status = "intact"
+anchor_after = "der Rechteinhaber auch nicht genannt wird."
+
+[[footnotes]]
+page = "138"
+num = 485
+definition_starts = "Fahl, Die Bilder-und Nachrichtensuche im Internet. Urheber-,"
+status = "intact"
+anchor_after = "hier nicht verkehrsüblich und daher nicht notwendig sei."
+
+[[footnotes]]
+page = "138"
+num = 486
+definition_starts = "Schricker/Loewenheim/Dietz/Spindler, 5. Aufl. 2017, § 63 UrhG Rn. 1."
+status = "intact"
+anchor_after = "Urheberbenennungsrecht aus § 13 UrhG weiterhin zu wahren ist."
+
+[[footnotes]]
+page = "144"
+num = 511
+definition_starts = "BGH GRUR 2014, S. 65, 70 – Beuys-Aktion; BGH GRUR 1963, S. 441,"
+status = "intact"
+anchor_after = "§ 23 UrhG auch eine Vervielfältigung gem. § 16 UrhG beinhaltet."
+
+[[footnotes]]
+page = "144"
+num = 512
+definition_starts = "So Dreier/Schulze/Schulze, 6. Aufl. 2018, § 16 UrhG Rn. 5"
+status = "intact"
+anchor_after = "auch ohne Erlaubnis des Urhebers möglich ist."
+
+[[footnotes]]
+page = "144"
+num = 513
+definition_starts = "Schricker/Loewenheim/Loewenheim, 5. Aufl. 2017, § 16 Rn. 5."
+status = "intact"
+anchor_after = "da § 23 UrhG auch nicht-schöpferische Umgestaltungen umfasst."
+
+[[footnotes]]
+page = "144"
+num = 514
+definition_starts = "Fischer, Digitale Kunst und freie Benutzung, 2018, S. 54."
+status = "intact"
+anchor_after = "besitzen, wie Änderungen des Formats oder der Größe."

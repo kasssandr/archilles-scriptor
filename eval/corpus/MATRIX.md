@@ -49,9 +49,11 @@ Record the evidence in `source.json`.
 Bauer, Eva-Maria: *Die Aneignung von Bildern*. Nomos.
 doi:10.5771/9783748909576 · CC-BY-4.0 (stated on PDF p. 4) · 348 pages.
 
-18 pages selected: 8 drawn at seed 42 from the body range 19–324, plus 5
+19 pages selected: 8 drawn at seed 42 from the body range 19–324, plus 5
 pages the operator had marked in the PDF as carrying page-crossing notes —
-**and the 5 receiving pages that follow them**.
+**and the receiving pages that follow them**. There are 6 of those, not 5: a
+sixth overrun sits on drawn page 31, which the operator found while authoring
+it, so p032 was added as well.
 
 The receiving pages were an afterthought that turned out to be the point. A
 note that breaks off on p. 88 and resumes on p. 89 cannot be measured from
@@ -59,7 +61,10 @@ p. 88 alone: whether a converter appends the continuation or files it as a
 separate note is only visible on the page that receives it. Row 3 without
 receiving pages records the phenomenon without being able to test it.
 
-Page 88 is authored as a worked example; the remaining 17 pages are open.
+**Authored and accepted**: 80 notes over 19 pages, 6 of them running over onto
+the following page. Every snippet was checked back against the raw textlayer —
+each definition follows its own number, each anchor stands on its own page, no
+note in the apparatus was missed.
 
 Two things this volume established:
 
@@ -87,13 +92,34 @@ Mehr, Simone: *Ganz Rhetor, ganz Philosoph. Themistios als Lobredner auf
 Valens*. De Gruyter. doi:10.1515/9783111013244 · CC-BY-NC-ND-4.0 (stated on
 PDF p. 5, so `restricted`) · 273 pages · 8.559 polytonic characters.
 
-10 pages selected: 8 drawn at seed 42 from the body range 15–265, plus the two
-densest Greek pages (190 and 198).
+11 pages selected: 8 drawn at seed 42 from the body range 15–265, plus the two
+densest Greek pages (190 and 198) and p044, which receives an overrunning note.
+One of the drawn pages, p041, turned out to be a blank verso between chapters
+I and II and was replaced by p024 (replacement seed 43, first free page
+carrying text) — a page with no text has no printed number either, and nothing
+for a footnote benchmark to measure.
 
 What this volume established:
 
 - **No catalogue labels at all**, on any of its 273 pages — the third volume in
   a row where the PDF catalogue cannot answer what is printed.
+- **The numbers in the apparatus are not digits.** De Gruyter's house font sets
+  them as private-use glyphs, `U+F131 U+F135` where the page prints 15, with no
+  space between number and text. No regex over `\d` will find a definition
+  here, and neither will any of Scriptor's three print conventions.
+- **Quotations are set in the same size as the notes.** Both are 8.0pt against
+  a 9.5pt body; only the indent separates them, about 17 points. On p077 such a
+  quotation stands at the foot of the page with nothing below it — exactly
+  where the apparatus is expected — and that page carries no note at all. Type
+  size alone decides this page wrongly; what saves it today is only that no
+  line of the quotation opens with a number.
+- **A chapter opening prints no page number.** p178 opens chapter V, where the
+  running head is suppressed, so its label 163 is carried on silently. It is
+  the one label in this band that was inferred rather than read, kept
+  deliberately: a converter has to keep counting here rather than read.
+- **Two notes on p178 are word for word identical** (`Amm. 26,6,18.`, notes 5
+  and 6). No snippet can tell them apart, which is a problem for the metric,
+  not for the truth — see `anchors.py:_find_definition`.
 - **Extraction drops spaces between Greek words.** On p. 190 the textlayer
   reads `καὶἐῶμὲν Ὅμηρον καὶἩσίοδον`, where the page prints `καὶ ἐῶμεν Ὅμηρον
   καὶ Ἡσίοδον`. Anyone copying definition text out of `pNNN.txt` would carry

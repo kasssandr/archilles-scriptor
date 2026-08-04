@@ -229,3 +229,122 @@ def test_the_bare_regex_still_serves_pages_without_geometry():
     # The TXT path has no sizes to consult; there the convention is all we have.
     pg = parse_page("\n".join(_LIST_PAGE_LINES))
     assert set(pg.footnotes) == {1, 2}
+
+
+# ----------------------------------------------------------------------
+# The "NN Text" convention, and what sits below the block
+# ----------------------------------------------------------------------
+# Bauer (Nomos) prints its definitions as a superscript number followed by a
+# space -- no bracket, no full stop -- and sets the folio and a publisher
+# watermark below the footnote block. Neither the convention nor the trailing
+# furniture was handled, so on that volume the geometry cut no block at all on
+# any of its 348 pages.
+#
+# The running head belongs at the *top* of the page, measured: on p. 88 it sits
+# at baseline 47.6 of a 643pt page, above the body. It only reads as trailing
+# furniture in raw `get_text()` output, because Nomos writes it near the end of
+# the content stream -- which is also what a reader sees when copying the page
+# with the cursor. Reflow never sees that order: `reconstruct` sorts by
+# baseline, so these fixtures carry the printed order, not the stream order.
+
+_BAUER_BODY = [
+    "ter traf die Entscheidungen bezueglich der Komposition und der Motive,",
+    "die Schueler fuehrten die einzelnen Arbeiten aus. Der Meister vervoll-",
+    "mente des Gedankenguts der Antike: Die Formensprache bei Baudenkmae-",
+]
+_BAUER_NOTES = [
+    "275 So hat Raffael meist nur die Haende und Gesichter selbst gemalt,",
+    "malt, Whistler, Raffaels Haende, in: Gnann (Hrsg.), Raffael, 2017.",
+    "276 Zilsel, Die Entstehung des Geniebegriffes, 1926, S. 211 ff.",
+]
+
+
+def _bauer_page():
+    """Running head, body, notes, folio and watermark -- in printed order.
+
+    Sizes as measured on p. 88: 9.0 running head, 10.0 body, 8.7 apparatus,
+    10.25 folio, 3.0 watermark.
+    """
+    lines = ["Zweites Kapitel: Die veraenderte Nutzung von Aneignungen"]
+    sizes = [9.0]
+    for t in _BAUER_BODY:
+        lines.append(t); sizes.append(10.0)
+    for t in _BAUER_NOTES:
+        lines.append(t); sizes.append(8.7)
+    lines.append("88"); sizes.append(10.25)
+    lines.append("https://doi.org/10.5771/9783748909576 - Open Access -")
+    sizes.append(3.0)
+    return lines, sizes
+
+
+def test_a_continuation_line_stays_in_the_block_although_it_measures_larger():
+    # EXCITE 11653 p. 4, an OCR layer: the engine reports 10.08pt for the
+    # continuation of note 3 and 6.48pt for the definitions it belongs to.
+    # Within a size-verified block, a line larger than the definitions is not
+    # furniture -- the folio is peeled off the foot long before this point.
+    lines = [
+        "Dieser liesse sich anhand von zwei Extremformen veranschaulichen:",
+        "2 Vgl. Wolbert (1995).",
+        "3 Zum Beduerfnis nach Ritualen in der modernen Gesellschaft vgl.",
+        "Bukow (1994), Schaer (1991), Stender (1994).",
+        "5",
+    ]
+    sizes = [12.0, 6.48, 6.48, 10.08, 10.08]
+    split = split_small_type_block(lines, sizes, body_size=12.0)
+    assert split is not None
+    assert split.notes[-1].startswith("Bukow"), "the continuation belongs to note 3"
+    assert split.body == [lines[0], "5"]
+
+
+def test_definition_may_be_a_bare_number_and_a_space():
+    from scriptor.reflow.footnotes import match_definition
+    assert match_definition("275 So hat Raffael meist nur die Haende")
+    # a continuation line that merely opens with digits is not a definition
+    assert not match_definition("27, S. 53.")
+    assert not match_definition("2017, S. 41, 42.")
+
+
+def test_block_is_found_although_furniture_sits_below_it():
+    lines, sizes = _bauer_page()
+    split = split_small_type_block(lines, sizes, body_size=10.0)
+    assert split is not None, "the watermark below the folio must not hide the block"
+    assert split.notes[0].startswith("275 So hat Raffael")
+    assert split.notes[-1].startswith("276 Zilsel")
+    # the body keeps its own lines, and the hyphenated last one is intact. The
+    # running head stays with it: removing it is running_elements' job, and it
+    # has to see the head where the page prints it.
+    assert split.body[0].startswith("Zweites Kapitel")
+    assert split.body[1:4] == _BAUER_BODY
+    assert split.body[3].endswith("Baudenkmae-")
+
+
+def test_the_first_note_does_not_glue_onto_a_hyphenated_body_line():
+    lines, sizes = _bauer_page()
+    split = split_small_type_block(lines, sizes, body_size=10.0)
+    pg = parse_page("\n".join(split.body), fn_block=split.notes, geometry_verified=True)
+    body = " ".join(pg.body_lines)
+    assert "Baudenkmae-275" not in body and "Baudenkmae275" not in body
+    assert "So hat Raffael" not in body, "the note belongs to the apparatus, not the body"
+    assert 275 in pg.footnotes and 276 in pg.footnotes
+
+
+def test_geometry_that_found_a_block_also_settles_the_body():
+    """A cut block is an answer too, not only an empty one.
+
+    35056 p. 15 prints two real notes at the foot *and* a numbered list in the
+    body. Once the geometry cut the notes, the bare "NN)" convention used to
+    run again over the body and swallow everything from the first list item
+    on: 48 body lines became 11. Geometry has the last word either way.
+    """
+    body = [
+        "Der Bericht nennt vier Handlungsfelder fuer die Zusammenarbeit.",
+        "1) ",
+        "Unterstuetzung des Transfermodells hin zu einem demokratischen Staat.",
+        "2) ",
+        "Intensivierung des Engagements der deutschen Wirtschaft.",
+    ]
+    notes = ["10 Brasilien, Russland, Indien, China, Suedafrika."]
+    pg = parse_page("\n".join(body), fn_block=notes, geometry_verified=True)
+    assert len(pg.body_lines) == len(body), "the numbered list belongs to the body"
+    assert set(pg.footnotes) == {10}
+    assert "Intensivierung des Engagements" in " ".join(pg.body_lines)
