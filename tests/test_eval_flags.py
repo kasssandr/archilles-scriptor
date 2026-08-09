@@ -31,3 +31,14 @@ def test_justified_and_noise_and_dedup():
 def test_no_flags_yields_none():
     res = evaluate_flags(TRUTH, parse_prepared("[p. 1] Clean text.\n"))
     assert res.flag_precision is None
+
+
+def test_a_flag_off_the_authored_pages_is_not_counted():
+    # A sampled corpus authors a handful of pages out of hundreds. The truth
+    # says nothing about page 110, so a flag sitting there is neither justified
+    # nor noise -- counting it as noise turned Bauer's single flag into a
+    # precision of 0.00 over a page nobody ever looked at.
+    out = "[p. 1] Clean text.\n\n[p. 110] A note nobody authored&[?FN:7|&] here.\n"
+    res = evaluate_flags(TRUTH, parse_prepared(out))
+    assert (res.justified, res.noise) == (0, 0)
+    assert res.flag_precision is None
