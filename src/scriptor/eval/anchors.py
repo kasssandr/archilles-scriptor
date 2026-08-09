@@ -4,11 +4,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from scriptor.eval.adapters import DocFootnote, ParsedDoc, page_at
+from scriptor.eval.adapters import DocFootnote, ParsedDoc, page_at, page_span
 from scriptor.eval.ground_truth import GroundTruth, TruthFootnote
 from scriptor.eval.normalize import find_snippet, normalize
 
 ANCHOR_TOLERANCE = 24   # chars between anchor_after snippet end and the anchor
+
+
+def _find_anchor(doc: ParsedDoc, t: TruthFootnote) -> tuple[int, int] | None:
+    """Where `anchor_after` stands on the page the truth names.
+
+    A search across the whole output answers with the first occurrence, and a
+    volume repeats its own phrasing: Bauer writes "ständig Bilder produziert
+    und transformiert" on p. 21 and again on p. 106, where the note hangs.
+    The earlier hit then scores a correctly placed anchor as misanchored. The
+    truth states the page, so the page is where to look.
+    """
+    if not t.anchor_after:
+        return None
+    span = page_span(doc, t.page)
+    if span is None:
+        return None
+    hit = find_snippet(doc.body[span[0]:span[1]], t.anchor_after)
+    return None if hit is None else (hit[0] + span[0], hit[1] + span[0])
 
 
 @dataclass
@@ -42,18 +60,17 @@ def _find_definition(doc: ParsedDoc, truth: TruthFootnote) -> DocFootnote | None
     ]
     if len(candidates) <= 1:
         return candidates[0] if candidates else None
-    if truth.anchor_after:
-        span = find_snippet(doc.body, truth.anchor_after)
-        if span is not None:
-            anchored = [fn for fn in candidates if fn.anchor_offset is not None]
-            if anchored:
-                # Behind the snippet beats in front of it, then proximity: a
-                # marker before its own anchor text belongs to another note.
-                return min(
-                    anchored,
-                    key=lambda fn: (fn.anchor_offset < span[1],
-                                    abs(fn.anchor_offset - span[1])),
-                )
+    span = _find_anchor(doc, truth)
+    if span is not None:
+        anchored = [fn for fn in candidates if fn.anchor_offset is not None]
+        if anchored:
+            # Behind the snippet beats in front of it, then proximity: a
+            # marker before its own anchor text belongs to another note.
+            return min(
+                anchored,
+                key=lambda fn: (fn.anchor_offset < span[1],
+                                abs(fn.anchor_offset - span[1])),
+            )
     return candidates[0]
 
 
@@ -69,11 +86,10 @@ def _status(doc: ParsedDoc, t: TruthFootnote) -> str:
         return "preserved_unanchored"
     if page_at(doc, fn.anchor_offset) != t.page:
         return "misanchored"
-    if t.anchor_after:
-        span = find_snippet(doc.body, t.anchor_after)
-        if span is not None:
-            gap = fn.anchor_offset - span[1]
-            return "anchored_exact" if 0 <= gap <= ANCHOR_TOLERANCE else "misanchored"
+    span = _find_anchor(doc, t)
+    if span is not None:
+        gap = fn.anchor_offset - span[1]
+        return "anchored_exact" if 0 <= gap <= ANCHOR_TOLERANCE else "misanchored"
     return "anchored_page"
 
 

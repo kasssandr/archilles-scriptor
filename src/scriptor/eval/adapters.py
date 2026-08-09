@@ -89,6 +89,19 @@ def parse_prepared(text: str) -> ParsedDoc:
     return ParsedDoc(body, page_marks, footnotes, flags, cits)
 
 
+def page_span(doc: ParsedDoc, label: str) -> tuple[int, int] | None:
+    """The body a page marker addresses: from the marker to the next one.
+
+    None where the output never marks that page -- then the candidate has no
+    opinion on where the page begins, and nothing can be looked up on it.
+    """
+    for i, (lbl, off) in enumerate(doc.page_marks):
+        if lbl == label:
+            end = doc.page_marks[i + 1][1] if i + 1 < len(doc.page_marks) else len(doc.body)
+            return (off, end)
+    return None
+
+
 def page_at(doc: ParsedDoc, offset: int) -> str:
     """Printed label of the nearest page marker preceding offset (a marker
     addresses the text that follows it, so its own start is not yet on it)."""
