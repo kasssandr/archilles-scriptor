@@ -660,3 +660,43 @@ def test_portuguese_apparatus_forms():
 
 def test_a_lettered_appendix_does_not_swallow_a_sentence():
     assert region_of_heading("Anexo a esta carta folgte ein Verzeichnis") is None
+
+
+def test_a_control_character_does_not_hide_a_heading():
+    """Asclepios (AUP) carries "Literatuur" plus a backspace character in its
+    running head — an extraction artefact, not text. Control and format
+    characters are dropped before matching; nothing in a printed heading is
+    invisible."""
+    assert region_of_heading("Literatuur\x08") == "bibliography"
+    assert region_of_heading("Bibliografie​") == "bibliography"
+    assert region_of_heading("﻿Register") == "index"
+
+
+def test_french_and_portuguese_complements_of_several_words():
+    # Pouderon: "Index des textes cités" (and set with double spaces).
+    assert region_of_heading("Index  des  textes cités") == "index"
+    assert region_of_heading("Index des auteurs modernes") == "index"
+    # Comemoração dos mortos: "Abreviaturas do índice".
+    assert region_of_heading("Abreviaturas do índice") == "abbreviations"
+    assert region_of_heading("Abreviaturas e siglas") == "abbreviations"
+
+
+def test_the_tail_rule_does_not_depend_on_how_the_region_opened():
+    """Pouderon's bibliography opens on a running head and then loses it —
+    the pages after carry the volume title, which is rightly ignored. With the
+    tail rule switched off because a *head* had opened the region, the prose
+    rule closed it after one page of twelve.
+
+    Whether a fix applies is a question about where in the volume a page sits,
+    not about which signal happened to name it.
+    """
+    pages = [_prose() for _ in range(30)]
+    pages.extend(_prose() for _ in range(10))
+    heads: list[str | None] = [None] * 40
+    heads[30] = "Bibliographie"
+    for i in range(31, 40):
+        heads[i] = "LES APOLOGISTES GRECS DU IIe SIÈCLE"
+    heads[0] = "LES APOLOGISTES GRECS DU IIe SIÈCLE"   # spans the volume
+    assign_modes(pages)
+    assign_regions(pages, page_headers=heads)
+    assert [p.region for p in pages[30:]] == ["bibliography"] * 10

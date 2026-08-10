@@ -99,8 +99,10 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
         # en
         r"(?:general |subject |name |author |place |scriptural )?index(?:es)?",
         r"indices", r"index of (?:names|subjects|places|persons|passages)",
-        # fr
-        r"index(?: des \w+| g[ée]n[ée]ral| nominum)?", r"table onomastique",
+        # fr — "Index des textes cités", "Index des auteurs modernes"; the
+        # complement runs to several words, as it does in Spanish above.
+        r"index des(?:[\s-]+[^\W\d_]{1,15}){1,4}",
+        r"index(?: g[ée]n[ée]ral| nominum)?", r"table onomastique",
         # it / es / pt — the complement is what makes it a register. Bare
         # "Indice"/"Índice" is the table of contents in these languages and is
         # listed under `contents`; only English, German, French and Latin use
@@ -127,7 +129,8 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
         # fr
         r"abr[ée]viations(?: et sigles)?", r"liste des abr[ée]viations", r"sigles",
         # it / es / pt
-        r"abbreviazioni", r"abreviaturas", r"siglas(?: e abreviaturas)?",
+        r"abbreviazioni", r"siglas(?: e abreviaturas)?",
+        r"abreviaturas?(?:[\s-]+(?:do|da|de|e)[\s-]+[^\W\d_]{1,15}){0,2}",
         # nl
         r"afkortingen(?:lijst)?", r"lijst van afkortingen",
         # la
@@ -207,9 +210,21 @@ def _undiacritic(text: str) -> str:
 
 
 def _fold(text: str) -> str:
-    """A heading line, normalised for matching: no diacritics, no case, and no
-    full stop dropped inside a word by the scanner."""
-    return _INNER_STOP.sub("", _undiacritic(text).lower())
+    """A heading line, normalised for matching.
+
+    No diacritics, no case, no full stop dropped inside a word by the scanner,
+    and no invisible characters: extraction leaves control and format codes in
+    the text — Asclepios carries a backspace after "Literatuur" — and nothing
+    in a printed heading is invisible, so they cannot be part of one.
+
+    Runs of whitespace collapse to one. Letter-spaced and justified headings
+    arrive with doubled spaces ("Index  des  textes cités"), and normalising
+    here spares every pattern from having to spell `\\s+` between its words.
+    """
+    visible = "".join(
+        c for c in _undiacritic(text) if unicodedata.category(c) not in ("Cc", "Cf")
+    )
+    return _INNER_STOP.sub("", " ".join(visible.lower().split()))
 
 
 # What may trail a heading: a closing stop or colon, because older typography
@@ -436,7 +451,13 @@ def assign_regions(
         if by_head is not None:
             page.region = by_head
             current, prose_run = by_head, []
-            in_tail = False   # the head carries the region; no rule needs muting
+            # Same test as for a region opened by a heading: whether the tail
+            # rule applies is a question about where in the volume this page
+            # sits, not about which signal named it. Pouderon's bibliography
+            # opens on a head and then loses it to the volume title — with the
+            # rule switched off here, the prose rule closed it after one page
+            # of twelve.
+            in_tail = position >= tail_begins
             continue
 
         opened = _opens_region(page)
