@@ -498,3 +498,98 @@ def test_a_heading_survives_an_ocr_artefact_at_its_end():
     assert region_of_heading("INDEX ALPHABÉTIQUE ·") == "index"
     assert region_of_heading("Register,") == "index"
     assert region_of_heading("Literaturverzeichnis;") == "bibliography"
+
+
+# ── Italian and Spanish, measured on six volumes (2026-08-10) ────────
+
+def test_bare_indice_is_a_table_of_contents_not_an_index():
+    """The word divides the languages. English, German, French and Latin call
+    the back-of-book register "Index"; Italian and Spanish call the *table of
+    contents* "Indice"/"Índice" and name the register with a complement —
+    "Indice dei nomi", "Índice onomástico". Reading the bare word as an index
+    mislabels the front matter of every Italian and Spanish volume."""
+    assert region_of_heading("ÍNDICE") == "contents"
+    assert region_of_heading("Indice") == "contents"
+    assert region_of_heading("Index") == "index"
+
+
+def test_indice_with_a_complement_is_the_register():
+    assert region_of_heading("ÍNDICE ONOMÁSTICO") == "index"
+    assert region_of_heading("INDICE ONOMÁSTICO") == "index"   # OCR drops the accent
+    assert region_of_heading("Indice dei nomi") == "index"
+    assert region_of_heading("Índice analítico") == "index"
+
+
+def test_spanish_appendix_words():
+    # Callaey heads his appendices ANEXOS and Apéndice I/II/III.
+    assert region_of_heading("ANEXOS") == "appendix"
+    assert region_of_heading("ANEXO 1") == "appendix"
+    assert region_of_heading("Apéndice I") == "appendix"
+    assert region_of_heading("Apéndice III") == "appendix"
+
+
+def test_spanish_and_italian_bibliography_forms():
+    assert region_of_heading("BIBLIOGRAFÍA SELECTA") == "bibliography"
+    assert region_of_heading("bibliografía") == "bibliography"
+    assert region_of_heading("Bibliografia") == "bibliography"
+
+
+def test_a_heading_broken_by_non_breaking_spaces():
+    # Barbiero's PDF sets its headings with NBSP between the words.
+    assert region_of_heading("INDICE\xa0\xa0DELLE\xa0\xa0ILLUSTRAZIONI") == "index"
+
+
+def test_a_volume_title_is_recognised_by_its_span_not_its_count():
+    """Callaey's verso head — author and title — appears on roughly a third of
+    the pages, because chapter openings carry none. Counting occurrences puts
+    it under any sane threshold and it closes the appendix on every other page.
+
+    What separates it from a section head is not how often it occurs but how
+    far it reaches: a volume title spans the whole book, a section title
+    clusters. That is Archilles' rule 1 measured properly — look for contrast,
+    and a head that stretches end to end draws no contrast anywhere.
+    """
+    pages = [_prose() for _ in range(60)]
+    pages[40] = _entries("ANEXOS", "El Libro acerca del Templo de Salomón")
+    heads: list[str | None] = [None] * 60
+    for i in range(0, 60, 3):          # volume title, spread thin but end to end
+        heads[i] = "Eduardo Callaey / La masonería"
+    for i in (40, 42, 44):             # section title, clustered
+        heads[i] = "ANEXOS"
+    assign_modes(pages)
+    assign_regions(pages, page_headers=heads)
+    # No holes: the pages between two ANEXOS heads belong to the appendix, and
+    # the verso volume title must not punch them back out to main.
+    assert [p.region for p in pages[40:45]] == ["appendix"] * 5
+
+
+def test_a_section_head_that_clusters_still_closes_a_region():
+    # An essay title confined to its own pages remains evidence.
+    pages = [_prose() for _ in range(40)]
+    pages[30] = _entries("APPENDIX", "[I] Edward rex. Ubi Harold dux")
+    heads: list[str | None] = [None] * 40
+    for i in range(31, 40):
+        heads[i] = "The Bayeux Tapestry"
+    assign_modes(pages)
+    assign_regions(pages, page_headers=heads)
+    assert [p.region for p in pages[31:40]] == ["main"] * 9
+
+
+def test_a_heading_set_over_two_lines():
+    """Callaey sets ÍNDICE / ONOMÁSTICO on two lines. Read line by line the
+    first one says "contents", which is right for the bare word and wrong
+    here — sixteen pages of register mislabelled."""
+    page = Page(-1, ["ÍNDICE", "ONOMÁSTICO", "A", "Aarón: 58, 81."], {})
+    pages = [_prose() for _ in range(6)] + [page]
+    assign_modes(pages)
+    assign_regions(pages)
+    assert pages[-1].region == "index"
+
+
+def test_two_line_reading_does_not_invent_regions():
+    # Joining lines must not turn ordinary prose into a heading.
+    page = Page(-1, ["Der Index", "ist eine geordnete Liste von Begriffen."], {})
+    pages = [_prose() for _ in range(6)] + [page]
+    assign_modes(pages)
+    assign_regions(pages)
+    assert pages[-1].region == "main"
