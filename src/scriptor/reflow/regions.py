@@ -82,6 +82,7 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
         r"bibliografia", r"bibliograf[íi]a",
         r"fonti(?: e bibliografia)?", r"riferimenti bibliografici",
         r"obras citadas", r"refer[êe]ncias(?: bibliogr[áa]ficas)?",
+        r"fontes(?: e bibliografia| impressas| manuscritas)?",
         # nl
         r"bibliografie", r"literatuur(?:lijst|opgave)?", r"geraadpleegde werken",
         # la
@@ -105,8 +106,10 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
         # listed under `contents`; only English, German, French and Latin use
         # the plain word for the back-of-book index.
         r"indice(?: dei nomi| dei luoghi| analitico| onomastico| dei manoscritti)",
-        r"[íi]ndice(?: de \w+| onom[áa]stico| anal[íi]tico| tem[áa]tico| de nombres)",
-        r"[íi]ndice remissivo",
+        # "Índice de Nomes e Pseudônimos" — the complement runs to several
+        # words, so it is bounded by count rather than listed exhaustively.
+        r"[íi]ndice de(?:[\s-]+[^\W\d_]{1,15}){1,4}",
+        r"[íi]ndice(?: onom[áa]stico| anal[íi]tico| tem[áa]tico| remissivo)",
         # nl
         r"register(?: van \w+)?", r"zaakregister", r"namenregister",
         # la
@@ -159,10 +162,13 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
         # as precede it.
         r"anh[äa]nge?", r"anlagen?", r"beilagen?", r"tabellenanhang",
         r"appendix(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]))?", r"appendices",
-        r"annexes?", r"appendici?(?:\s+(?:[ivxlcdm]+|\d{1,2}))?",
-        r"ap[êe]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}))?",
-        r"ap[ée]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}))?",
-        r"anexos?(?:\s+(?:[ivxlcdm]+|\d{1,2}))?",
+        # A single trailing letter counts as an ordinal too ("Anexo A"), but
+        # only a single one: two letters are a word, and a word after the
+        # noun makes it a sentence rather than a heading.
+        r"annexes?", r"appendici?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+        r"ap[êe]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+        r"ap[ée]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+        r"anexos?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
         r"bijlagen?",
         r"приложения?",
     ),
@@ -175,16 +181,35 @@ _PREFIX = r"(?:(?:§\s*)?(?:\d{1,3}|[ivxlcdm]{1,6}|[a-z])[.)]?\s+)?"
 # the word, and prose is never a region marker.
 _MAX_HEADING_CHARS = 48
 
-def _fold(text: str) -> str:
-    """Lowercase and strip diacritics, so 'Índice' matches 'indice'.
+# A full stop with a letter on either side. Between two letters it is not
+# punctuation but a scanning artefact: Lizzi Testa's running head arrives as
+# "Bibliogra.fia", and thirty-five pages of bibliography hang on reading it
+# anyway. A stop at a word boundary is left alone — there it may be an
+# abbreviation, and dropping it would join two words into one.
+_INNER_STOP = re.compile(r"(?<=[^\W\d_])\.(?=[^\W\d_])")
+
+
+def _undiacritic(text: str) -> str:
+    """Drop combining marks, so 'Índice' and 'indice' become the same word.
 
     Applied to the patterns as well as to the line, or the two would disagree
     exactly where it matters: NFD decomposes Russian 'ё' into 'е' plus a
     combining mark, so a pattern written 'имён' would never meet a folded
     'имен'.
+
+    Case is deliberately left alone here. The patterns are compiled with
+    IGNORECASE, and lowercasing a *pattern* silently inverts its character
+    classes — ``[^\\W\\d_]`` means "a letter", ``[^\\w\\d_]`` means the exact
+    opposite.
     """
-    decomposed = unicodedata.normalize("NFD", text.strip().lower())
+    decomposed = unicodedata.normalize("NFD", text.strip())
     return "".join(c for c in decomposed if not unicodedata.combining(c))
+
+
+def _fold(text: str) -> str:
+    """A heading line, normalised for matching: no diacritics, no case, and no
+    full stop dropped inside a word by the scanner."""
+    return _INNER_STOP.sub("", _undiacritic(text).lower())
 
 
 # What may trail a heading: a closing stop or colon, because older typography
@@ -198,7 +223,7 @@ _TRAILING = r"[.,:;·•∙]?"
 
 _COMPILED: dict[str, tuple[re.Pattern[str], ...]] = {
     region: tuple(
-        re.compile(_fold(rf"^{_PREFIX}{alt}\s*{_TRAILING}\s*$"), re.IGNORECASE)
+        re.compile(_undiacritic(rf"^{_PREFIX}{alt}\s*{_TRAILING}\s*$"), re.IGNORECASE)
         for alt in alternatives
     )
     for region, alternatives in _VOCABULARY.items()
@@ -250,6 +275,30 @@ def region_of_heading(line: str) -> str | None:
         for region, pat in _CAPITALISED.items():
             if pat.match(folded):
                 return region
+    return None
+
+
+# Where a running head stops naming its section and starts describing it.
+_HEAD_SEPARATOR = re.compile(r"\s*[.:;—–|/]\s+|\s+[—–|/]\s*")
+
+
+def region_of_running_head(head: str) -> str | None:
+    """The region a running head names, or None.
+
+    Like ``region_of_heading``, but a head is also tried up to its first
+    separator. Volumes head every page of a section with its title *and*
+    subtitle — "ANEXO 1. ACCIONES VIOLENTAS" — and read whole that is in no
+    vocabulary, so it counted as a foreign head and closed the very region it
+    names. Cutting at the separator is safe in the other direction: a volume
+    title cut the same way ("Eduardo Callaey / La masonería") still names
+    nothing.
+    """
+    whole = region_of_heading(head)
+    if whole is not None:
+        return whole
+    first = _HEAD_SEPARATOR.split(head.strip(), maxsplit=1)[0]
+    if first and first != head.strip():
+        return region_of_heading(first)
     return None
 
 
@@ -378,7 +427,7 @@ def assign_regions(
     for position, page in enumerate(pages):
         mode = getattr(page, "mode", "main")
         head = page_headers[position] if page_headers else None
-        by_head = region_of_heading(head) if head else None
+        by_head = region_of_running_head(head) if head else None
         # Frequency only devalues a head that names nothing. One that names a
         # region is evidence however often it occurs — a volume may well be
         # half bibliography, and its own title over those pages is the point.
@@ -392,11 +441,14 @@ def assign_regions(
 
         opened = _opens_region(page)
 
-        # The mode is a fallback, not an override. It answers coarsely — the
-        # reflow's toc trigger fires on a bare "Índice", which is right for a
-        # table of contents and wrong for the "Índice onomástico" two lines
-        # below it. Where the page names its own region, that name wins.
-        if opened is None and mode in ("frontmatter", "toc"):
+        # The mode is a fallback, not an override, and the coarsest evidence
+        # there is. It answers per page from a trigger that fires once and
+        # then persists: a bare "Índice" opening an index sets `toc` for every
+        # page after it, and Callaey's index alternates recto/verso, so the
+        # region flickered index/contents page by page. So the mode may name a
+        # page that has no region of its own — it may not overrule a region
+        # already running, nor a page that names itself.
+        if opened is None and current == "main" and mode in ("frontmatter", "toc"):
             page.region = "front-matter" if mode == "frontmatter" else "contents"
             current, prose_run = "main", []
             continue

@@ -593,3 +593,70 @@ def test_two_line_reading_does_not_invent_regions():
     assign_modes(pages)
     assign_regions(pages)
     assert pages[-1].region == "main"
+
+
+def test_a_full_stop_inside_a_word_is_an_ocr_artefact():
+    """Lizzi Testa's running head arrives as "Bibliogra.fia" — a stop dropped
+    into the middle of the word. Thirty-five pages of bibliography hang on it.
+
+    Between two letters a full stop is not punctuation, so it is folded away.
+    One at a word boundary is left alone, where it may well be an abbreviation.
+    """
+    assert region_of_heading("Bibliogra.fia") == "bibliography"
+    assert region_of_heading("Regis.ter") == "index"
+    assert region_of_heading("INDICE DEl NOMI") == "index"   # I read as l
+    # a stop that ends a word still ends it
+    assert region_of_heading("Vgl. dazu die Literatur der Zeit") is None
+
+
+def test_a_running_head_that_extends_the_region_name():
+    """Santa-Aguilar opens ANEXO 1 and then heads every page of it
+    "ANEXO 1. ACCIONES VIOLENTAS" — the section title with its subtitle.
+
+    Read whole, that head is in no vocabulary, so it counted as foreign and
+    closed the very region it names. A head is therefore also tried up to its
+    first separator, which is where a title ends and its subtitle begins.
+    """
+    from scriptor.reflow.regions import region_of_running_head
+    assert region_of_running_head("ANEXO 1. ACCIONES VIOLENTAS") == "appendix"
+    assert region_of_running_head("Bibliografia — opere citate") == "bibliography"
+    assert region_of_running_head("ANEXO 1") == "appendix"
+    # and a volume title still names nothing
+    assert region_of_running_head("Eduardo Callaey / La masonería") is None
+    assert region_of_running_head("Anglo-Norman Studies XXIII") is None
+
+
+def test_the_mode_does_not_reopen_a_region_that_is_already_running():
+    """Callaey's index alternates: recto heads "ÍNDICE ONOMÁSTICO", verso the
+    volume title. assign_modes sets `toc` on the page that opens the index and
+    keeps it for every page after, so the mode fallback claimed each verso for
+    `contents` and the region flickered index/contents page by page.
+
+    A mode is the coarsest evidence there is. It may name a page that has no
+    region of its own; it may not overrule one that is already running.
+    """
+    pages = [_prose() for _ in range(4)]
+    opener = Page(-1, ["ÍNDICE", "ONOMÁSTICO", "A", "Aarón: 58, 81."], {})
+    pages.append(opener)
+    pages.extend(Page(-1, ["Bermejo: 21.", "Bernardo: 44."], {}) for _ in range(4))
+    assign_modes(pages)
+    # the reflow keeps `toc` on every page after the trigger
+    assert pages[-1].mode == "toc"
+    assign_regions(pages)
+    assert [p.region for p in pages[4:]] == ["index"] * 5
+
+
+def test_portuguese_apparatus_forms():
+    """Silveira (USP) heads his back matter "Fontes e bibliografia" and letters
+    his appendices "Anexo A"; Siqueira/Soares close with "Índice de Nomes e
+    Pseudônimos". None of the three were in the table."""
+    assert region_of_heading("Fontes e bibliografia") == "bibliography"
+    assert region_of_heading("Referências bibliográficas") == "bibliography"
+    assert region_of_heading("Anexo A") == "appendix"
+    assert region_of_heading("Apêndice B") == "appendix"
+    assert region_of_heading("Índice de Nomes e Pseudônimos") == "index"
+    assert region_of_heading("Índice de nomes") == "index"
+
+
+def test_a_lettered_appendix_does_not_swallow_a_sentence():
+    assert region_of_heading("Anexo a esta carta folgte ein Verzeichnis") is None
