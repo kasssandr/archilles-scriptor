@@ -163,8 +163,11 @@ This document has been prepared for LLM translation.
    verbatim as well, especially inside the footnote apparatus. When in doubt,
    do not translate. Bibliographic precision outranks completeness.
 4. Carry over Pandoc structures unchanged: footnote markers [^N], footnote
-   definitions [^N]:, page markers [p. …]. A page label may be roman ([p. xiv]);
-   it is the page as printed in the book and must never be renumbered.
+   definitions [^N]:, page markers [p. …], region markers [region: …]. A page
+   label may be roman ([p. xiv]); it is the page as printed in the book and
+   must never be renumbered. A region name is a fixed token of the format —
+   leave "[region: bibliography]" exactly so, even where you translate the
+   heading beneath it. Leave a leading YAML block (--- … ---) untouched.
 5. After translating, remove the <dnt> and </dnt> tags and keep the text
    between them.
 """

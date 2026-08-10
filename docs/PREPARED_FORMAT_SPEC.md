@@ -1,6 +1,6 @@
 # The Prepared Document Format
 
-**Version 0.1.0 (draft) · 2026-07-19 · MIT**
+**Version 0.2.0 (draft) · 2026-08-10 · MIT**
 
 This specification defines the *prepared document*: a scholarly text converted
 to plain Markdown in which the scholarly apparatus — footnotes, printed page
@@ -77,6 +77,39 @@ Pandoc Markdown at all times — this is the load-bearing guarantee from which
 everything downstream (translatability, chunkability, further conversion)
 follows.
 
+A document MAY open with a YAML metadata block, in Pandoc's
+`yaml_metadata_block` syntax — `---`, the fields, a closing `---`, then the
+text:
+
+```yaml
+---
+format_version: 0.2.0
+chunking_strategy: basic
+---
+```
+
+| Field | Meaning |
+|---|---|
+| `format_version` | The version of *this* specification the producer targeted. |
+| `chunking_strategy` | How a retrieval consumer should cut the text: `basic` cuts semantically and may drop the apparatus; `scientific` keeps a footnote marker and its definition in one chunk. |
+
+The block is optional, and every field in it is optional. Consumers MUST
+tolerate its absence, MUST ignore fields they do not know, and MUST NOT
+require it — a document without the block is conforming, and defaults to
+`basic`.
+
+Two properties make this block safe to add to a format whose contract is
+plain text. It is *declaration only*: nothing in it may contradict the text,
+and no text may live only here (§4.6 applies unchanged — a consumer that
+discards the block still gets the whole document). And it is *machine
+address, not content*: it carries what a consumer must be told, never what a
+reader must read.
+
+`format_version` is what the block exists for. A prepared document outlives
+the release notes that describe it — it sits in an index for years — so a
+consumer meeting it later must be able to learn which conventions were in
+force when it was written, from the document and nothing else.
+
 ### 4.2 Page markers
 
 A page boundary is recorded inline, at its reading position, as:
@@ -152,8 +185,10 @@ printed footnote number.
 ### 4.4 Headings and structural regions
 
 Chapter and section headings recognised by the producer are ordinary Markdown
-`#` headings. Beyond running prose, a prepared document distinguishes regions
-by treatment, not by markup:
+`#` headings. Beyond running prose, a prepared document treats regions
+differently in two respects — how their text is set, and what they are called.
+
+The **treatment** is a producer matter and needs no markup:
 
 - **Front matter** (title pages, imprint) is preserved line-faithfully, block
   per page, behind its page marker.
@@ -162,17 +197,60 @@ by treatment, not by markup:
 - **Entry regions** (bibliography, index, abbreviation lists) are reflowed one
   entry per block, page markers preserved between entries.
 
-The format does not (yet) mark regions explicitly; region semantics live in
-the producer. Consumers that need to exclude apparatus regions from
-processing (e.g. retrieval chunking) SHOULD do so by their own segmentation
-until a region convention is normed in a future version **(reserved)**.
+The **name** is a consumer matter, and it is marked. Where the producer knows
+which region it is in, it says so; a region opens with a marker on a line of
+its own:
+
+```
+[region: bibliography]
+```
+
+- The marker governs **all following text up to the next region marker** or
+  the end of the document — the same reach rule as the page marker (§4.2), so
+  a consumer that already resolves page markers needs no second mechanism.
+- It stands as its own block, separated by blank lines. It never appears
+  inline, and never inside a paragraph, a heading or a footnote definition.
+- Where a region begins at a page boundary, the region marker precedes the
+  page marker: the region is the wider frame, and the page marker belongs to
+  the text it introduces. A region that begins mid-page opens before the first
+  block that belongs to it, leaving the page marker where §4.2 puts it.
+- `NAME` is one of the values below. It is an invariant token of the format,
+  never localised and never translated.
+
+| `NAME` | The region |
+|---|---|
+| `front-matter` | Title pages, imprint, dedication, preface matter. |
+| `contents` | Table of contents. |
+| `main` | Running text — the body the book is about. |
+| `bibliography` | Bibliography, list of sources, works cited. |
+| `index` | Index of any kind — names, subjects, places, passages. |
+| `abbreviations` | List of abbreviations or sigla. |
+| `notes` | A collected notes section (endnotes at the end of a chapter or volume), as distinct from the footnotes of §4.3. |
+| `appendix` | Appendices, tables, documentary supplements. |
+
+**Absence of a marker is not a claim.** A document may carry no region marker
+at all; a region the producer could not identify simply stays unmarked.
+Consumers MUST treat unmarked text as `main`, and MUST tolerate a `NAME` they
+do not know by treating it the same way — an unrecognised region is an
+unknown, and an unknown is running text.
+
+This asymmetry is deliberate and is the rule producers MUST follow when
+deciding whether to mark at all: *a wrongly marked apparatus is an
+annoyance, a wrongly marked chapter is silent loss.* An index that surfaces
+in a search is visible and can be ignored. A chapter classified as apparatus
+disappears from retrieval, and nobody notices it is gone. **When in doubt,
+emit no marker.**
+
+`main` is a value like any other, and it is how a document returns to running
+text after an apparatus region — a volume whose appendix is followed by
+further chapters marks those chapters `main` again.
 
 ### 4.5 Escaping
 
 Literal `*` and `_` in the source text are backslash-escaped, so that OCR
 artefacts can never toggle Markdown emphasis and silently swallow characters.
-The format's own constructs (`[^N]`, `[p. …]`, leading `#`, flags, `<dnt>`)
-never contain these characters.
+The format's own constructs (`[^N]`, `[p. …]`, `[region: …]`, leading `#`,
+flags, `<dnt>`) never contain these characters.
 
 ### 4.6 The deliverable guarantee
 
@@ -277,10 +355,11 @@ Normative rules:
    protected elements MAY grow (notably R4 primary-source references, §8);
    the syntax is fixed.
 6. **Structural markers are protected by contract, not by tags.** `[^N]`,
-   `[^N]:` and `[p. …]` are never wrapped; the accompanying briefing sidecar
-   obliges the translator to carry them over unchanged. A page label may be
-   roman (`[p. xiv]`); it is the page as printed and MUST never be renumbered
-   by translation.
+   `[^N]:`, `[p. …]` and `[region: …]` are never wrapped; the accompanying
+   briefing sidecar obliges the translator to carry them over unchanged. A
+   page label may be roman (`[p. xiv]`); it is the page as printed and MUST
+   never be renumbered by translation. A region name is an invariant token and
+   MUST NOT be translated, even where the surrounding heading is.
 
 The briefing sidecar (`*.briefing.txt`) is the human/model-readable statement
 of rules 2, 3 and 6 plus the soft instruction for what no rule can catch
@@ -343,6 +422,12 @@ are chosen to degrade gracefully:
   with their definitions, `.cit` spans and `<dnt>` pairs carry their meaning
   in the text itself; moving a paragraph moves its anchors with it, and
   nothing outside the paragraph breaks.
+- **A damaged region marker fails towards running text.** Region markers open
+  a span rather than enclose one (§4.4), which is why an edit cannot invert
+  their meaning: delete `[region: index]` and the index reads as `main` — the
+  harmless direction. There is no closing token whose loss could pull the rest
+  of the volume into an apparatus region, and no way for one broken marker to
+  reach beyond the next one.
 - **Sidecar keys are positional only at the last step.** Sidecar records key
   by page label + footnote number + context snippet (§6). A consumer using a
   sidecar record MUST verify it before acting on it: locate the page by its
@@ -398,16 +483,24 @@ Hertziana's *trans2tei* (2021), which this mapping follows in spirit.
 
 The specification uses semantic versioning. Within a major version, documents
 remain parseable by older consumers: new constructs are additive, and
-everything reserved in §4.4, §5, §8 and §9 is claimed syntax that will only
-ever mean what this document says. Breaking changes (marker syntax, flag
-grammar, dnt convention) require a major version bump — and are a family
-event, not a local commit: every consuming tool tests against this document,
-and a change here is coordinated across all of them before release.
+everything reserved in §5, §8 and §9 is claimed syntax that will only ever
+mean what this document says. Breaking changes (marker syntax, flag grammar,
+dnt convention) require a major version bump — and are a family event, not a
+local commit: every consuming tool tests against this document, and a change
+here is coordinated across all of them before release.
 
-Producers SHOULD state the spec version they target (e.g. in release notes or
-tool `--version` output); the document itself intentionally carries no
-per-file version header — plain Markdown, readable without preamble, is part
-of the contract.
+The region vocabulary of §4.4 grows additively: a minor version MAY add a
+`NAME`, and older consumers stay correct because an unknown name reads as
+running text by rule. Removing or redefining a name is breaking.
+
+Producers SHOULD state the spec version they target, in the document's
+`format_version` field (§4.1) and in tool `--version` output. Until version
+0.2.0 the document carried no version of its own and the specification
+pointed at release notes instead; that does not survive contact with an
+archive, where a file is read years after the notes that described it. What
+remains of the original intent is narrower and still holds: the metadata
+block declares, it never narrates. Everything a human reads is text, and a
+consumer that drops the block loses no word of the document.
 
 ## 12. Consumer guarantees
 
@@ -415,8 +508,12 @@ What each family tool may rely on, stated once:
 
 - **Retrieval (archilles).** Stable page boundaries with printed labels for
   page-level citations; body and apparatus separable (footnote definitions
-  collected at the document end); no flags, no layout artefacts in the
-  deliverable. A search hit can therefore always cite the printed page.
+  collected at the document end); regions named where the producer knows them
+  (§4.4), so an index or a bibliography need not be recognised again by the
+  consumer; no flags, no layout artefacts in the deliverable. A search hit can
+  therefore always cite the printed page. What the producer does *not* mark is
+  running text — the guarantee is that a region marker is never a guess, not
+  that every apparatus carries one.
 - **Translation (archillator).** `<dnt>` protection per §7; structural markers
   carried over by briefing contract; strip rules that restore a clean target
   document. A citation address therefore survives translation.

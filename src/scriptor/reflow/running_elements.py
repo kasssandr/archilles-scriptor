@@ -100,6 +100,35 @@ def detect_running_headers(
     return [g[0] for g in groups if g[1] >= min_occurrences]
 
 
+def header_of_page(
+    page_text: str,
+    running_headers: list[str],
+    similarity_threshold: float = 0.85,
+) -> str | None:
+    """The running header this page carries, in its canonical form.
+
+    Same matching rule as ``remove_running_headers`` below, exposed on its own
+    because the header says more than that it is repeated furniture: a page
+    headed *Selected Bibliography* announces its region on every page of it
+    (PREPARED_FORMAT_SPEC §4.4). Stripping used to be the only thing that
+    happened to that knowledge.
+    """
+    lines_checked = 0
+    for line in page_text.strip().split("\n"):
+        if not line.strip():
+            continue
+        if lines_checked >= 3:
+            break
+        normalized = _normalize_header_line(line)
+        if not normalized:
+            continue
+        lines_checked += 1
+        for header in running_headers:
+            if _strings_are_similar(normalized, header, similarity_threshold):
+                return header
+    return None
+
+
 def remove_running_headers(
     pages_text: list[str],
     running_headers: list[str],

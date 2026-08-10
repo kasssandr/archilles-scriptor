@@ -61,6 +61,12 @@ def _flag_kind(sigil: str, glyph: str | None) -> str:
 
 
 def parse_prepared(text: str) -> ParsedDoc:
+    # The §4.1 metadata block is declaration, not text: dropping it here keeps
+    # a snippet search from ever matching a field name, and keeps every offset
+    # below counted from the document's first word.
+    from scriptor.reflow.regions import strip_metadata_block
+
+    text = strip_metadata_block(text)
     # Split off the definition block: definitions are collected at the
     # document end (spec §4.3); everything from the first definition line on
     # belongs to the block. Definitions are removed from the body so that
