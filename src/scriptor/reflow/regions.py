@@ -100,9 +100,12 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
         r"indices", r"index of (?:names|subjects|places|persons|passages)",
         # fr
         r"index(?: des \w+| g[ée]n[ée]ral| nominum)?", r"table onomastique",
-        # it / es / pt
-        r"indice(?: dei nomi| analitico| generale)?",
-        r"[íi]ndice(?: de \w+| onom[áa]stico| anal[íi]tico)?",
+        # it / es / pt — the complement is what makes it a register. Bare
+        # "Indice"/"Índice" is the table of contents in these languages and is
+        # listed under `contents`; only English, German, French and Latin use
+        # the plain word for the back-of-book index.
+        r"indice(?: dei nomi| dei luoghi| analitico| onomastico| dei manoscritti)",
+        r"[íi]ndice(?: de \w+| onom[áa]stico| anal[íi]tico| tem[áa]tico| de nombres)",
         r"[íi]ndice remissivo",
         # nl
         r"register(?: van \w+)?", r"zaakregister", r"namenregister",
@@ -135,7 +138,9 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
         # meets while still in front matter, so the region needs its own words.
         r"inhalts(?:verzeichnis|[üu]bersicht|angabe)?", r"inhalt",
         r"(?:table of )?contents", r"table des mati[èe]res", r"sommaire",
-        r"indice generale", r"[íi]ndice general", r"sum[áa]rio",
+        # Bare "Indice"/"Índice" — the table of contents in Italian, Spanish
+        # and Portuguese. See the note under `index`.
+        r"[íi]ndice(?: generale| general| geral)?", r"sum[áa]rio",
         r"inhoud(?:sopgave)?", r"оглавление", r"содержание",
     ),
     "notes": (
@@ -149,9 +154,15 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
         r"примечания", r"комментарии",
     ),
     "appendix": (
+        # A numbered or lettered appendix names itself that way — "Appendix IV",
+        # "Apéndice I", "ANEXO 2" — so the ordinal may follow the word as well
+        # as precede it.
         r"anh[äa]nge?", r"anlagen?", r"beilagen?", r"tabellenanhang",
-        r"appendix(?:\s+[ivxlcdm]+|\s+\d+|\s+[a-z])?", r"appendices",
-        r"annexes?", r"appendice", r"ap[êe]ndices?", r"ap[ée]ndices?",
+        r"appendix(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]))?", r"appendices",
+        r"annexes?", r"appendici?(?:\s+(?:[ivxlcdm]+|\d{1,2}))?",
+        r"ap[êe]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}))?",
+        r"ap[ée]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}))?",
+        r"anexos?(?:\s+(?:[ivxlcdm]+|\d{1,2}))?",
         r"bijlagen?",
         r"приложения?",
     ),
@@ -248,24 +259,39 @@ def _heading_candidates(page) -> list[str]:
     The confirmed outline title first — a heading the producer cut off the
     body still has to be seen — then the top of the page, where a region
     title stands. Deeper than that is body text.
+
+    Adjacent lines are also offered joined, and offered *first*, because a
+    heading may be broken across two of them: Callaey sets ÍNDICE / ONOMÁSTICO
+    that way, and read line by line the first half says "contents" — right for
+    the bare word, wrong for this page, and sixteen pages of register go under
+    the wrong name. The joined reading is the more specific one wherever both
+    match, so trying it first resolves the pair correctly. It cannot invent a
+    region: the join still has to match a whole vocabulary entry.
     """
     lines = [ln.strip() for ln in page.body_lines if ln.strip()][:6]
-    return ([page.heading.strip()] if page.heading else []) + lines
+    pairs = [f"{a} {b}" for a, b in zip(lines, lines[1:])]
+    return ([page.heading.strip()] if page.heading else []) + pairs + lines
 
 
 def _ubiquitous_heads(
     page_headers: list[str | None] | None,
     total: int,
     *,
-    share: float = 0.4,
+    span: float = 0.4,
 ) -> set[str]:
-    """Running heads that cover so much of the volume they distinguish nothing.
+    """Running heads that reach so far across the volume they distinguish nothing.
 
     A volume title printed on every verso says only that this is the volume.
     Read as evidence it does real damage: on a book set with alternating heads
     — volume title left, section title right — it closes the region on every
     other page, and the region flickers page by page (Bresson prints four
-    indexes that way).
+    indexes that way, Callaey five appendices).
+
+    Measured by *reach*, not by count. Callaey's verso head lands on about a
+    third of the pages, because chapter openings carry none, and any threshold
+    on frequency lets it through — but it runs from the first chapter to the
+    last page of the index, and that is what gives it away. A section title
+    clusters where its section is.
 
     This is Archilles' rule 1, learned there on EPUB filenames and true here
     too: a marker every unit carries is convention, not meaning. Check for
@@ -273,8 +299,18 @@ def _ubiquitous_heads(
     """
     if not page_headers or total <= 0:
         return set()
-    counts: Counter[str] = Counter(h for h in page_headers if h)
-    return {head for head, n in counts.items() if n / total >= share}
+    first: dict[str, int] = {}
+    last: dict[str, int] = {}
+    for position, head in enumerate(page_headers):
+        if not head:
+            continue
+        first.setdefault(head, position)
+        last[head] = position
+    return {
+        head
+        for head in first
+        if (last[head] - first[head] + 1) / total >= span
+    }
 
 
 def _opens_region(page) -> str | None:
@@ -341,15 +377,6 @@ def assign_regions(
 
     for position, page in enumerate(pages):
         mode = getattr(page, "mode", "main")
-        if mode == "frontmatter":
-            page.region = "front-matter"
-            current, prose_run = "main", []
-            continue
-        if mode == "toc":
-            page.region = "contents"
-            current, prose_run = "main", []
-            continue
-
         head = page_headers[position] if page_headers else None
         by_head = region_of_heading(head) if head else None
         # Frequency only devalues a head that names nothing. One that names a
@@ -364,12 +391,28 @@ def assign_regions(
             continue
 
         opened = _opens_region(page)
+
+        # The mode is a fallback, not an override. It answers coarsely — the
+        # reflow's toc trigger fires on a bare "Índice", which is right for a
+        # table of contents and wrong for the "Índice onomástico" two lines
+        # below it. Where the page names its own region, that name wins.
+        if opened is None and mode in ("frontmatter", "toc"):
+            page.region = "front-matter" if mode == "frontmatter" else "contents"
+            current, prose_run = "main", []
+            continue
+
         if opened is not None:
             current, prose_run = opened, []
             # Remembered from where the region opened, not re-tested per page:
             # a region that began in the body keeps being closable even once
             # it has run into the tail.
             in_tail = position >= tail_begins
+        elif current == "contents" and mode == "main":
+            # The reflow's own frontmatter->main transition ends a table of
+            # contents exactly: it fires on the first page that reads as
+            # running text. Waiting for the prose rule instead would let the
+            # contents region reach two pages into the first chapter.
+            current, prose_run = "main", []
         elif current in _CLOSEABLE:
             # A confirmed chapter start ends the apparatus outright: the
             # outline is stronger evidence than the run of short lines that

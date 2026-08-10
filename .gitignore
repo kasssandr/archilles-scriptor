@@ -40,3 +40,7 @@ eval/BENCHMARK-draft.md
 # and page images are derived data that would only bloat the history.
 eval/corpus/*/source.pdf
 eval/corpus/*/pages/
+# Any PDF dropped straight into the corpus directory, before it has been given
+# a band directory of its own. Some of this material is in copyright and only
+# ever local; the repository is public, so the default here is "out".
+eval/corpus/*.pdf
