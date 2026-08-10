@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections import Counter
 
 # The version of PREPARED_FORMAT_SPEC this producer writes. Stated in the
 # document itself (§4.1), because a prepared document outlives the release
@@ -44,8 +45,14 @@ REGION_NAMES = (
 )
 
 # Regions that name an apparatus — the ones a retrieval consumer wants to
-# exclude, and the ones the closing rule below applies to.
+# exclude.
 APPARATUS = ("bibliography", "index", "abbreviations", "notes", "appendix")
+
+# Regions the closing rules apply to. A table of contents is not apparatus,
+# but it must close like one: a volume that prints its contents at the end
+# (Pückert 1899, Guilhiermoz 1902) would otherwise carry `contents` over every
+# chapter that follows, which is the same silent loss by another name.
+_CLOSEABLE = APPARATUS + ("contents",)
 
 # Heading vocabulary. One list per region, matched against a whole heading
 # line, case- and accent-insensitively (an OCR layer drops diacritics often
@@ -122,11 +129,23 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
         # ru
         r"список сокращений", r"сокращения", r"условные обозначения",
     ),
+    "contents": (
+        # A table of contents at the *end* of a volume — Guilhiermoz 1902 and
+        # Pückert 1899 both put it there. assign_modes only reaches the ones it
+        # meets while still in front matter, so the region needs its own words.
+        r"inhalts(?:verzeichnis|[üu]bersicht|angabe)?", r"inhalt",
+        r"(?:table of )?contents", r"table des mati[èe]res", r"sommaire",
+        r"indice generale", r"[íi]ndice general", r"sum[áa]rio",
+        r"inhoud(?:sopgave)?", r"оглавление", r"содержание",
+    ),
     "notes": (
         # A collected notes section, as distinct from the footnotes of §4.3.
         r"anmerkungen", r"endnoten", r"anmerkungsapparat",
+        # Plural only. A volume that heads a page "NOTE" is nearly always
+        # making a publisher's remark, not opening an apparatus — Baynes does
+        # exactly that on its imprint page.
         r"notes", r"endnotes", r"reference notes",
-        r"note", r"notas", r"noten", r"adnotationes",
+        r"notas", r"noten", r"adnotationes",
         r"примечания", r"комментарии",
     ),
     "appendix": (
@@ -157,13 +176,48 @@ def _fold(text: str) -> str:
     return "".join(c for c in decomposed if not unicodedata.combining(c))
 
 
+# What may trail a heading: a closing stop or colon, because older typography
+# sets headings that way ("Inhaltsübersicht.", Pückert 1899) — and the marks a
+# scan turns those into. Guilhiermoz's running head arrives as "INDEX
+# ALPHABÉTIQUE ·", its printed full stop read back as a middle dot; refusing
+# it costs nine pages of index. Tolerating the tail costs nothing, because
+# what precedes it still has to be a whole vocabulary word: no sentence
+# becomes a heading by ending in a period.
+_TRAILING = r"[.,:;·•∙]?"
+
 _COMPILED: dict[str, tuple[re.Pattern[str], ...]] = {
     region: tuple(
-        re.compile(_fold(rf"^{_PREFIX}{alt}\s*:?\s*$"), re.IGNORECASE)
+        re.compile(_fold(rf"^{_PREFIX}{alt}\s*{_TRAILING}\s*$"), re.IGNORECASE)
         for alt in alternatives
     )
     for region, alternatives in _VOCABULARY.items()
 }
+
+
+# A title-like complement after the region word: INDEX ALPHABÉTIQUE, INDEX DES
+# NOMS DE PERSONNES, ÍNDICE DE NOMBRES PROPIOS. Only tried on lines set in
+# capitals — which is how volumes actually print these — because the pattern is
+# otherwise wide enough to swallow a sentence that opens with the word.
+_CAPITALISED: dict[str, re.Pattern[str]] = {
+    "index": re.compile(
+        rf"^(?:index|indice)(?:[\s-]+[^\W\d_]{{1,15}}){{1,4}}\s*{_TRAILING}\s*$",
+        re.IGNORECASE),
+    "bibliography": re.compile(
+        rf"^(?:bibliographie|bibliography|bibliografia)"
+        rf"(?:[\s-]+[^\W\d_]{{1,15}}){{1,4}}\s*{_TRAILING}\s*$", re.IGNORECASE),
+}
+
+
+def _is_capitalised(text: str) -> bool:
+    """True where the line is set in capitals — a printer's heading signal.
+
+    Measured over cased letters only, so digits and punctuation neither help
+    nor hurt, and a line without any letters is not a heading.
+    """
+    cased = [c for c in text if c.isalpha()]
+    if len(cased) < 3:
+        return False
+    return sum(1 for c in cased if c.isupper()) / len(cased) >= 0.8
 
 
 def region_of_heading(line: str) -> str | None:
@@ -181,6 +235,10 @@ def region_of_heading(line: str) -> str | None:
         for pat in patterns:
             if pat.match(folded):
                 return region
+    if _is_capitalised(stripped):
+        for region, pat in _CAPITALISED.items():
+            if pat.match(folded):
+                return region
     return None
 
 
@@ -193,6 +251,30 @@ def _heading_candidates(page) -> list[str]:
     """
     lines = [ln.strip() for ln in page.body_lines if ln.strip()][:6]
     return ([page.heading.strip()] if page.heading else []) + lines
+
+
+def _ubiquitous_heads(
+    page_headers: list[str | None] | None,
+    total: int,
+    *,
+    share: float = 0.4,
+) -> set[str]:
+    """Running heads that cover so much of the volume they distinguish nothing.
+
+    A volume title printed on every verso says only that this is the volume.
+    Read as evidence it does real damage: on a book set with alternating heads
+    — volume title left, section title right — it closes the region on every
+    other page, and the region flickers page by page (Bresson prints four
+    indexes that way).
+
+    This is Archilles' rule 1, learned there on EPUB filenames and true here
+    too: a marker every unit carries is convention, not meaning. Check for
+    contrast before believing a signal.
+    """
+    if not page_headers or total <= 0:
+        return set()
+    counts: Counter[str] = Counter(h for h in page_headers if h)
+    return {head for head, n in counts.items() if n / total >= share}
 
 
 def _opens_region(page) -> str | None:
@@ -251,6 +333,7 @@ def assign_regions(
     # refused rather than truncated.
     if page_headers is not None and len(page_headers) != len(pages):
         page_headers = None
+    ubiquitous = _ubiquitous_heads(page_headers, len(pages))
     tail_begins = len(pages) * (1.0 - tail_fraction)
     current = "main"
     prose_run: list = []
@@ -269,6 +352,11 @@ def assign_regions(
 
         head = page_headers[position] if page_headers else None
         by_head = region_of_heading(head) if head else None
+        # Frequency only devalues a head that names nothing. One that names a
+        # region is evidence however often it occurs — a volume may well be
+        # half bibliography, and its own title over those pages is the point.
+        if by_head is None and head in ubiquitous:
+            head = None
         if by_head is not None:
             page.region = by_head
             current, prose_run = by_head, []
@@ -282,7 +370,7 @@ def assign_regions(
             # a region that began in the body keeps being closable even once
             # it has run into the tail.
             in_tail = position >= tail_begins
-        elif current in APPARATUS:
+        elif current in _CLOSEABLE:
             # A confirmed chapter start ends the apparatus outright: the
             # outline is stronger evidence than the run of short lines that
             # kept the region open.

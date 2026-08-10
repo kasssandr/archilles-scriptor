@@ -340,15 +340,21 @@ def test_a_foreign_running_head_closes_a_region_even_in_the_tail():
 
     Sixty-eight pages of further essays follow it. The running head is what
     tells them apart from a bibliography: it names an essay, not a region, so
-    the pages under it belong to a structure that is not apparatus.
+    the pages under it belong to a structure that is not apparatus. The volume
+    sets its heads alternating — series title verso, essay title recto — and
+    only the essay title counts as evidence (the series title covers the whole
+    book and distinguishes nothing).
     """
     pages = [_prose() for _ in range(30)]
     pages.append(_entries("APPENDIX", "[I] Edward rex. Ubi Harold dux"))
     pages.extend(_prose() for _ in range(9))
-    heads = ["Anglo-Norman Studies XXIII"] * 40
+    heads = ["Anglo-Norman Studies XXIII"] * 31 + [
+        "Anglo-Norman Studies XXIII" if i % 2 else "The Bayeux Tapestry"
+        for i in range(9)
+    ]
     assign_modes(pages)
     assign_regions(pages, page_headers=heads)
-    assert [p.region for p in pages[-9:]] == ["main"] * 9
+    assert [p.region for p in pages[-8:]] == ["main"] * 8
 
 
 def test_a_region_naming_running_head_holds_through_the_tail():
@@ -372,3 +378,123 @@ def test_headless_tail_pages_still_hold_the_region():
     assign_modes(pages)
     assign_regions(pages, page_headers=heads)
     assert [p.region for p in pages[-5:]] == ["bibliography"] * 5
+
+
+# ── Vocabulary gaps found by measuring further volumes (2026-08-10) ──
+
+def test_french_index_with_an_adjective():
+    # Guilhiermoz 1902 prints INDEX ALPHABÉTIQUE, repeated as a running head.
+    assert region_of_heading("INDEX ALPHABÉTIQUE") == "index"
+    assert region_of_heading("ÍNDICE ANALÍTICO") == "index"
+
+
+def test_the_open_complement_needs_capitals():
+    """A complement the vocabulary does not list is only read off a capitalised
+    line — which is how the volumes measured here print their indexes. Set in
+    lower case the same words are indistinguishable from a sentence, and §4.4
+    says to stay silent then."""
+    assert region_of_heading("INDEX ALPHABÉTIQUE") == "index"
+    assert region_of_heading("Index alphabétique nach Sachgruppen") is None
+
+
+def test_french_index_with_a_multi_word_complement():
+    # Bresson has four of them; only two matched a "des <one word>" pattern.
+    assert region_of_heading("INDEX DES NOMS DE PERSONNES") == "index"
+    assert region_of_heading("INDEX DES SOURCES") == "index"
+    assert region_of_heading("INDEX DES LIEUX") == "index"
+    assert region_of_heading("INDEX DES PERSONNAGES") == "index"
+
+
+def test_a_sentence_opening_with_index_is_still_not_a_region():
+    # The generic complement must not swallow prose.
+    assert region_of_heading("Index ist eine geordnete Liste.") is None
+    assert region_of_heading("Index of this kind was unknown then.") is None
+
+
+def test_contents_has_its_own_vocabulary():
+    # A table of contents at the *end* of a volume (Pückert, Guilhiermoz):
+    # assign_modes only sees it as a mode, the region needs the name too.
+    assert region_of_heading("TABLE DES MATIÈRES") == "contents"
+    assert region_of_heading("Inhaltsübersicht") == "contents"
+    assert region_of_heading("Inhaltsverzeichnis") == "contents"
+    assert region_of_heading("Contents") == "contents"
+    assert region_of_heading("Sommaire") == "contents"
+
+
+def test_an_excursus_is_not_an_appendix():
+    # Pückert's "Erster Excurs." is an argument inside the book, not apparatus.
+    assert region_of_heading("Erster Excurs.") is None
+    assert region_of_heading("Excurs") is None
+
+
+def test_contents_closes_like_an_apparatus_region():
+    # It is not apparatus, but it must not run on either: a contents region
+    # that never closed would hide every chapter behind it.
+    pages = [_prose() for _ in range(4)]
+    pages.append(_entries("Inhaltsübersicht", "Erstes Kapitel 7", "Zweites Kapitel 19"))
+    pages.extend(_prose() for _ in range(4))
+    assign_modes(pages)
+    assign_regions(pages)
+    assert [p.region for p in pages[-4:]] == ["main"] * 4
+
+
+def test_a_singular_note_is_not_a_notes_section():
+    """Baynes prints NOTE over a publisher's preliminary remark.
+
+    An apparatus is titled in the plural; the singular is nearly always
+    something else, so it is not in the vocabulary.
+    """
+    assert region_of_heading("NOTE") is None
+    assert region_of_heading("Notes") == "notes"
+    assert region_of_heading("Anmerkungen") == "notes"
+
+
+def test_a_running_head_on_half_the_volume_is_not_a_signal():
+    """Bresson prints the volume title on every verso and the section title on
+    every recto. Read naively, the verso head closes the region on every other
+    page and the marker flickers.
+
+    This is Archilles' rule 1 — a marker every unit carries is convention, not
+    meaning — applied to running heads: one that covers half the volume
+    distinguishes nothing and is ignored as evidence.
+    """
+    pages = [_prose() for _ in range(20)]
+    pages.append(_entries("INDEX DES LIEUX", "Athènes, 44; Sparte, 91"))
+    pages.extend(_prose() for _ in range(9))
+    # verso: volume title; recto: the index title
+    heads = ["Parenté et société"] * 21
+    for i in range(21, 30):
+        heads.append("Parenté et société" if i % 2 else "INDEX DES LIEUX")
+    assign_modes(pages)
+    assign_regions(pages, page_headers=heads)
+    assert [p.region for p in pages[-9:]] == ["index"] * 9
+
+
+def test_a_rare_running_head_still_closes_a_region():
+    # Anglo-Norman: essay titles appear on a few pages each and stay evidence.
+    pages = [_prose() for _ in range(30)]
+    pages.append(_entries("APPENDIX", "[I] Edward rex. Ubi Harold dux"))
+    pages.extend(_prose() for _ in range(9))
+    heads = ["Anglo-Norman Studies XXIII"] * 31 + ["The Bayeux Tapestry"] * 9
+    assign_modes(pages)
+    assign_regions(pages, page_headers=heads)
+    assert [p.region for p in pages[-9:]] == ["main"] * 9
+
+
+def test_a_heading_may_end_in_a_full_stop():
+    """Pückert 1899 prints "Inhaltsübersicht." and "Erster Excurs." — setting
+    a heading with a closing stop is ordinary in older typography."""
+    assert region_of_heading("Inhaltsübersicht.") == "contents"
+    assert region_of_heading("Literaturverzeichnis.") == "bibliography"
+    assert region_of_heading("Register.") == "index"
+    # and it still does not turn a sentence into a heading
+    assert region_of_heading("Die Literatur der Zeit war reich.") is None
+
+
+def test_a_heading_survives_an_ocr_artefact_at_its_end():
+    """Guilhiermoz's running head reads "INDEX ALPHABÉTIQUE ·" — the printed
+    full stop came back from OCR as a middle dot. The line is otherwise exact,
+    and refusing it costs nine pages of index."""
+    assert region_of_heading("INDEX ALPHABÉTIQUE ·") == "index"
+    assert region_of_heading("Register,") == "index"
+    assert region_of_heading("Literaturverzeichnis;") == "bibliography"
