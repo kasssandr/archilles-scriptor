@@ -24,6 +24,7 @@ def reflow(
     fmt: str | None = None,
     decisions: str | Path | None = None,
     ocr_profile: str | Path | None = None,
+    chunking_strategy: str = "basic",
 ) -> None:
     reflow_main(
         str(src_dir),
@@ -31,6 +32,7 @@ def reflow(
         fmt,
         str(decisions) if decisions else None,
         str(ocr_profile) if ocr_profile else None,
+        chunking_strategy,
     )
 
 
@@ -41,13 +43,14 @@ def run_all(
     pages_dir: str | Path | None = None,
     decisions: str | Path | None = None,
     ocr_profile: str | Path | None = None,
+    chunking_strategy: str = "basic",
 ) -> None:
     pdf_path = Path(pdf_path)
     out_path = Path(out_path)
     if pages_dir is None:
         pages_dir = out_path.parent / f"{out_path.stem}_pages"
     extract(pdf_path, pages_dir)
-    reflow(pages_dir, out_path, fmt, decisions, ocr_profile)
+    reflow(pages_dir, out_path, fmt, decisions, ocr_profile, chunking_strategy)
 
 
 def bind_footnotes(in_path: str | Path, out_path: str | Path):

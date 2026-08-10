@@ -12,6 +12,7 @@ See KONZEPT_scriptor_v2.md §5.8: the note model must not hard-wire "page-local"
 import re
 
 from scriptor.reflow.core import main as reflow_main
+from scriptor.reflow.regions import strip_metadata_block
 
 # Both pages number their footnotes 1) and 2). Both paragraphs' lines are long
 # enough not to trigger the paragraph-end heuristic, so the body runs on across
@@ -37,7 +38,9 @@ def _reflow(tmp_path, fmt="md"):
     (pages / "00000002.txt").write_text(PAGE_2, encoding="utf-8")
     out = tmp_path / f"book.{fmt}"
     reflow_main(str(pages), str(out), fmt)
-    return out.read_text(encoding="utf-8")
+    # Without its §4.1 metadata block, so that "the first paragraph" below
+    # means the first paragraph of the text.
+    return strip_metadata_block(out.read_text(encoding="utf-8"))
 
 
 def test_the_paragraph_really_spans_the_page_break(tmp_path):

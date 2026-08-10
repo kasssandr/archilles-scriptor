@@ -1,3 +1,8 @@
+---
+format_version: 0.2.0
+chunking_strategy: basic
+---
+
 [p. 1] Erstens [^1] dann das Werk&[?FN:6|&] und hinten [^2][^3] als Schluss folgt es hier.
 
 [^1]: Fuenfte Note.

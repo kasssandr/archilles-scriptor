@@ -42,6 +42,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="OCR profile from `scriptor learn`: what a corrected corpus says the glyphs are",
     )
+    r.add_argument(
+        "--chunking",
+        choices=["basic", "scientific"],
+        default="basic",
+        help="declared for retrieval consumers (spec §4.1): 'scientific' keeps a "
+             "footnote and its anchor in one chunk, 'basic' cuts semantically",
+    )
 
     a = sub.add_parser("all", help="PDF -> Markdown in one shot")
     a.add_argument("pdf", type=Path)
@@ -64,6 +71,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="OCR profile from `scriptor learn`: what a corrected corpus says the glyphs are",
+    )
+    a.add_argument(
+        "--chunking",
+        choices=["basic", "scientific"],
+        default="basic",
+        help="declared for retrieval consumers (spec §4.1): 'scientific' keeps a "
+             "footnote and its anchor in one chunk, 'basic' cuts semantically",
     )
 
     pr = sub.add_parser(
@@ -187,10 +201,14 @@ def _dispatch(args, parser) -> int:
         written = pipeline.extract(args.pdf, args.out, emit_txt=args.emit_txt)
         print(f"{plural(len(written), 'page')} -> {args.out}", file=sys.stderr)
     elif args.cmd == "reflow":
-        pipeline.reflow(args.src, args.out, args.format, args.decisions, args.ocr_profile)
+        pipeline.reflow(
+            args.src, args.out, args.format, args.decisions, args.ocr_profile,
+            args.chunking,
+        )
     elif args.cmd == "all":
         pipeline.run_all(
-            args.pdf, args.out, args.format, args.pages_dir, args.decisions, args.ocr_profile
+            args.pdf, args.out, args.format, args.pages_dir, args.decisions,
+            args.ocr_profile, args.chunking,
         )
     elif args.cmd == "prepared":
         from scriptor.reflow.prepared import convert_file

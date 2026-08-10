@@ -48,6 +48,11 @@ class Page:
     body_lines: list[str]                 # raw body lines
     footnotes: dict[int, str] = field(default_factory=dict)  # number -> text
     mode: str = "main"                    # frontmatter | toc | main | entries-* | raw
+    # The region this page belongs to (PREPARED_FORMAT_SPEC §4.4), set by
+    # reflow/regions.py. ``mode`` says how the page is set, ``region`` says
+    # what it is — a bibliography a publisher indents like prose is still a
+    # bibliography. None until assign_regions has run.
+    region: str | None = None
     label: str | None = None              # printed label, verbatim ("xiv", "312")
     index: int = -1                       # physical page, 1-based file ordinal
     label_top: str | None = None          # label candidate at top of the page
@@ -1112,6 +1117,7 @@ def render_book(
     annotator=None,
     decisions=None,
     evidence=None,
+    chunking_strategy: str | None = None,
 ) -> tuple[str, dict[str, list[int]]]:
     """Group pages by mode in source order and render each group accordingly.
 
@@ -1133,12 +1139,29 @@ def render_book(
     available_pages = {p.label for p in pages if p.label is not None}
     anchor_targets: set[str] = set()
     i = 0
+    # Groups break on the region as well as on the mode, so that a region
+    # starting inside a stretch of prose gets its own marker: Bauer's
+    # bibliography is set like the body around it and would otherwise pass
+    # unannounced. A region boundary is a real boundary — no paragraph runs
+    # across it — so splitting there costs the renderer nothing.
+    from scriptor.reflow.regions import marker as region_marker
+
+    emitted_region: str | None = None
     while i < len(pages):
         mode = pages[i].mode
+        region = pages[i].region
         j = i
-        while j < len(pages) and pages[j].mode == mode:
+        while j < len(pages) and pages[j].mode == mode and pages[j].region == region:
             j += 1
         group = pages[i:j]
+
+        # md only: the TXT profile is for reading, not for consuming. "main"
+        # is the default a consumer assumes anyway (§4.4), so announcing it
+        # before anything else was announced would be noise.
+        if fmt == "md" and region is not None and region != emitted_region:
+            if not (emitted_region is None and region == "main"):
+                out_blocks.append(region_marker(region))
+            emitted_region = region
 
         if mode == "main":
             out_blocks.extend(
@@ -1173,6 +1196,13 @@ def render_book(
         result = re.sub(
             rf"[ \t]*{TABLE_BREAK}[ \t]*", "\n", result
         )
+    # The metadata block of §4.1, last, so it stays the first thing in the
+    # file: it declares which conventions the document follows, and a document
+    # outlives the release notes that would otherwise say so. Callers that
+    # want the bare text (golden comparisons, the TXT profile) pass nothing.
+    if fmt == "md" and chunking_strategy is not None:
+        from scriptor.reflow.regions import render_metadata_block
+        result = render_metadata_block(chunking_strategy) + "\n\n" + result
     return result + "\n", audit
 
 
@@ -1186,6 +1216,7 @@ def main(
     fmt: str | None = None,
     decisions_path: str | None = None,
     profile_path: str | None = None,
+    chunking_strategy: str = "basic",
 ) -> None:
     from scriptor.reflow import decisions as decisions_mod
     from scriptor.reflow import profile as profile_mod
@@ -1411,12 +1442,20 @@ def main(
     if footers:
         print(f"Running footers removed ({len(footers)}): {footers[:3]}", file=sys.stderr)
 
+    # The running head each page carried, read off the text *before* it was
+    # stripped and kept parallel to ``pages`` (parse_page drops empty pages,
+    # so the raw list would drift out of step). A head like "Selected
+    # Bibliography" names the region on every page of it — see reflow/regions.
+    from scriptor.reflow.running_elements import header_of_page
+
     pages: list[Page] = []
-    for ordinal, (text, fn_block, sp, rec) in enumerate(
-        zip(cleaned, fn_blocks, source_pages, reconstructions), start=1
+    page_headers: list[str | None] = []
+    for ordinal, (text, raw, fn_block, sp, rec) in enumerate(
+        zip(cleaned, raw_texts, fn_blocks, source_pages, reconstructions), start=1
     ):
         pg = parse_page(text, fn_block=fn_block, geometry_verified=rec.measured)
         if pg is not None:
+            page_headers.append(header_of_page(raw, headers))
             pg.backend_label = sp.label
             pg.heading = headings_by_pos.get(ordinal - 1)
             # The physical page, counted over the source files. Always known,
@@ -1440,6 +1479,14 @@ def main(
     assign_modes(pages)
     mode_counts = Counter(p.mode for p in pages)
     print(f"Mode distribution: {dict(mode_counts)}", file=sys.stderr)
+
+    from scriptor.reflow.regions import assign_regions
+    assign_regions(pages, page_headers=page_headers)
+    named = Counter(p.region for p in pages if p.region and p.region != "main")
+    print(
+        f"Regions named: {dict(named) if named else 'none — the document reads as running text'}",
+        file=sys.stderr,
+    )
 
     threshold, hist = calibrate_threshold(pages)
     print(f"Calibration (main pages only): threshold <= {threshold} chars", file=sys.stderr)
@@ -1465,7 +1512,8 @@ def main(
 
     decisions.reset_report()
     clean_output, _ = render_book(
-        pages, threshold, fmt, decisions=decisions, evidence=evidence
+        pages, threshold, fmt, decisions=decisions, evidence=evidence,
+        chunking_strategy=chunking_strategy,
     )
     Path(out_path).write_text(clean_output, encoding="utf-8")
     print(f"Written: {out_path}", file=sys.stderr)
@@ -1487,7 +1535,8 @@ def main(
     annotator = Annotator()
     decisions.reset_report()   # the clean render already reported; do not double count
     review_output, _ = render_book(
-        pages, threshold, fmt, annotator=annotator, decisions=decisions, evidence=evidence
+        pages, threshold, fmt, annotator=annotator, decisions=decisions,
+        evidence=evidence, chunking_strategy=chunking_strategy,
     )
     op = Path(out_path)
     review_path = op.with_name(f"{op.stem}.review{op.suffix}")

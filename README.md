@@ -29,6 +29,15 @@ hyphenated words, drops running headers, and keeps page boundaries as inline
 roman-paginated preface stays citable as `[p. xiv]` rather than being renumbered
 or dropped. Page-local footnotes become document-wide Pandoc footnotes.
 
+Where it recognises one, it also names the region a passage belongs to —
+`[region: bibliography]`, `[region: index]` — on a line of its own, governing
+the text that follows. That is for whatever indexes the file: a search that
+answers from the index instead of from the book is a bad search. Recognition
+is deliberately shy, because the two mistakes are not equally bad. An index
+that shows up in results is a nuisance; a chapter mistaken for apparatus is
+invisible. So where scriptor is unsure it says nothing, and unmarked text
+means running text.
+
 Where a marker was lost, it does not guess silently. Take this scanned page:
 
 ```
