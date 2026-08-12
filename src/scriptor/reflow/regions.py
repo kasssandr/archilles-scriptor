@@ -401,6 +401,52 @@ def _opens_region(page) -> str | None:
     return None
 
 
+def _is_roman_label(label: str) -> bool:
+    from scriptor.reflow.pagelabel import MIN_ROMAN_LEN, ROMAN_RE
+
+    s = label.strip().lower()
+    return len(s) >= MIN_ROMAN_LEN and bool(ROMAN_RE.match(s))
+
+
+def front_matter_zone_end(pages: list, *, max_fraction: float = 0.1) -> int:
+    """Index of the first body page — where the front matter stops.
+
+    Two signals, in order of how much they can be trusted.
+
+    The **pagination** is the publisher's own statement and needs no
+    vocabulary: a volume that sets its front matter in roman numerals and
+    restarts at 1 has said where its body begins (Themistios: contents
+    XI–XIII, body from 1).
+
+    Where a volume paginates straight through (Bauer: preface on 7), the
+    fallback is the **last list printed in the opening tenth** — a table of
+    contents or a list of abbreviations. The bound matters more than it looks:
+    nine of sixteen measured volumes print their contents at the *end*, and
+    without it one at 98 % would declare the whole book front matter.
+
+    Returns 0 where neither signal fires, which reads as "no front matter" and
+    leaves every page to the ordinary rules.
+    """
+    seen_roman = False
+    for position, page in enumerate(pages):
+        label = (getattr(page, "label", None) or "").strip()
+        if not label:
+            continue
+        if _is_roman_label(label):
+            seen_roman = True
+        elif seen_roman and label.isdigit():
+            return position
+
+    limit = max(1, int(len(pages) * max_fraction))
+    end = 0
+    for position, page in enumerate(pages[:limit]):
+        if getattr(page, "mode", "main") in ("frontmatter", "toc"):
+            end = position + 1
+        elif _opens_region(page) in ("contents", "abbreviations"):
+            end = position + 1
+    return end
+
+
 def assign_regions(
     pages: list,
     *,
