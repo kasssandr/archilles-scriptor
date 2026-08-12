@@ -1,5 +1,5 @@
 """Adapters turn candidate output files into one comparable ParsedDoc shape."""
-from scriptor.eval.adapters import page_at, parse_prepared
+from scriptor.eval.adapters import page_at, parse_prepared, region_at
 
 PREPARED = """[p. xiv] Front text here.
 
@@ -78,3 +78,52 @@ def test_plain_adapter_no_flags_no_cits():
 
 def test_adapter_registry():
     assert set(ADAPTERS) == {"prepared", "plain"}
+
+
+# regions (spec §4.4) -------------------------------------------------------
+
+REGIONED = """[region: main]
+
+[p. 300] The last page of the argument.
+
+[region: bibliography]
+
+[p. 301] Aerts, W. J. 2003. Some Title.
+
+[p. 302] Bauer, Eva-Maria. 2020. Another.
+
+[region: index]
+
+[p. 339] Abelard 12, 44
+"""
+
+
+def test_region_marks_are_read_in_order():
+    doc = parse_prepared(REGIONED)
+    assert [name for name, _ in doc.region_marks] == ["main", "bibliography", "index"]
+
+
+def test_region_at_follows_the_reach_rule():
+    doc = parse_prepared(REGIONED)
+    assert region_at(doc, doc.body.index("The last page")) == "main"
+    assert region_at(doc, doc.body.index("Aerts, W. J.")) == "bibliography"
+    assert region_at(doc, doc.body.index("Abelard")) == "index"
+
+
+def test_text_before_any_marker_is_in_no_region():
+    doc = parse_prepared("[p. 1] Untagged text.\n")
+    assert region_at(doc, 5) == ""
+
+
+def test_region_marker_is_not_left_in_the_body():
+    """A snippet search must never match the declaration, only the text."""
+    doc = parse_prepared(REGIONED)
+    assert "[region:" not in doc.body
+
+
+def test_region_holds_from_its_own_position():
+    """The marker is lifted out, so it occupies no width: the text that took
+    its place is already inside the region, not still before it."""
+    doc = parse_prepared("[region: index]\n[p. 339] Abelard 12, 44\n")
+    assert doc.body.startswith("[p. 339]")
+    assert region_at(doc, 0) == "index"

@@ -21,6 +21,8 @@ DEF_RE = re.compile(r"^\[\^(\d+)\]:\s*(.*)$", re.MULTILINE)
 CIT_RE = re.compile(
     r"\[([^\]]+)\]\{\.cit\s+type=(r[34])(?:\s+ref=([\w:-]+))?\}"
 )
+# Spec §4.4 region markers, each on a line of its own.
+REGION_LINE_RE = re.compile(r"^\[region:\s*([a-z-]+)\]\s*\n?", re.MULTILINE)
 
 
 @dataclass
@@ -52,6 +54,28 @@ class ParsedDoc:
     footnotes: list[DocFootnote] = field(default_factory=list)
     flags: list[DocFlag] = field(default_factory=list)
     cit_spans: list[DocCitSpan] = field(default_factory=list)
+    region_marks: list[tuple[str, int]] = field(default_factory=list)
+
+
+def _split_region_marks(text: str) -> tuple[str, list[tuple[str, int]]]:
+    """Lift the §4.4 markers out of the text, keeping where each took effect.
+
+    They are declaration, not prose -- and unlike a page marker they carry a
+    *word*, so leaving them in would let a snippet search match `bibliography`
+    in a document that merely names the region. Offsets returned are already
+    those of the cleaned text.
+    """
+    marks: list[tuple[str, int]] = []
+    out: list[str] = []
+    kept = 0
+    last = 0
+    for m in REGION_LINE_RE.finditer(text):
+        out.append(text[last:m.start()])
+        kept += m.start() - last
+        marks.append((m.group(1), kept))
+        last = m.end()
+    out.append(text[last:])
+    return "".join(out), marks
 
 
 def _flag_kind(sigil: str, glyph: str | None) -> str:
@@ -67,6 +91,7 @@ def parse_prepared(text: str) -> ParsedDoc:
     from scriptor.reflow.regions import strip_metadata_block
 
     text = strip_metadata_block(text)
+    text, region_marks = _split_region_marks(text)
     # Split off the definition block: definitions are collected at the
     # document end (spec §4.3); everything from the first definition line on
     # belongs to the block. Definitions are removed from the body so that
@@ -92,19 +117,33 @@ def parse_prepared(text: str) -> ParsedDoc:
         for m in CIT_RE.finditer(body)
     ]
     page_marks = [(m.group(1), m.start()) for m in PAGE_MARKER_RE.finditer(body)]
-    return ParsedDoc(body, page_marks, footnotes, flags, cits)
+    return ParsedDoc(body, page_marks, footnotes, flags, cits,
+                     [(n, o) for n, o in region_marks if o <= len(body)])
+
+
+def _preceding(marks: list[tuple[str, int]], offset: int, *,
+               inclusive: bool = False) -> str:
+    value = ""
+    for name, off in marks:
+        if off < offset or (inclusive and off == offset):
+            value = name
+        else:
+            break
+    return value
 
 
 def page_at(doc: ParsedDoc, offset: int) -> str:
     """Printed label of the nearest page marker preceding offset (a marker
     addresses the text that follows it, so its own start is not yet on it)."""
-    label = ""
-    for lbl, off in doc.page_marks:
-        if off < offset:
-            label = lbl
-        else:
-            break
-    return label
+    return _preceding(doc.page_marks, offset)
+
+
+def region_at(doc: ParsedDoc, offset: int) -> str:
+    """Region in force at offset; "" before the first marker. Same reach rule
+    as the page label -- a region runs until the next one opens. Unlike a page
+    marker it is lifted out of the body, so its own offset already belongs to
+    it: the text that moved into that position is inside the region."""
+    return _preceding(doc.region_marks, offset, inclusive=True)
 
 
 # plain fallback ----------------------------------------------------------
