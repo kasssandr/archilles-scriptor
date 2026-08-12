@@ -660,3 +660,41 @@ num = 514
 definition_starts = "Fischer, Digitale Kunst und freie Benutzung, 2018, S. 54."
 status = "intact"
 anchor_after = "besitzen, wie Änderungen des Formats oder der Größe."
+
+# Structural regions (spec §4.4), declared for the whole volume -- not for the
+# pages sampled above. The footnote sample is drawn from body pages and holds
+# no apparatus at all, so a recall measured over it would have an empty
+# denominator. Each entry opens a region that runs until the next one.
+#
+# DRAFT, read off two sources independent of any converter output: the
+# publisher's PDF outline (Literaturverzeichnis -> physical 325) and the raw
+# text layer of the front and back matter. Operator to confirm against the
+# page images.
+#
+# The volume prints no folio before physical 7, so the four cover and imprint
+# pages carry no label a boundary could name; they stay outside the measured
+# range rather than being guessed at.
+[[regions]]
+from_page = "7"     # Vorwort -- first page carrying a printed folio
+name = "front-matter"
+
+[[regions]]
+from_page = "9"     # "Inhaltsverzeichnis", eight pages
+name = "contents"
+
+[[regions]]
+from_page = "17"    # "Abbildungsverzeichnis" -- a list of figures, not the
+                    # table of contents and not back matter. §4.4 has no name
+                    # of its own for it; it belongs to the front matter it is
+                    # printed in.
+name = "front-matter"
+
+[[regions]]
+from_page = "19"    # "Einleitung" -- body text begins, and runs through
+                    # "Zusammenfassende Thesen" (317-323), which summarises
+                    # the argument in prose and is not apparatus.
+name = "main"
+
+[[regions]]
+from_page = "325"   # "Literaturverzeichnis" to the end of the volume (347)
+name = "bibliography"

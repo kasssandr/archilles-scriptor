@@ -406,3 +406,45 @@ num = 76
 definition_starts = "Vgl.: Symm. or. 1,18: Probasti animum constantissimi ducis minus tibi"
 status = "intact"
 anchor_after = "als seine Kriegsgegner (τῶν πολεμησάντων (...) κρείττων)."
+
+# Structural regions (spec §4.4), declared for the whole volume -- not for the
+# pages sampled above. The footnote sample is drawn from body pages and holds
+# no apparatus at all, so a recall measured over it would have an empty
+# denominator. Each entry opens a region that runs until the next one.
+#
+# DRAFT, read off two sources independent of any converter output: the
+# publisher's PDF outline and the running heads of the raw text layer.
+# Operator to confirm against the page images.
+#
+# The front matter is deliberately left out. Its table of contents (physical
+# 12-14) is paginated in roman numerals, and this volume prints no running
+# head on a section opening -- so the label of the page the region starts on
+# is not readable, only inferable. Guessing it would put noise into a
+# denominator. Those pages stay outside the measured range.
+#
+# Two boundaries the outline gives are not entered, because they open a
+# region of the same name as the one already running and would only split a
+# block without adding a question: physical 256 (VIII Sekundärliteratur,
+# after VII Editionen) and physical 270 (Stellenregister, after Register).
+[[regions]]
+from_page = "2"     # physical 17. The body opens on physical 16 ("I Einleitung"),
+                    # but this volume prints no running head on a section
+                    # opening, so that page carries no folio and cannot name a
+                    # boundary. Each region below therefore starts on the first
+                    # page the volume actually paginates, one page in; the
+                    # opening page is lost to the measurement, which is a
+                    # property of the book, not a concession.
+name = "main"
+
+[[regions]]
+from_page = "234"   # physical 249; the region opens on physical 248, "VII
+                    # Editionen und Übersetzungen", unpaginated. Runs
+                    # into "VIII Sekundärliteratur" (physical 256) with its
+                    # abbreviations section VIII.1
+name = "bibliography"
+
+[[regions]]
+from_page = "252"   # physical 267; the region opens on physical 266,
+                    # "Register", unpaginated. Runs into "Stellenregister"
+                    # (physical 270) to the end of the volume
+name = "index"
