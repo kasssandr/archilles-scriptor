@@ -733,3 +733,9 @@ def test_preface_does_not_swallow_prose_opening_with_the_word():
     assert region_of_heading(
         "Vorwort des Herausgebers zur dritten, vollständig neu bearbeiteten Auflage"
     ) is None
+
+
+def test_format_version_is_declared_and_current():
+    from scriptor.reflow.regions import FORMAT_VERSION
+    assert FORMAT_VERSION == "0.3.0"
+    assert "format_version: 0.3.0" in render_metadata_block()

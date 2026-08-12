@@ -1,6 +1,6 @@
 # The Prepared Document Format
 
-**Version 0.2.0 (draft) · 2026-08-10 · MIT**
+**Version 0.3.0 (draft) · 2026-08-12 · MIT**
 
 This specification defines the *prepared document*: a scholarly text converted
 to plain Markdown in which the scholarly apparatus — footnotes, printed page
@@ -83,7 +83,7 @@ text:
 
 ```yaml
 ---
-format_version: 0.2.0
+format_version: 0.3.0
 chunking_strategy: basic
 ---
 ```
@@ -219,8 +219,9 @@ its own:
 
 | `NAME` | The region |
 |---|---|
-| `front-matter` | Title pages, imprint, dedication, preface matter. |
+| `front-matter` | Title pages, imprint, dedication. |
 | `contents` | Table of contents. |
+| `preface` | Preface, foreword, acknowledgements — what a book says about itself before it begins. Named so a consumer can weigh it; never apparatus, because a preface that leads into the argument is a chapter. |
 | `main` | Running text — the body the book is about. |
 | `bibliography` | Bibliography, list of sources, works cited. |
 | `index` | Index of any kind — names, subjects, places, passages. |
@@ -492,6 +493,10 @@ here is coordinated across all of them before release.
 The region vocabulary of §4.4 grows additively: a minor version MAY add a
 `NAME`, and older consumers stay correct because an unknown name reads as
 running text by rule. Removing or redefining a name is breaking.
+
+0.3.0 adds `preface` and narrows `front-matter`, which until then covered
+preface matter as well. Additive by that rule: a consumer that does not know
+the name treats it as running text, which is what a preface should get anyway.
 
 Producers SHOULD state the spec version they target, in the document's
 `format_version` field (§4.1) and in tool `--version` output. Until version

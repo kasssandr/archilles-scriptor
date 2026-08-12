@@ -27,7 +27,7 @@ from collections import Counter
 # The version of PREPARED_FORMAT_SPEC this producer writes. Stated in the
 # document itself (§4.1), because a prepared document outlives the release
 # notes that describe it.
-FORMAT_VERSION = "0.2.0"
+FORMAT_VERSION = "0.3.0"
 
 # The marker of §4.4, on a line of its own.
 REGION_MARKER = "[region: {name}]"
