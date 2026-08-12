@@ -446,6 +446,15 @@ def front_matter_zone_end(
     Reading the mode alone closed the zone after the five title pages, one
     position ahead of the preface — which then counted as body text.
 
+    A preface **adjoining** the zone extends it, and only then. Reading the
+    lists alone put the boundary on the last one, so a volume that prints its
+    contents first and its preface behind it (Lizzi Testa) ended its front
+    matter on the very page the preface opens, and no such preface could ever
+    be named. Requiring the page to adjoin what has been found so far is what
+    keeps the rule from arguing in a circle: a stray "Vorwort zur Neuausgabe"
+    behind a few pages of running text would otherwise extend the zone to
+    itself, and licence itself by doing so.
+
     Returns 0 where neither signal fires, which reads as "no front matter" and
     leaves every page to the ordinary rules.
     """
@@ -465,12 +474,14 @@ def front_matter_zone_end(
     limit = max(1, int(len(pages) * max_fraction))
     end = 0
     for position, page in enumerate(pages[:limit]):
-        head = page_headers[position] if page_headers else None
         if getattr(page, "mode", "main") in ("frontmatter", "toc"):
             end = position + 1
-        elif _opens_region(page) in ("contents", "abbreviations"):
+            continue
+        head = page_headers[position] if page_headers else None
+        names = {_opens_region(page), region_of_running_head(head) if head else None}
+        if names & {"contents", "abbreviations"}:
             end = position + 1
-        elif head and region_of_running_head(head) in ("contents", "abbreviations"):
+        elif "preface" in names and position == end:
             end = position + 1
     return end
 
@@ -585,6 +596,15 @@ def assign_regions(
             # a region that began in the body keeps being closable even once
             # it has run into the tail.
             in_tail = position >= tail_begins
+        elif current == "preface" and position >= zone_end:
+            # A preface ends where the front matter does. None of the closing
+            # rules below reach it — they are written for an apparatus, and the
+            # prose rule would end a preface on its second page, a preface
+            # being prose. Left unclosed it ran to the next region of any kind:
+            # on Lizzi Testa that was the bibliography, 438 pages later. The
+            # zone is the same evidence that opened it, so the region lasts
+            # exactly as long as the grounds for naming it.
+            current, prose_run = "main", []
         elif current == "contents" and mode == "main":
             # The reflow's own frontmatter->main transition ends a table of
             # contents exactly: it fires on the first page that reads as

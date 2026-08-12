@@ -112,6 +112,66 @@ def test_a_bibliography_is_not_overwritten_by_a_late_preface_word():
     assert pages[31].region == "bibliography"
 
 
+def _lizzi():
+    """Lizzi Testa's opening, as measured: half title, imprint, two pages of
+    contents, then the two-page "Premessa" -- and no further list behind it.
+
+    A hundred pages, so the opening tenth reaches past the front matter and
+    the bound is not what the test measures.
+    """
+    pages = ([_page(None, "frontmatter", ("LE TRASFORMAZIONI DELLE ELITES",)),
+              _page(None, "main", ("© Copyright 2006 by L'ERMA di BRETSCHNEIDER",)),
+              _page(None, "toc", ("INDICE", "G. BONAMENTE, Premessa 7")),
+              _page(None, "main", ("Indice generale", "P. PORENA, Trasformazioni")),
+              _page(None, "main", ("PREMESSA", "Il Convegno Internazionale")),
+              _page(None, "main", ("Premessa", "to dal MIUR e dalle Università"))]
+             + [_page(str(n)) for n in range(9, 103)])
+    return pages
+
+
+def test_a_preface_directly_behind_the_contents_is_still_front_matter():
+    """Lizzi Testa: the contents is printed first and the "Premessa" follows
+    it. The zone stopped at the last *list*, which is exactly the page the
+    preface opens on -- so the volume's own front matter was one position too
+    short, every time, and the preface counted as body text.
+
+    The rule the operator gave holds either way round: what makes this front
+    matter is that it adjoins the front matter, not which of the two comes
+    first.
+    """
+    pages = _lizzi()
+    assert front_matter_zone_end(pages) == 6
+    assign_regions(pages)
+    assert [p.region for p in pages[4:6]] == ["preface", "preface"]
+
+
+def test_a_preface_ends_where_the_front_matter_ends():
+    """The other half of the same rule, and the more expensive half. `preface`
+    is not apparatus, so none of the closing rules of §4.4 reach it: opened and
+    left to run, it took 438 of Lizzi Testa's 497 pages -- every page up to the
+    bibliography. A preface is as long as the zone it stands in.
+    """
+    pages = _lizzi()
+    assign_regions(pages)
+    assert pages[6].region == "main"
+    assert all(p.region != "preface" for p in pages[6:])
+
+
+def test_a_preface_inside_the_opening_tenth_still_needs_to_adjoin_the_zone():
+    """The zone may not talk itself into existence. A volume that heads a page
+    "Vorwort zur Neuausgabe" early on -- but behind pages of running text --
+    has said nothing about where its body begins, and if a preface could
+    extend the zone from anywhere inside the opening tenth, every such page
+    would licence itself.
+    """
+    pages = [_page(str(n), "frontmatter") for n in range(1, 3)]
+    pages += [_page(str(n)) for n in range(3, 101)]
+    pages[7] = _page("8", "main", ("Vorwort",))
+    assert front_matter_zone_end(pages) == 2
+    assign_regions(pages)
+    assert pages[7].region == "main"
+
+
 def test_a_contents_known_only_from_its_running_head_still_ends_the_zone():
     """Bauer's case, and the reason the first cut of this function failed on
     it: its table of contents is not `mode=toc` at all. The mode never fires,
