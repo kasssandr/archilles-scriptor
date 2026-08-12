@@ -416,16 +416,31 @@ anchor_after = "als seine Kriegsgegner (τῶν πολεμησάντων (...) �
 # publisher's PDF outline and the running heads of the raw text layer.
 # Operator to confirm against the page images.
 #
-# The front matter is deliberately left out. Its table of contents (physical
-# 12-14) is paginated in roman numerals, and this volume prints no running
-# head on a section opening -- so the label of the page the region starts on
-# is not readable, only inferable. Guessing it would put noise into a
-# denominator. Those pages stay outside the measured range.
+# The preface is entered even though its label had to be inferred, following
+# the precedent this file already sets for printed 163: a converter has to
+# keep counting here rather than read, and that is worth measuring. The volume
+# paginates its front matter in roman numerals and prints no running head on a
+# section opening, so physical 8 carries no folio; physical 13 prints XII,
+# which puts physical 8 at VII.
+#
+# The table of contents (physical 12-14) stays out. Its opening page is
+# likewise unpaginated, and unlike the preface it has no single page the
+# region could be pinned to without inventing one.
 #
 # Two boundaries the outline gives are not entered, because they open a
 # region of the same name as the one already running and would only split a
 # block without adding a question: physical 256 (VIII Sekundärliteratur,
 # after VII Editionen) and physical 270 (Stellenregister, after Register).
+[[regions]]
+from_page = "VII"   # physical 8, "Vorwort und Dank" -- one page, followed by a
+                    # blank, the dedication "marito optimo" and another blank
+                    # before the contents. It reports how the book came about
+                    # and thanks the supervisors: academic convention, not
+                    # matter the argument rests on, and printed ahead of the
+                    # table of contents. Becomes `preface` once the vocabulary
+                    # of the 2026-08-12 design carries that name.
+name = "front-matter"
+
 [[regions]]
 from_page = "2"     # physical 17. The body opens on physical 16 ("I Einleitung"),
                     # but this volume prints no running head on a section
