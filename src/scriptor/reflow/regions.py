@@ -408,7 +408,12 @@ def _is_roman_label(label: str) -> bool:
     return len(s) >= MIN_ROMAN_LEN and bool(ROMAN_RE.match(s))
 
 
-def front_matter_zone_end(pages: list, *, max_fraction: float = 0.1) -> int:
+def front_matter_zone_end(
+    pages: list,
+    *,
+    page_headers: list[str | None] | None = None,
+    max_fraction: float = 0.1,
+) -> int:
     """Index of the first body page — where the front matter stops.
 
     Two signals, in order of how much they can be trusted.
@@ -424,9 +429,18 @@ def front_matter_zone_end(pages: list, *, max_fraction: float = 0.1) -> int:
     nine of sixteen measured volumes print their contents at the *end*, and
     without it one at 98 % would declare the whole book front matter.
 
+    That fallback has to read the running heads, not only the mode. Bauer's
+    table of contents is not ``mode=toc`` on a single page: it is recognised
+    entirely from the head "Inhaltsverzeichnis" that all eight pages carry.
+    Reading the mode alone closed the zone after the five title pages, one
+    position ahead of the preface — which then counted as body text.
+
     Returns 0 where neither signal fires, which reads as "no front matter" and
     leaves every page to the ordinary rules.
     """
+    if page_headers is not None and len(page_headers) != len(pages):
+        page_headers = None
+
     seen_roman = False
     for position, page in enumerate(pages):
         label = (getattr(page, "label", None) or "").strip()
@@ -440,9 +454,12 @@ def front_matter_zone_end(pages: list, *, max_fraction: float = 0.1) -> int:
     limit = max(1, int(len(pages) * max_fraction))
     end = 0
     for position, page in enumerate(pages[:limit]):
+        head = page_headers[position] if page_headers else None
         if getattr(page, "mode", "main") in ("frontmatter", "toc"):
             end = position + 1
         elif _opens_region(page) in ("contents", "abbreviations"):
+            end = position + 1
+        elif head and region_of_running_head(head) in ("contents", "abbreviations"):
             end = position + 1
     return end
 
@@ -497,7 +514,7 @@ def assign_regions(
         page_headers = None
     ubiquitous = _ubiquitous_heads(page_headers, len(pages))
     tail_begins = len(pages) * (1.0 - tail_fraction)
-    zone_end = front_matter_zone_end(pages)
+    zone_end = front_matter_zone_end(pages, page_headers=page_headers)
     current = "main"
     prose_run: list = []
     in_tail = False

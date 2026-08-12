@@ -110,3 +110,26 @@ def test_a_bibliography_is_not_overwritten_by_a_late_preface_word():
     pages[31] = _page("32", "main", ("Ringraziamenti",))
     assign_regions(pages)
     assert pages[31].region == "bibliography"
+
+
+def test_a_contents_known_only_from_its_running_head_still_ends_the_zone():
+    """Bauer's case, and the reason the first cut of this function failed on
+    it: its table of contents is not `mode=toc` at all. The mode never fires,
+    and the eight pages are recognised solely by the running head
+    "Inhaltsverzeichnis" that every one of them carries.
+
+    Without that signal the zone closed after the five title pages -- one
+    position ahead of the preface on printed 7, which therefore counted as
+    body text and kept the name `front-matter`.
+    """
+    pages = ([_page(str(n), "frontmatter") for n in range(1, 6)]
+             + [_page("7", "main", ("Vorwort",))]
+             + [_page(str(n), "main", ("19",)) for n in range(9, 17)]
+             + [_page(str(n)) for n in range(17, 200)])
+    heads = ([None] * 6 + ["Inhaltsverzeichnis"] * 8
+             + [None] * (len(pages) - 14))
+
+    assert front_matter_zone_end(pages, page_headers=heads) == 14
+
+    assign_regions(pages, page_headers=heads)
+    assert pages[5].region == "preface"
