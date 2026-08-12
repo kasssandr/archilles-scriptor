@@ -739,3 +739,34 @@ def test_format_version_is_declared_and_current():
     from scriptor.reflow.regions import FORMAT_VERSION
     assert FORMAT_VERSION == "0.3.0"
     assert "format_version: 0.3.0" in render_metadata_block()
+
+
+# ── multi-level ordinals and compound German titles ──────────────────
+
+def test_a_compound_section_number_is_still_an_ordinal():
+    """De Gruyter numbers "VIII.1 Abkürzungen", "VIII.2 Literatur". The
+    ordinal rule allowed one level only, so a heading whose bare word the
+    vocabulary knows fell through on its number alone -- and that is how half
+    of German scholarly publishing numbers its sections."""
+    assert region_of_heading("VIII.1 Abkürzungen") == "abbreviations"
+    assert region_of_heading("VIII.2 Literatur") == "bibliography"
+    assert region_of_heading("3.2.1 Literaturverzeichnis") == "bibliography"
+
+
+def test_literatur_with_a_prefixed_qualifier():
+    """`Literatur` matched, `Sekundärliteratur` did not -- the pattern allowed
+    words in front of it but nothing grown onto it."""
+    assert region_of_heading("Sekundärliteratur") == "bibliography"
+    assert region_of_heading("VIII Sekundärliteratur") == "bibliography"
+    assert region_of_heading("Primärliteratur") == "bibliography"
+
+
+def test_editions_and_translations_is_a_list_of_sources():
+    """Themistios heads its source bibliography "VII Editionen und
+    Übersetzungen" -- the usual title for one in classical scholarship."""
+    assert region_of_heading("VII Editionen und Übersetzungen") == "bibliography"
+    assert region_of_heading("Editionen und Übersetzungen") == "bibliography"
+
+
+def test_the_wider_ordinal_does_not_turn_prose_into_a_heading():
+    assert region_of_heading("1.5 Millionen Menschen lasen den Index.") is None

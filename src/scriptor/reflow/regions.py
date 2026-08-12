@@ -65,8 +65,15 @@ _CLOSEABLE = APPARATUS + ("contents",)
 # CJK is out: these patterns key on word boundaries, which do not carry there.
 _VOCABULARY: dict[str, tuple[str, ...]] = {
     "bibliography": (
-        # de — "Quellen- und Literaturverzeichnis" too, hence the optional lead
-        r"(?:quellen[-\s–]*und[-\s]*)?literatur(?:verzeichnis|nachweis)?",
+        # de — "Quellen- und Literaturverzeichnis" too, hence the optional
+        # lead, and "Sekundärliteratur" / "Primärliteratur", which grow onto
+        # the word rather than standing in front of it.
+        r"(?:quellen[-\s–]*und[-\s]*)?(?:sekund[äa]r|prim[äa]r|forschungs)?"
+        r"literatur(?:verzeichnis|nachweis)?",
+        # Editions of the sources, the usual heading for a source bibliography
+        # in classical scholarship (Themistios: "VII Editionen und
+        # Übersetzungen").
+        r"editionen(?: und [üu]bersetzungen)?", r"textausgaben",
         r"(?:quellen|siglen)?(?:verzeichnis)?[-\s]*bibliographie",
         r"bibliographie", r"bibliografie",
         r"quellenverzeichnis", r"quellen und literatur",
@@ -193,8 +200,12 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
     ),
 }
 
-# An optional ordinal in front of the title: "13.", "IV.", "A.", "§ 3".
-_PREFIX = r"(?:(?:§\s*)?(?:\d{1,3}|[ivxlcdm]{1,6}|[a-z])[.)]?\s+)?"
+# An optional ordinal in front of the title: "13.", "IV.", "A.", "§ 3" — and
+# compounded, "VIII.1", "3.2.1". One level was not enough: De Gruyter heads
+# "VIII.1 Abkürzungen" and "VIII.2 Literatur", so a heading whose bare word the
+# vocabulary knows fell through on its number alone. It cannot make a heading
+# out of prose, because what follows still has to match a whole entry.
+_PREFIX = r"(?:(?:§\s*)?(?:\d{1,3}|[ivxlcdm]{1,6}|[a-z])(?:\.\d{1,3})*[.)]?\s+)?"
 
 # A heading is short. Beyond this the line is prose that happens to open with
 # the word, and prose is never a region marker.
