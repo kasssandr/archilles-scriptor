@@ -4,6 +4,8 @@ Two things are tested apart, because the spec keeps them apart: what a region
 is *called* (the vocabulary, consumer-facing) and where it *ends* (the closing
 rule, which is what keeps a false positive from swallowing a book).
 """
+import pytest
+
 from scriptor.reflow.core import Page, assign_modes, render_book
 from scriptor.reflow.regions import (
     REGION_NAMES,
@@ -60,7 +62,11 @@ def test_running_prose_is_never_a_region():
     assert region_of_heading("Die Literatur der Zeit war reich an Beispielen.") is None
     assert region_of_heading("Ein Index ist eine geordnete Liste von Begriffen.") is None
     assert region_of_heading("") is None
-    assert region_of_heading("Vorwort") is None
+    # "Vorwort" stood here until 0.3.0 gave it a name of its own. What takes
+    # its place is a heading deliberately left out of the vocabulary: imprint,
+    # glossary, chronology, tables and maps have one attestation between them
+    # across sixteen volumes, and one attestation is not a name.
+    assert region_of_heading("Impressum") is None
 
 
 def test_every_vocabulary_value_is_a_spec_name():
@@ -700,3 +706,30 @@ def test_the_tail_rule_does_not_depend_on_how_the_region_opened():
     assign_modes(pages)
     assign_regions(pages, page_headers=heads)
     assert [p.region for p in pages[30:]] == ["bibliography"] * 10
+
+
+# ── preface (spec §4.4, 0.3.0) ───────────────────────────────────────
+
+@pytest.mark.parametrize("line", [
+    "Vorwort", "Vorwort und Dank", "Geleitwort", "Danksagung",
+    "Preface", "Acknowledgements", "Préface", "Avant-propos",
+    "Remerciements", "Voorwoord", "Dankwoord", "Prefazione", "Premessa",
+    "Prefacio", "Agradecimientos", "Prefácio", "Предисловие",
+])
+def test_preface_headings_are_recognised(line):
+    assert region_of_heading(line) == "preface"
+
+
+def test_preface_is_not_apparatus():
+    """It is named so a consumer can weigh it, never so it disappears. §4.4
+    calls a wrongly excluded chapter silent loss, and a preface that leads
+    into the argument is a chapter."""
+    from scriptor.reflow.regions import APPARATUS
+    assert "preface" in REGION_NAMES
+    assert "preface" not in APPARATUS
+
+
+def test_preface_does_not_swallow_prose_opening_with_the_word():
+    assert region_of_heading(
+        "Vorwort des Herausgebers zur dritten, vollständig neu bearbeiteten Auflage"
+    ) is None

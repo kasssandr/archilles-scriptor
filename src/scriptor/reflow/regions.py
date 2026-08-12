@@ -36,6 +36,7 @@ REGION_MARKER = "[region: {name}]"
 REGION_NAMES = (
     "front-matter",
     "contents",
+    "preface",
     "main",
     "bibliography",
     "index",
@@ -148,6 +149,21 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
         # and Portuguese. See the note under `index`.
         r"[íi]ndice(?: generale| general| geral)?", r"sum[áa]rio",
         r"inhoud(?:sopgave)?", r"оглавление", r"содержание",
+    ),
+    "preface": (
+        # What a book says about itself before it begins: how it came about,
+        # and who is thanked. Named, never excluded — see APPARATUS. Ten of
+        # sixteen measured volumes carry one, which is why this name and not
+        # the six other candidates measured beside it.
+        r"vorwort(?: und dank(?:sagung)?)?", r"geleitwort", r"zum geleit",
+        r"danksagung(?:en)?", r"vorbemerkung(?:en)?",
+        r"preface", r"acknowledge?ments?", r"author's note",
+        r"pr[ée]face", r"avant[- ]propos", r"remerciements",
+        r"voorwoord", r"dankwoord", r"woord vooraf",
+        r"prefazione", r"premessa", r"ringraziamenti",
+        r"prefacio", r"agradecimientos", r"nota (?:previa|del autor)",
+        r"pref[áa]cio", r"agradecimentos",
+        r"предисловие", r"благодарности",
     ),
     "notes": (
         # A collected notes section, as distinct from the footnotes of §4.3.
