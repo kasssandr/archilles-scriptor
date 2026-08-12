@@ -437,9 +437,8 @@ from_page = "VII"   # physical 8, "Vorwort und Dank" -- one page, followed by a
                     # before the contents. It reports how the book came about
                     # and thanks the supervisors: academic convention, not
                     # matter the argument rests on, and printed ahead of the
-                    # table of contents. Becomes `preface` once the vocabulary
-                    # of the 2026-08-12 design carries that name.
-name = "front-matter"
+                    # table of contents. Operator confirmed 2026-08-12.
+name = "preface"
 
 [[regions]]
 from_page = "2"     # physical 17. The body opens on physical 16 ("I Einleitung"),

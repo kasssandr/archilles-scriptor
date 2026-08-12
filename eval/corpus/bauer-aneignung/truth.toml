@@ -675,8 +675,12 @@ anchor_after = "besitzen, wie Änderungen des Formats oder der Größe."
 # pages carry no label a boundary could name; they stay outside the measured
 # range rather than being guessed at.
 [[regions]]
-from_page = "7"     # Vorwort -- first page carrying a printed folio
-name = "front-matter"
+from_page = "7"     # "Vorwort" -- first page carrying a printed folio. It
+                    # reports how the dissertation came about and thanks the
+                    # supervisors, and is printed ahead of the table of
+                    # contents: front matter, not an introduction that leads
+                    # into the argument. Operator confirmed 2026-08-12.
+name = "preface"
 
 [[regions]]
 from_page = "9"     # "Inhaltsverzeichnis", eight pages
