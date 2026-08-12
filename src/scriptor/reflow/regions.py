@@ -497,6 +497,7 @@ def assign_regions(
         page_headers = None
     ubiquitous = _ubiquitous_heads(page_headers, len(pages))
     tail_begins = len(pages) * (1.0 - tail_fraction)
+    zone_end = front_matter_zone_end(pages)
     current = "main"
     prose_run: list = []
     in_tail = False
@@ -523,6 +524,13 @@ def assign_regions(
             continue
 
         opened = _opens_region(page)
+        # A preface is named only where it stands in the opening zone. Behind
+        # it the same word means a chapter that leads into the argument —
+        # Pouderon prints "Introduction" twice, six pages of it in front and a
+        # whole PREMIÈRE PARTIE of four chapters after — and §4.4 would rather
+        # carry a stray page of thanks than lose one of those.
+        if opened == "preface" and position >= zone_end:
+            opened = None
 
         # The mode is a fallback, not an override, and the coarsest evidence
         # there is. It answers per page from a trigger that fires once and
@@ -531,7 +539,14 @@ def assign_regions(
         # region flickered index/contents page by page. So the mode may name a
         # page that has no region of its own — it may not overrule a region
         # already running, nor a page that names itself.
-        if opened is None and current == "main" and mode in ("frontmatter", "toc"):
+        #
+        # `preface` joins `main` here, and only those two. A preface runs a
+        # page or three and the contents follows it directly; if the fallback
+        # kept waiting for `main`, the contents behind a preface would never
+        # be named. An apparatus already running still may not be overruled —
+        # that is the defect this condition was written for.
+        if (opened is None and current in ("main", "preface")
+                and mode in ("frontmatter", "toc")):
             page.region = "front-matter" if mode == "frontmatter" else "contents"
             current, prose_run = "main", []
             continue

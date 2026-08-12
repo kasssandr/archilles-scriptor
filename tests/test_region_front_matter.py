@@ -6,7 +6,11 @@ question about position, and the volume itself answers it twice over -- in its
 pagination, and in where it stops printing lists.
 """
 from scriptor.reflow.core import Page
-from scriptor.reflow.regions import front_matter_zone_end
+from scriptor.reflow.regions import (
+    assign_regions,
+    front_matter_zone_end,
+    region_of_heading,
+)
 
 
 def _page(label, mode="main", lines=("Ordinary running prose on this page.",)):
@@ -51,3 +55,58 @@ def test_a_single_roman_page_is_not_a_numeral_change():
     label module already refuses it below two characters, and so must this."""
     pages = [_page("i"), _page("2"), _page("3"), _page("4")]
     assert front_matter_zone_end(pages) == 0
+
+
+# ── the zone in use ──────────────────────────────────────────────────
+
+
+def test_a_preface_before_the_contents_is_front_matter():
+    """Bauer's case, confirmed by the operator: the preface reports how the
+    dissertation came about and is printed ahead of the table of contents."""
+    pages = ([_page("7", "frontmatter", ("Vorwort",))]
+             + [_page(str(n), "toc", ("Inhaltsverzeichnis",)) for n in range(9, 17)]
+             + [_page(str(n)) for n in range(17, 140)])
+    assign_regions(pages)
+    assert pages[0].region == "preface"
+
+
+def test_a_preface_after_the_front_matter_is_body_text():
+    """Where it no longer sits in the opening zone it leads into the argument,
+    and §4.4 would rather carry a stray page of thanks than lose a chapter.
+
+    The heading has to be one the vocabulary actually matches, or the test
+    passes without ever reaching the rule it is about.
+    """
+    assert region_of_heading("Vorwort") == "preface"
+    pages = [_page(str(n)) for n in range(1, 60)]
+    pages[40] = _page("41", "main", ("Vorwort",))
+    assign_regions(pages)
+    assert pages[40].region == "main"
+
+
+def test_the_contents_still_follows_a_preface():
+    """Regression: the mode fallback fires only while `main` is running, from
+    a defect where a bare "Índice" set `toc` for every page after it. A
+    preface running ahead of the contents would hide it under that condition.
+
+    The contents pages deliberately carry NO recognisable heading -- otherwise
+    the vocabulary would name them and the fallback, which is what this test
+    is about, would never be reached.
+    """
+    pages = ([_page("7", "frontmatter", ("Vorwort",))]
+             + [_page(str(n), "toc", ("Kapitel 1. Die Aneignung .... 17",))
+                for n in range(9, 17)]
+             + [_page(str(n)) for n in range(17, 140)])
+    assign_regions(pages)
+    assert pages[0].region == "preface"
+    assert pages[1].region == "contents"
+
+
+def test_a_bibliography_is_not_overwritten_by_a_late_preface_word():
+    """The zone bounds `preface` in both directions: an apparatus running at
+    the end of the volume keeps its name."""
+    pages = [_page(str(n)) for n in range(1, 40)]
+    pages[30] = _page("31", "main", ("Literaturverzeichnis",))
+    pages[31] = _page("32", "main", ("Ringraziamenti",))
+    assign_regions(pages)
+    assert pages[31].region == "bibliography"
