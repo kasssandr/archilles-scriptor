@@ -79,6 +79,24 @@ def test_running_prose_is_never_a_region():
     assert region_of_heading("Impressum") is None
 
 
+@pytest.mark.parametrize("line,expected", [
+    ("Literaturverzeichnis", "bibliography"), ("Personenregister", "index"),
+    ("Selected Bibliography", "bibliography"), ("List of Abbreviations", "abbreviations"),
+    ("Table des matières", "contents"), ("Avant-propos", "preface"),
+    ("Sommario", "contents"), ("Indice dei nomi", "index"),
+    ("Índice de nombres", "index"), ("Agradecimientos", "preface"),
+    ("Sumário", "contents"), ("Prefácio", "preface"),
+    ("Inhoud", "contents"), ("Geraadpleegde werken", "bibliography"),
+    ("Оглавление", "contents"), ("Библиография", "bibliography"),
+    ("Index nominum", "index"), ("Conspectus librorum", "bibliography"),
+])
+def test_vocabulary_survives_regrouping(line, expected):
+    """A safety net under the regrouping by language: two words per language,
+    so that no language can quietly fall out of the table while it is being
+    rearranged."""
+    assert region_of_heading(line) == expected
+
+
 def test_every_vocabulary_value_is_a_spec_name():
     for line in ("Literaturverzeichnis", "Index", "Abkürzungen", "Anmerkungen",
                  "Anhang", "Selected Bibliography"):

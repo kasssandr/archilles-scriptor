@@ -24,6 +24,8 @@ import re
 import unicodedata
 from collections import Counter
 
+from scriptor.languages import NOT_ATTESTED, _NotAttested
+
 # The version of PREPARED_FORMAT_SPEC this producer writes. Stated in the
 # document itself (§4.1), because a prepared document outlives the release
 # notes that describe it.
@@ -55,153 +57,220 @@ APPARATUS = ("bibliography", "index", "abbreviations", "notes", "appendix")
 # chapter that follows, which is the same silent loss by another name.
 _CLOSEABLE = APPARATUS + ("contents",)
 
-# Heading vocabulary. One list per region, matched against a whole heading
-# line, case- and accent-insensitively (an OCR layer drops diacritics often
-# enough that requiring them would cost more than it protects).
+# Heading vocabulary, grouped by the language each word belongs to. Matched
+# against a whole heading line, case- and accent-insensitively (an OCR layer
+# drops diacritics often enough that requiring them would cost more than it
+# protects).
 #
-# Languages: German, English, French, Italian, Spanish, Portuguese, Dutch,
-# Latin (scholarly editions title their indices in it) and Russian. Adding a
-# language is adding entries here — the matching rule below stays untouched.
-# CJK is out: these patterns key on word boundaries, which do not carry there.
-_VOCABULARY: dict[str, tuple[str, ...]] = {
-    "bibliography": (
-        # de — "Quellen- und Literaturverzeichnis" too, hence the optional
-        # lead, and "Sekundärliteratur" / "Primärliteratur", which grow onto
-        # the word rather than standing in front of it.
-        r"(?:quellen[-\s–]*und[-\s]*)?(?:sekund[äa]r|prim[äa]r|forschungs)?"
-        r"literatur(?:verzeichnis|nachweis)?",
-        # Editions of the sources, the usual heading for a source bibliography
-        # in classical scholarship (Themistios: "VII Editionen und
-        # Übersetzungen").
-        r"editionen(?: und [üu]bersetzungen)?", r"textausgaben",
-        r"(?:quellen|siglen)?(?:verzeichnis)?[-\s]*bibliographie",
-        r"bibliographie", r"bibliografie",
-        r"quellenverzeichnis", r"quellen und literatur",
-        r"verzeichnis der (?:zitierten |verwendeten )?literatur",
-        # en
-        r"(?:select(?:ed)?\s+|primary\s+|secondary\s+|general\s+)?bibliography",
-        r"works cited", r"list of works", r"references",
-        r"(?:list of |primary |printed )?sources",
-        # fr
-        r"bibliographie(?: s[ée]lective| g[ée]n[ée]rale)?",
-        r"r[ée]f[ée]rences(?: bibliographiques)?",
-        r"sources(?: et bibliographie)?",
-        # it / es / pt
-        r"bibliografia", r"bibliograf[íi]a",
-        r"fonti(?: e bibliografia)?", r"riferimenti bibliografici",
-        r"obras citadas", r"refer[êe]ncias(?: bibliogr[áa]ficas)?",
-        r"fontes(?: e bibliografia| impressas| manuscritas)?",
-        # nl
-        r"bibliografie", r"literatuur(?:lijst|opgave)?", r"geraadpleegde werken",
-        # la
-        r"bibliographia", r"conspectus librorum",
-        # ru
-        r"библиография", r"список литературы", r"литература",
-        r"источники(?: и литература)?",
-    ),
-    "index": (
-        # de — Personen-, Sach-, Orts-, Namen-, Stellen-, Autoren-, Bibelstellen-
-        r"(?:\w+[-\s]?)?register",
-        r"(?:namen|orts|personen|sach|stellen)verzeichnis",
-        r"index(?: der \w+)?",
-        # en
-        r"(?:general |subject |name |author |place |scriptural )?index(?:es)?",
-        r"indices", r"index of (?:names|subjects|places|persons|passages)",
-        # fr — "Index des textes cités", "Index des auteurs modernes"; the
-        # complement runs to several words, as it does in Spanish above.
-        r"index des(?:[\s-]+[^\W\d_]{1,15}){1,4}",
-        r"index(?: g[ée]n[ée]ral| nominum)?", r"table onomastique",
-        # it / es / pt — the complement is what makes it a register. Bare
-        # "Indice"/"Índice" is the table of contents in these languages and is
+# The languages are catalogued in ``scriptor.languages``; a word that belongs
+# to several is listed under each of them, and ``tests/test_languages.py``
+# holds every language answerable for every region. Adding a language is
+# adding entries here — the matching rule below stays untouched. CJK is out:
+# these patterns key on word boundaries, which do not carry there.
+#
+# The order of the *regions* carries meaning and must not change: matching
+# returns the first region that fits, which is how a bare "Indice" resolves to
+# `contents` rather than `index`. The order of languages within a region does
+# not, since matching only asks whether some pattern of the region fits.
+_VOCABULARY: dict[str, dict[str, tuple[str, ...] | _NotAttested]] = {
+    "bibliography": {
+        # "Quellen- und Literaturverzeichnis" too, hence the optional lead,
+        # and "Sekundärliteratur" / "Primärliteratur", which grow onto the
+        # word rather than standing in front of it.
+        "de": (
+            r"(?:quellen[-\s–]*und[-\s]*)?(?:sekund[äa]r|prim[äa]r|forschungs)?"
+            r"literatur(?:verzeichnis|nachweis)?",
+            # Editions of the sources, the usual heading for a source
+            # bibliography in classical scholarship (Themistios: "VII
+            # Editionen und Übersetzungen").
+            r"editionen(?: und [üu]bersetzungen)?", r"textausgaben",
+            r"(?:quellen|siglen)?(?:verzeichnis)?[-\s]*bibliographie",
+            r"bibliographie", r"bibliografie",
+            r"quellenverzeichnis", r"quellen und literatur",
+            r"verzeichnis der (?:zitierten |verwendeten )?literatur",
+        ),
+        "en": (
+            r"(?:select(?:ed)?\s+|primary\s+|secondary\s+|general\s+)?bibliography",
+            r"works cited", r"list of works", r"references",
+            r"(?:list of |primary |printed )?sources",
+        ),
+        "fr": (
+            r"bibliographie(?: s[ée]lective| g[ée]n[ée]rale)?",
+            r"r[ée]f[ée]rences(?: bibliographiques)?",
+            r"sources(?: et bibliographie)?",
+        ),
+        "it": (
+            r"bibliografia",
+            r"fonti(?: e bibliografia)?", r"riferimenti bibliografici",
+        ),
+        "es": (r"bibliograf[íi]a", r"obras citadas"),
+        "pt": (
+            r"bibliografia", r"refer[êe]ncias(?: bibliogr[áa]ficas)?",
+            r"fontes(?: e bibliografia| impressas| manuscritas)?",
+        ),
+        "nl": (
+            r"bibliografie", r"literatuur(?:lijst|opgave)?",
+            r"geraadpleegde werken",
+        ),
+        "la": (r"bibliographia", r"conspectus librorum"),
+        "ru": (
+            r"библиография", r"список литературы", r"литература",
+            r"источники(?: и литература)?",
+        ),
+    },
+    "index": {
+        # Personen-, Sach-, Orts-, Namen-, Stellen-, Autoren-, Bibelstellen-
+        "de": (
+            r"(?:\w+[-\s]?)?register",
+            r"(?:namen|orts|personen|sach|stellen)verzeichnis",
+            r"index(?: der \w+)?",
+        ),
+        "en": (
+            r"(?:general |subject |name |author |place |scriptural )?index(?:es)?",
+            r"indices", r"index of (?:names|subjects|places|persons|passages)",
+        ),
+        # "Index des textes cités", "Index des auteurs modernes"; the
+        # complement runs to several words, as it does in Spanish below.
+        "fr": (
+            r"index des(?:[\s-]+[^\W\d_]{1,15}){1,4}",
+            r"index(?: g[ée]n[ée]ral| nominum)?", r"table onomastique",
+        ),
+        # The complement is what makes it a register. Bare "Indice"/"Índice"
+        # is the table of contents in Italian, Spanish and Portuguese and is
         # listed under `contents`; only English, German, French and Latin use
         # the plain word for the back-of-book index.
-        r"indice(?: dei nomi| dei luoghi| analitico| onomastico| dei manoscritti)",
+        "it": (
+            r"indice(?: dei nomi| dei luoghi| analitico| onomastico| dei manoscritti)",
+        ),
+        "es": (
+            r"[íi]ndice de(?:[\s-]+[^\W\d_]{1,15}){1,4}",
+            r"[íi]ndice(?: onom[áa]stico| anal[íi]tico| tem[áa]tico)",
+        ),
         # "Índice de Nomes e Pseudônimos" — the complement runs to several
         # words, so it is bounded by count rather than listed exhaustively.
-        r"[íi]ndice de(?:[\s-]+[^\W\d_]{1,15}){1,4}",
-        r"[íi]ndice(?: onom[áa]stico| anal[íi]tico| tem[áa]tico| remissivo)",
-        # nl
-        r"register(?: van \w+)?", r"zaakregister", r"namenregister",
-        # la
-        r"index (?:nominum|rerum|locorum|verborum|auctorum)",
-        # ru
-        r"указатель(?: имён| имен| названий)?", r"именной указатель",
-        r"предметный указатель",
-    ),
-    "abbreviations": (
-        # de
-        r"abk[üu]rzungs(?:verzeichnis|liste)?", r"abk[üu]rzungen",
-        r"siglen(?:verzeichnis)?", r"verzeichnis der abk[üu]rzungen",
-        # en
-        r"(?:list of |table of )?abbreviations", r"sigla", r"short titles",
-        # fr
-        r"abr[ée]viations(?: et sigles)?", r"liste des abr[ée]viations", r"sigles",
-        # it / es / pt
-        r"abbreviazioni", r"siglas(?: e abreviaturas)?",
-        r"abreviaturas?(?:[\s-]+(?:do|da|de|e)[\s-]+[^\W\d_]{1,15}){0,2}",
-        # nl
-        r"afkortingen(?:lijst)?", r"lijst van afkortingen",
-        # la
-        r"index siglorum", r"sigla",
-        # ru
-        r"список сокращений", r"сокращения", r"условные обозначения",
-    ),
-    "contents": (
+        "pt": (
+            r"[íi]ndice de(?:[\s-]+[^\W\d_]{1,15}){1,4}",
+            r"[íi]ndice(?: onom[áa]stico| anal[íi]tico| tem[áa]tico| remissivo)",
+        ),
+        "nl": (r"register(?: van \w+)?", r"zaakregister", r"namenregister"),
+        "la": (r"index (?:nominum|rerum|locorum|verborum|auctorum)",),
+        "ru": (
+            r"указатель(?: имён| имен| названий)?", r"именной указатель",
+            r"предметный указатель",
+        ),
+    },
+    "abbreviations": {
+        "de": (
+            r"abk[üu]rzungs(?:verzeichnis|liste)?", r"abk[üu]rzungen",
+            r"siglen(?:verzeichnis)?", r"verzeichnis der abk[üu]rzungen",
+        ),
+        "en": (
+            r"(?:list of |table of )?abbreviations", r"sigla", r"short titles",
+        ),
+        "fr": (
+            r"abr[ée]viations(?: et sigles)?", r"liste des abr[ée]viations",
+            r"sigles",
+        ),
+        "it": (r"abbreviazioni",),
+        "es": (
+            r"siglas(?: e abreviaturas)?",
+            r"abreviaturas?(?:[\s-]+(?:do|da|de|e)[\s-]+[^\W\d_]{1,15}){0,2}",
+        ),
+        "pt": (
+            r"siglas(?: e abreviaturas)?",
+            r"abreviaturas?(?:[\s-]+(?:do|da|de|e)[\s-]+[^\W\d_]{1,15}){0,2}",
+        ),
+        "nl": (r"afkortingen(?:lijst)?", r"lijst van afkortingen"),
+        "la": (r"index siglorum", r"sigla"),
+        "ru": (r"список сокращений", r"сокращения", r"условные обозначения"),
+    },
+    "contents": {
         # A table of contents at the *end* of a volume — Guilhiermoz 1902 and
         # Pückert 1899 both put it there. assign_modes only reaches the ones it
         # meets while still in front matter, so the region needs its own words.
-        r"inhalts(?:verzeichnis|[üu]bersicht|angabe)?", r"inhalt",
-        r"(?:table of )?contents", r"table des mati[èe]res", r"sommaire",
-        # it — the counterpart to `sommaire`, and the word that made the case
-        # for one vocabulary instead of two: it lived only in the mode
-        # triggers, which knew no Dutch, while this table knew no `sommario`.
-        r"sommario",
-        # Bare "Indice"/"Índice" — the table of contents in Italian, Spanish
-        # and Portuguese. See the note under `index`.
-        r"[íi]ndice(?: generale| general| geral)?", r"sum[áa]rio",
-        r"inhoud(?:sopgave)?", r"оглавление", r"содержание",
-    ),
-    "preface": (
+        "de": (r"inhalts(?:verzeichnis|[üu]bersicht|angabe)?", r"inhalt"),
+        "en": (r"(?:table of )?contents",),
+        "fr": (r"table des mati[èe]res", r"sommaire"),
+        # `sommario` is the counterpart to `sommaire`, and the word that made
+        # the case for one vocabulary instead of two: it lived only in the
+        # mode triggers, which knew no Dutch, while this table knew no
+        # `sommario`. Bare "Indice"/"Índice" — see the note under `index`.
+        "it": (r"sommario", r"[íi]ndice(?: generale)?"),
+        "es": (r"[íi]ndice(?: general)?",),
+        "pt": (r"[íi]ndice(?: geral)?", r"sum[áa]rio"),
+        "nl": (r"inhoud(?:sopgave)?",),
+        "ru": (r"оглавление", r"содержание"),
+        # No Latin volume in the corpus prints a table of contents: the word
+        # is used for indices (see `index`), not for the front matter.
+        "la": NOT_ATTESTED,
+    },
+    "preface": {
         # What a book says about itself before it begins: how it came about,
         # and who is thanked. Named, never excluded — see APPARATUS. Ten of
         # sixteen measured volumes carry one, which is why this name and not
         # the six other candidates measured beside it.
-        r"vorwort(?: und dank(?:sagung)?)?", r"geleitwort", r"zum geleit",
-        r"danksagung(?:en)?", r"vorbemerkung(?:en)?",
-        r"preface", r"acknowledge?ments?", r"author's note",
-        r"pr[ée]face", r"avant[- ]propos", r"remerciements",
-        r"voorwoord", r"dankwoord", r"woord vooraf",
-        r"prefazione", r"premessa", r"ringraziamenti",
-        r"prefacio", r"agradecimientos", r"nota (?:previa|del autor)",
-        r"pref[áa]cio", r"agradecimentos",
-        r"предисловие", r"благодарности",
-    ),
-    "notes": (
+        "de": (
+            r"vorwort(?: und dank(?:sagung)?)?", r"geleitwort", r"zum geleit",
+            r"danksagung(?:en)?", r"vorbemerkung(?:en)?",
+        ),
+        "en": (r"preface", r"acknowledge?ments?", r"author's note"),
+        "fr": (r"pr[ée]face", r"avant[- ]propos", r"remerciements"),
+        "it": (r"prefazione", r"premessa", r"ringraziamenti"),
+        "es": (
+            r"prefacio", r"agradecimientos", r"nota (?:previa|del autor)",
+        ),
+        "pt": (r"pref[áa]cio", r"agradecimentos"),
+        "nl": (r"voorwoord", r"dankwoord", r"woord vooraf"),
+        "ru": (r"предисловие", r"благодарности"),
+        # A Latin preface is titled "praefatio" — but no volume in the corpus
+        # prints one, and one attestation would be needed before guessing.
+        "la": NOT_ATTESTED,
+    },
+    "notes": {
         # A collected notes section, as distinct from the footnotes of §4.3.
-        r"anmerkungen", r"endnoten", r"anmerkungsapparat",
+        "de": (r"anmerkungen", r"endnoten", r"anmerkungsapparat"),
         # Plural only. A volume that heads a page "NOTE" is nearly always
         # making a publisher's remark, not opening an apparatus — Baynes does
         # exactly that on its imprint page.
-        r"notes", r"endnotes", r"reference notes",
-        r"notas", r"noten", r"adnotationes",
-        r"примечания", r"комментарии",
-    ),
-    "appendix": (
-        # A numbered or lettered appendix names itself that way — "Appendix IV",
-        # "Apéndice I", "ANEXO 2" — so the ordinal may follow the word as well
-        # as precede it.
-        r"anh[äa]nge?", r"anlagen?", r"beilagen?", r"tabellenanhang",
-        r"appendix(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]))?", r"appendices",
-        # A single trailing letter counts as an ordinal too ("Anexo A"), but
-        # only a single one: two letters are a word, and a word after the
-        # noun makes it a sentence rather than a heading.
-        r"annexes?", r"appendici?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
-        r"ap[êe]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
-        r"ap[ée]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
-        r"anexos?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
-        r"bijlagen?",
-        r"приложения?",
-    ),
+        "en": (r"notes", r"endnotes", r"reference notes"),
+        "fr": (r"notes",),
+        # Italian would head such a section "Note" — singular in form, and
+        # excluded for the reason given above. Nothing else is attested.
+        "it": NOT_ATTESTED,
+        "es": (r"notas",),
+        "pt": (r"notas",),
+        "nl": (r"noten",),
+        "la": (r"adnotationes",),
+        "ru": (r"примечания", r"комментарии"),
+    },
+    "appendix": {
+        # A numbered or lettered appendix names itself that way — "Appendix
+        # IV", "Apéndice I", "ANEXO 2" — so the ordinal may follow the word as
+        # well as precede it. A single trailing letter counts as an ordinal
+        # too ("Anexo A"), but only a single one: two letters are a word, and
+        # a word after the noun makes it a sentence rather than a heading.
+        "de": (r"anh[äa]nge?", r"anlagen?", r"beilagen?", r"tabellenanhang"),
+        "en": (
+            r"appendix(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]))?", r"appendices",
+        ),
+        "fr": (
+            r"annexes?", r"appendici?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+        ),
+        "it": (r"appendici?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",),
+        "es": (
+            r"ap[ée]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+            r"anexos?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+        ),
+        "pt": (
+            r"ap[êe]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+            r"anexos?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+        ),
+        "nl": (r"bijlagen?",),
+        "ru": (r"приложения?",),
+        # "Appendix" is Latin, but a volume that prints it is setting an
+        # English or German heading; no Latin-language attestation.
+        "la": NOT_ATTESTED,
+    },
 }
 
 # An optional ordinal in front of the title: "13.", "IV.", "A.", "§ 3" — and
@@ -267,12 +336,26 @@ def _fold(text: str) -> str:
 # becomes a heading by ending in a period.
 _TRAILING = r"[.,:;·•∙]?"
 
+def _patterns_of(by_language: dict[str, tuple[str, ...] | _NotAttested]) -> list[str]:
+    """Every pattern of a region, the language grouping read away again.
+
+    Language order is immaterial here: matching asks only whether *some*
+    pattern of the region fits, never which language answered.
+    """
+    out: list[str] = []
+    for patterns in by_language.values():
+        if patterns is NOT_ATTESTED:
+            continue
+        out.extend(patterns)
+    return out
+
+
 _COMPILED: dict[str, tuple[re.Pattern[str], ...]] = {
     region: tuple(
         re.compile(_undiacritic(rf"^{_PREFIX}{alt}\s*{_TRAILING}\s*$"), re.IGNORECASE)
-        for alt in alternatives
+        for alt in _patterns_of(by_language)
     )
-    for region, alternatives in _VOCABULARY.items()
+    for region, by_language in _VOCABULARY.items()
 }
 
 
