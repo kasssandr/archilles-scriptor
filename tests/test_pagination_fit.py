@@ -198,3 +198,50 @@ def _plain_uncounted(obs):
 
     return -P.mu * sum(max(o.weight for o in g)
                        for g in _by_position(obs).values())
+
+
+def test_the_fit_really_returns_the_best_scoring_plan():
+    """The DP must agree with the score it claims to maximise.
+
+    Total score is the sum of the segment scores minus one segment price per
+    *junction* -- not one price per segment still to come. The latter makes the
+    penalty grow as lam*k*(k-1)/2 instead of lam*(k-1), so in a volume with
+    several jumps the later boundaries become unaffordable, and the fit pays for
+    it by overruling printed labels: at Carlomagno, whose PDF drops the blank
+    before every chapter opening, pages printing 9, 10 and 11 came out as 10, 11
+    and 12.
+
+    Checked against exhaustive enumeration rather than a hand-picked example.
+    The mis-costing only changes the answer where a short stretch competes with
+    a long one and the tail is long -- exactly the shape that is hard to pick by
+    hand and easy to get wrong.
+    """
+    from itertools import combinations
+
+    from scriptor.reflow.pagination.plan import best_segment, score_uncounted
+
+    # A short opening stretch, then a long one, then four more jumps: three
+    # printed labels are all that stands against merging the first two.
+    obs = [_obs(p, str(p)) for p in (1, 2, 3)]
+    for k, (lo, hi) in enumerate(
+        [(4, 16), (16, 24), (24, 32), (32, 40), (40, 48)], start=1
+    ):
+        obs += [_obs(p, str(p + k)) for p in range(lo, hi)]
+    bounds = [1, 4, 16, 24, 32, 40]
+    last = 47
+
+    def total(starts):
+        out = 0.0
+        for k, start in enumerate(starts):
+            stop = starts[k + 1] if k + 1 < len(starts) else last + 1
+            _seg, s = best_segment(obs, start, stop, P)
+            out += max(s, score_uncounted(obs, start, stop, P))
+        return out - P.lam * (len(starts) - 1)
+
+    best = max(total([1, *rest]) for r in range(len(bounds))
+               for rest in combinations(bounds[1:], r))
+
+    plan = fit(obs, boundaries=bounds, last_pos=last, params=P)
+    starts = [s.start_pos for s in plan.segments]
+    assert total(starts) == best
+    assert starts == bounds

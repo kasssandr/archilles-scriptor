@@ -320,8 +320,13 @@ def fit(observations, boundaries, last_pos: int,
             if counted is not None:
                 options.append((counted, counted_score))
             for seg, seg_score in options:
-                # The tail's segments each cost lam; this one is the free first.
-                score = seg_score + tail_score - params.lam * tail_count
+                # One junction, one segment price. Charging lam per segment
+                # still to come makes the penalty grow as lam*k*(k-1)/2 instead
+                # of lam*(k-1), so the later boundaries of a volume with several
+                # jumps become unaffordable -- and the fit then pays for it by
+                # overruling printed labels.
+                junction = params.lam if j < len(bounds) else 0.0
+                score = seg_score + tail_score - junction
                 cand = (score, tail_count + 1, (seg,) + tail_segs)
                 if choice is None or _better(cand, choice):
                     choice = cand
