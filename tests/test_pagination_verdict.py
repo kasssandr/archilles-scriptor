@@ -197,3 +197,21 @@ def test_an_arabic_run_does_not_reach_back_across_a_roman_front_matter():
     run_verdict(pages)
     assert pages[8].label != "148"
     assert all(p.label is None for p in pages[:8])
+
+
+def test_a_printed_label_stands_where_the_plan_attests_nothing():
+    # Between its first and last confirmation a segment speaks for the pages in
+    # between -- that is what lets it overrule a chapter number read as a folio.
+    # Where it has confirmed nothing, the page's own reading is what stands.
+    pages = [_page(1, "1972"), _page(2), _page(3, "1"), _page(4, "2"),
+             _page(5, "3"), _page(6, "4")]
+    run_verdict(pages)
+    assert [p.label for p in pages] == ["1972", None, "1", "2", "3", "4"]
+
+
+def test_inside_the_span_the_plan_wins():
+    # The counterpart: a chapter number enclosed by the running count is
+    # overruled, because there the plan does vouch for the page.
+    pages = [_page(1, "45"), _page(2, "46"), _page(3, "2"), _page(4, "48")]
+    run_verdict(pages)
+    assert pages[2].label == "47"
