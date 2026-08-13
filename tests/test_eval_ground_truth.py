@@ -110,3 +110,57 @@ def test_continuation_page_must_be_a_known_page():
 def test_note_must_not_continue_on_its_own_page():
     with pytest.raises(TruthError):
         loads_truth(CROSSING.replace('continues_on = "89"', 'continues_on = "88"'))
+
+
+# structural regions --------------------------------------------------------
+# Regions are declared for the *whole volume*, not for the sampled pages: a
+# footnote sample is drawn from body pages and therefore contains no apparatus
+# at all. Each entry opens a region that runs until the next one -- the same
+# reach rule the [region: ...] marker itself obeys.
+
+REGIONS = """
+volume = "d"
+pages = ["31", "32"]
+
+[[regions]]
+from_page = "9"
+name = "contents"
+
+[[regions]]
+from_page = "13"
+name = "main"
+
+[[regions]]
+from_page = "301"
+name = "bibliography"
+
+[[regions]]
+from_page = "339"
+name = "index"
+"""
+
+
+def test_regions_are_read_in_reading_order():
+    r = loads_truth(REGIONS).regions
+    assert [(x.from_page, x.name) for x in r] == [
+        ("9", "contents"), ("13", "main"), ("301", "bibliography"), ("339", "index"),
+    ]
+
+
+def test_region_boundary_need_not_be_a_sampled_page():
+    """The whole point: p. 301 is nowhere in `pages` and must still be legal."""
+    assert loads_truth(REGIONS).regions[2].from_page == "301"
+
+
+def test_unknown_region_name_is_refused():
+    with pytest.raises(TruthError):
+        loads_truth(REGIONS.replace('name = "index"', 'name = "backmatter"'))
+
+
+def test_repeated_boundary_page_is_refused():
+    with pytest.raises(TruthError):
+        loads_truth(REGIONS.replace('from_page = "339"', 'from_page = "301"'))
+
+
+def test_volume_without_regions_declares_none():
+    assert loads_truth(MINIMAL).regions == []

@@ -4,6 +4,8 @@ Two things are tested apart, because the spec keeps them apart: what a region
 is *called* (the vocabulary, consumer-facing) and where it *ends* (the closing
 rule, which is what keeps a false positive from swallowing a book).
 """
+import pytest
+
 from scriptor.reflow.core import Page, assign_modes, render_book
 from scriptor.reflow.regions import (
     REGION_NAMES,
@@ -50,6 +52,16 @@ def test_romance_and_latin_headings():
     assert region_of_heading("Afkortingen") == "abbreviations"
 
 
+def test_italian_sommario_is_a_table_of_contents():
+    """The word `assign_modes` knew and this vocabulary did not. Two lists for
+    one question, each with its own gaps: the old trigger list carried
+    "SOMMARIO" but no Dutch, this one had Dutch but not "Sommario". Merging
+    them has to be a union, or a volume loses a table of contents it used to
+    have (Le radici giudaico-cristiane, three pages)."""
+    assert region_of_heading("Sommario") == "contents"
+    assert region_of_heading("SOMMARIO") == "contents"
+
+
 def test_cyrillic_headings():
     assert region_of_heading("Библиография") == "bibliography"
     assert region_of_heading("Указатель имён") == "index"
@@ -60,7 +72,29 @@ def test_running_prose_is_never_a_region():
     assert region_of_heading("Die Literatur der Zeit war reich an Beispielen.") is None
     assert region_of_heading("Ein Index ist eine geordnete Liste von Begriffen.") is None
     assert region_of_heading("") is None
-    assert region_of_heading("Vorwort") is None
+    # "Vorwort" stood here until 0.3.0 gave it a name of its own. What takes
+    # its place is a heading deliberately left out of the vocabulary: imprint,
+    # glossary, chronology, tables and maps have one attestation between them
+    # across sixteen volumes, and one attestation is not a name.
+    assert region_of_heading("Impressum") is None
+
+
+@pytest.mark.parametrize("line,expected", [
+    ("Literaturverzeichnis", "bibliography"), ("Personenregister", "index"),
+    ("Selected Bibliography", "bibliography"), ("List of Abbreviations", "abbreviations"),
+    ("Table des matières", "contents"), ("Avant-propos", "preface"),
+    ("Sommario", "contents"), ("Indice dei nomi", "index"),
+    ("Índice de nombres", "index"), ("Agradecimientos", "preface"),
+    ("Sumário", "contents"), ("Prefácio", "preface"),
+    ("Inhoud", "contents"), ("Geraadpleegde werken", "bibliography"),
+    ("Оглавление", "contents"), ("Библиография", "bibliography"),
+    ("Index nominum", "index"), ("Conspectus librorum", "bibliography"),
+])
+def test_vocabulary_survives_regrouping(line, expected):
+    """A safety net under the regrouping by language: two words per language,
+    so that no language can quietly fall out of the table while it is being
+    rearranged."""
+    assert region_of_heading(line) == expected
 
 
 def test_every_vocabulary_value_is_a_spec_name():
@@ -700,3 +734,67 @@ def test_the_tail_rule_does_not_depend_on_how_the_region_opened():
     assign_modes(pages)
     assign_regions(pages, page_headers=heads)
     assert [p.region for p in pages[30:]] == ["bibliography"] * 10
+
+
+# ── preface (spec §4.4, 0.3.0) ───────────────────────────────────────
+
+@pytest.mark.parametrize("line", [
+    "Vorwort", "Vorwort und Dank", "Geleitwort", "Danksagung",
+    "Preface", "Acknowledgements", "Préface", "Avant-propos",
+    "Remerciements", "Voorwoord", "Dankwoord", "Prefazione", "Premessa",
+    "Prefacio", "Agradecimientos", "Prefácio", "Предисловие",
+])
+def test_preface_headings_are_recognised(line):
+    assert region_of_heading(line) == "preface"
+
+
+def test_preface_is_not_apparatus():
+    """It is named so a consumer can weigh it, never so it disappears. §4.4
+    calls a wrongly excluded chapter silent loss, and a preface that leads
+    into the argument is a chapter."""
+    from scriptor.reflow.regions import APPARATUS
+    assert "preface" in REGION_NAMES
+    assert "preface" not in APPARATUS
+
+
+def test_preface_does_not_swallow_prose_opening_with_the_word():
+    assert region_of_heading(
+        "Vorwort des Herausgebers zur dritten, vollständig neu bearbeiteten Auflage"
+    ) is None
+
+
+def test_format_version_is_declared_and_current():
+    from scriptor.reflow.regions import FORMAT_VERSION
+    assert FORMAT_VERSION == "0.3.0"
+    assert "format_version: 0.3.0" in render_metadata_block()
+
+
+# ── multi-level ordinals and compound German titles ──────────────────
+
+def test_a_compound_section_number_is_still_an_ordinal():
+    """De Gruyter numbers "VIII.1 Abkürzungen", "VIII.2 Literatur". The
+    ordinal rule allowed one level only, so a heading whose bare word the
+    vocabulary knows fell through on its number alone -- and that is how half
+    of German scholarly publishing numbers its sections."""
+    assert region_of_heading("VIII.1 Abkürzungen") == "abbreviations"
+    assert region_of_heading("VIII.2 Literatur") == "bibliography"
+    assert region_of_heading("3.2.1 Literaturverzeichnis") == "bibliography"
+
+
+def test_literatur_with_a_prefixed_qualifier():
+    """`Literatur` matched, `Sekundärliteratur` did not -- the pattern allowed
+    words in front of it but nothing grown onto it."""
+    assert region_of_heading("Sekundärliteratur") == "bibliography"
+    assert region_of_heading("VIII Sekundärliteratur") == "bibliography"
+    assert region_of_heading("Primärliteratur") == "bibliography"
+
+
+def test_editions_and_translations_is_a_list_of_sources():
+    """Themistios heads its source bibliography "VII Editionen und
+    Übersetzungen" -- the usual title for one in classical scholarship."""
+    assert region_of_heading("VII Editionen und Übersetzungen") == "bibliography"
+    assert region_of_heading("Editionen und Übersetzungen") == "bibliography"
+
+
+def test_the_wider_ordinal_does_not_turn_prose_into_a_heading():
+    assert region_of_heading("1.5 Millionen Menschen lasen den Index.") is None

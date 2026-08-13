@@ -228,6 +228,67 @@ def test_assign_modes_structural_toc_in_frontmatter():
     assert pages[1].mode == "toc"
 
 
+# --- the two ways a table of contents was lost (nl_eerste) --------------------
+
+def _prose_page(label=None):
+    return Page(-1, ["Echter Fliesstext laeuft hier ueber die ganze Zeile. " * 2
+                     for _ in range(8)], {}, label=label)
+
+
+def _volume_around(*front):
+    """A volume long enough that the opening tenth is a real bound, not the
+    floor of ``max(1, ...)``."""
+    return list(front) + [_prose_page() for _ in range(40)]
+
+
+def test_a_dutch_contents_heading_is_a_trigger():
+    """De eerste minister: the outline confirms the title "Inhoud" and
+    ``assign_modes`` does check ``page.heading`` -- but its own trigger list
+    knew no Dutch, while the region vocabulary has known `inhoud` for two
+    rounds of language work. Two vocabularies for one question, and only one
+    of them was maintained.
+    """
+    toc = Page(-1, ["9", "Oldenbarnevelt, De Witt en Fagel  13",
+                    "Raad en pensionaris  15", "Werkwijze  17"], {})
+    toc.heading = "Inhoud"
+    pages = _volume_around(_prose_page(), toc)
+    assign_modes(pages)
+    assert pages[1].mode == "toc"
+
+
+def test_a_contents_behind_a_prose_imprint_page_is_still_found():
+    """The structural reading works on this volume -- every line of both pages
+    ends in a page number -- but it was only ever asked while the mode still
+    said `frontmatter`, and the imprint page had already ended that: its
+    picture credits are set as running text and measure as prose.
+
+    Position answers what the mode cannot: a register also ends its lines in
+    numbers, but no register stands in the opening tenth of a volume.
+    """
+    imprint = Page(-1, ["Deze studie is mede tot stand gekomen door de Promotiebeurs "
+                        "voor leraren van NWO en een bijdrage van Open Access."] * 8, {})
+    toc = Page(-1, ["Inleiding  9", "Raad en pensionaris  15",
+                    "Werkwijze  17", "Bronnen  20", "Opzet van het boek  23"], {})
+    pages = _volume_around(Page(-1, ["De eerste minister van de Republiek"], {}),
+                           imprint, toc)
+    assign_modes(pages)
+    assert pages[1].mode == "main", "die Impressum-Seite misst als Fliesstext"
+    assert pages[2].mode == "toc"
+
+
+def test_an_index_at_the_end_is_not_read_as_a_contents():
+    """The bound is what makes the rule above safe, so it is held here: an
+    index ends its lines in page numbers exactly as a table of contents does,
+    and it is only the position that tells them apart.
+    """
+    index = Page(-1, ["Oldenbarnevelt, Johan van  45", "Witt, Johan de  78",
+                      "Fagel, Gaspar  120", "Willem III  166"], {})
+    pages = _volume_around(Page(-1, ["Titelei"], {}))
+    pages.append(index)
+    assign_modes(pages)
+    assert pages[-1].mode != "toc"
+
+
 def test_render_book_links_and_anchors_end_to_end():
     toc = Page(-1, [
         "Die Krise .................. 15",

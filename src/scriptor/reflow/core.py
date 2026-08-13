@@ -324,6 +324,25 @@ def reconcile_page_numbers(pages: list[Page]) -> str:
 
 # Short German connecting words before which a hyphen is kept (a compound
 # with an elided base word, e.g. 'Einzel- und Gesamt…').
+#
+# German, and it has to stay German while the language of a passage is
+# unknown — this is the counter-example to the catalogue in
+# ``scriptor.languages``, where every language applies at once. That is safe
+# for the heading vocabulary, which is asked at six lines per page and must
+# match a whole short line. This rule is asked at every line of the volume,
+# and at that reach a second language does not add recognition, it destroys
+# it.
+#
+# Measured over the corpus: adding the Dutch `en` fires eight times in Bauer's
+# 3100 hyphenated line pairs, and every one of them is a German inflectional
+# ending torn in half — "Re-Fotografi- en", "Muse- en", "neu- en",
+# "Kriteri- en" — against ten genuine hits of the German rule. The commonest
+# German word ending is the Dutch connecting word.
+#
+# Nor is there anything to gain by it: the elided compound is a German habit.
+# The Italian rule fires once in 3831 hyphen pairs, the French none in 1045.
+# Internationalising this is possible only once the language of the passage
+# is known. See docs/internal/2026-08-13-sprachstruktur-design.md §5.1.
 KEEP_HYPHEN_BEFORE = re.compile(
     r"^(und|oder|bis|sowie|wie|als|zur?|zum?|noch|aber)\b", re.IGNORECASE
 )
@@ -370,12 +389,15 @@ CALIB_FALLBACK_MIN = 40
 
 # Heading patterns that trigger a mode change.
 # The first 10 non-empty body lines of a page are checked.
+#
+# The table of contents is deliberately NOT among them any more. Its words
+# lived here as a second vocabulary beside ``regions._VOCABULARY["contents"]``,
+# and only the other one was maintained: this list never learned Dutch,
+# Russian or Portuguese, so De eerste minister's "Inhoud" — a title its own
+# outline confirms — matched nothing, and the volume lost its contents
+# entirely. One question, one vocabulary; ``assign_modes`` asks the region
+# module now.
 HEADING_TRIGGERS = [
-    (re.compile(
-        r"^(INHALTSVERZEICHNIS|INHALT|CONTENTS|TABLE OF CONTENTS|"
-        r"TABLE DES MATIÈRES|SOMMAIRE|INDICE|SOMMARIO|ÍNDICE)\s*$",
-        re.IGNORECASE,
-    ), "toc"),
     # Bibliography: capitalized surnames at the start of a line are clear markers
     (re.compile(r"^\d+\.\s+Literatur\s*$"), "entries-versal"),
     # Abbreviations / sources / indexes: OCR column scan often broken -> leave as raw
@@ -391,6 +413,13 @@ HEADING_TRIGGERS = [
 PROSE_MIN_LINES = 5
 PROSE_BAND = 0.30          # ±30% of the dominant width counts as a "full line"
 PROSE_FRACTION = 0.5       # this fraction of full lines makes a page prose
+
+# How far into a volume its front matter may reach. Same bound, and for the
+# same reason, as ``regions.front_matter_zone_end``: nine of sixteen measured
+# volumes print their contents at the *end*, so any rule that reads a list as
+# front matter needs a bound, or one at 98 % declares the whole book front
+# matter.
+FRONT_MATTER_FRACTION = 0.1
 
 
 def estimate_body_width(pages: list[Page]) -> int:
@@ -432,10 +461,12 @@ def assign_modes(pages: list[Page]) -> None:
     — this correctly detects volumes without an arabic-1 trigger (Snell),
     without losing the previous behaviour (safe fallback).
     """
+    from scriptor.reflow.regions import region_of_heading
     from scriptor.reflow.toc import is_toc_page
     width = estimate_body_width(pages)
+    front_limit = max(1, int(len(pages) * FRONT_MATTER_FRACTION))
     mode = "frontmatter"
-    for p in pages:
+    for position, p in enumerate(pages):
         # A confirmed outline heading was cut off the page's body — the mode
         # triggers must still see it ("Contents" cut away would let the
         # contents page reflow as prose).
@@ -444,6 +475,10 @@ def assign_modes(pages: list[Page]) -> None:
         ][:10]
         triggered = False
         for line in candidates:
+            if region_of_heading(line) == "contents":
+                mode = "toc"
+                triggered = True
+                break
             for pat, new_mode in HEADING_TRIGGERS:
                 if pat.match(line):
                     mode = new_mode
@@ -452,7 +487,15 @@ def assign_modes(pages: list[Page]) -> None:
             if triggered:
                 break
         if not triggered:
-            if mode == "frontmatter" and is_toc_page(p):
+            # Read structurally — nearly every line ending in a page number —
+            # and asked by position, not by the mode we happen to be in. The
+            # mode was the wrong gate: an imprint page whose picture credits
+            # are set as running text ends the front matter before the
+            # contents is reached, and the contents behind it was then never
+            # examined at all (De eerste minister). The bound is what keeps
+            # this safe, because an index reads the same way and is told apart
+            # by nothing but where it stands.
+            if is_toc_page(p) and (mode == "frontmatter" or position < front_limit):
                 mode = "toc"
             elif mode in ("frontmatter", "toc") and (is_prose_page(p, width) or p.label == "1"):
                 mode = "main"

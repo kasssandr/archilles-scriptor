@@ -10,6 +10,7 @@ from scriptor.eval.citations import CitationResult, evaluate_citations
 from scriptor.eval.flags import FlagResult, evaluate_flags
 from scriptor.eval.ground_truth import load_truth
 from scriptor.eval.labels import LabelResult, evaluate_labels
+from scriptor.eval.regions import RegionResult, evaluate_regions
 
 
 @dataclass
@@ -20,6 +21,7 @@ class VolumeReport:
     labels: LabelResult
     flags: FlagResult
     citations: CitationResult
+    regions: RegionResult
 
 
 def evaluate_file(truth_path: Path, candidate_path: Path, adapter: str) -> VolumeReport:
@@ -33,6 +35,7 @@ def evaluate_file(truth_path: Path, candidate_path: Path, adapter: str) -> Volum
         labels=evaluate_labels(truth, doc),
         flags=evaluate_flags(truth, doc),
         citations=evaluate_citations(truth, doc),
+        regions=evaluate_regions(truth, doc),
     )
 
 

@@ -24,10 +24,12 @@ import re
 import unicodedata
 from collections import Counter
 
+from scriptor.languages import NOT_ATTESTED, _NotAttested
+
 # The version of PREPARED_FORMAT_SPEC this producer writes. Stated in the
 # document itself (§4.1), because a prepared document outlives the release
 # notes that describe it.
-FORMAT_VERSION = "0.2.0"
+FORMAT_VERSION = "0.3.0"
 
 # The marker of §4.4, on a line of its own.
 REGION_MARKER = "[region: {name}]"
@@ -36,6 +38,7 @@ REGION_MARKER = "[region: {name}]"
 REGION_NAMES = (
     "front-matter",
     "contents",
+    "preface",
     "main",
     "bibliography",
     "index",
@@ -54,131 +57,228 @@ APPARATUS = ("bibliography", "index", "abbreviations", "notes", "appendix")
 # chapter that follows, which is the same silent loss by another name.
 _CLOSEABLE = APPARATUS + ("contents",)
 
-# Heading vocabulary. One list per region, matched against a whole heading
-# line, case- and accent-insensitively (an OCR layer drops diacritics often
-# enough that requiring them would cost more than it protects).
+# Heading vocabulary, grouped by the language each word belongs to. Matched
+# against a whole heading line, case- and accent-insensitively (an OCR layer
+# drops diacritics often enough that requiring them would cost more than it
+# protects).
 #
-# Languages: German, English, French, Italian, Spanish, Portuguese, Dutch,
-# Latin (scholarly editions title their indices in it) and Russian. Adding a
-# language is adding entries here — the matching rule below stays untouched.
-# CJK is out: these patterns key on word boundaries, which do not carry there.
-_VOCABULARY: dict[str, tuple[str, ...]] = {
-    "bibliography": (
-        # de — "Quellen- und Literaturverzeichnis" too, hence the optional lead
-        r"(?:quellen[-\s–]*und[-\s]*)?literatur(?:verzeichnis|nachweis)?",
-        r"(?:quellen|siglen)?(?:verzeichnis)?[-\s]*bibliographie",
-        r"bibliographie", r"bibliografie",
-        r"quellenverzeichnis", r"quellen und literatur",
-        r"verzeichnis der (?:zitierten |verwendeten )?literatur",
-        # en
-        r"(?:select(?:ed)?\s+|primary\s+|secondary\s+|general\s+)?bibliography",
-        r"works cited", r"list of works", r"references",
-        r"(?:list of |primary |printed )?sources",
-        # fr
-        r"bibliographie(?: s[ée]lective| g[ée]n[ée]rale)?",
-        r"r[ée]f[ée]rences(?: bibliographiques)?",
-        r"sources(?: et bibliographie)?",
-        # it / es / pt
-        r"bibliografia", r"bibliograf[íi]a",
-        r"fonti(?: e bibliografia)?", r"riferimenti bibliografici",
-        r"obras citadas", r"refer[êe]ncias(?: bibliogr[áa]ficas)?",
-        r"fontes(?: e bibliografia| impressas| manuscritas)?",
-        # nl
-        r"bibliografie", r"literatuur(?:lijst|opgave)?", r"geraadpleegde werken",
-        # la
-        r"bibliographia", r"conspectus librorum",
-        # ru
-        r"библиография", r"список литературы", r"литература",
-        r"источники(?: и литература)?",
-    ),
-    "index": (
-        # de — Personen-, Sach-, Orts-, Namen-, Stellen-, Autoren-, Bibelstellen-
-        r"(?:\w+[-\s]?)?register",
-        r"(?:namen|orts|personen|sach|stellen)verzeichnis",
-        r"index(?: der \w+)?",
-        # en
-        r"(?:general |subject |name |author |place |scriptural )?index(?:es)?",
-        r"indices", r"index of (?:names|subjects|places|persons|passages)",
-        # fr — "Index des textes cités", "Index des auteurs modernes"; the
-        # complement runs to several words, as it does in Spanish above.
-        r"index des(?:[\s-]+[^\W\d_]{1,15}){1,4}",
-        r"index(?: g[ée]n[ée]ral| nominum)?", r"table onomastique",
-        # it / es / pt — the complement is what makes it a register. Bare
-        # "Indice"/"Índice" is the table of contents in these languages and is
+# The languages are catalogued in ``scriptor.languages``; a word that belongs
+# to several is listed under each of them, and ``tests/test_languages.py``
+# holds every language answerable for every region. Adding a language is
+# adding entries here — the matching rule below stays untouched. CJK is out:
+# these patterns key on word boundaries, which do not carry there.
+#
+# The order of the *regions* carries meaning and must not change: matching
+# returns the first region that fits, which is how a bare "Indice" resolves to
+# `contents` rather than `index`. The order of languages within a region does
+# not, since matching only asks whether some pattern of the region fits.
+_VOCABULARY: dict[str, dict[str, tuple[str, ...] | _NotAttested]] = {
+    "bibliography": {
+        # "Quellen- und Literaturverzeichnis" too, hence the optional lead,
+        # and "Sekundärliteratur" / "Primärliteratur", which grow onto the
+        # word rather than standing in front of it.
+        "de": (
+            r"(?:quellen[-\s–]*und[-\s]*)?(?:sekund[äa]r|prim[äa]r|forschungs)?"
+            r"literatur(?:verzeichnis|nachweis)?",
+            # Editions of the sources, the usual heading for a source
+            # bibliography in classical scholarship (Themistios: "VII
+            # Editionen und Übersetzungen").
+            r"editionen(?: und [üu]bersetzungen)?", r"textausgaben",
+            r"(?:quellen|siglen)?(?:verzeichnis)?[-\s]*bibliographie",
+            r"bibliographie", r"bibliografie",
+            r"quellenverzeichnis", r"quellen und literatur",
+            r"verzeichnis der (?:zitierten |verwendeten )?literatur",
+        ),
+        "en": (
+            r"(?:select(?:ed)?\s+|primary\s+|secondary\s+|general\s+)?bibliography",
+            r"works cited", r"list of works", r"references",
+            r"(?:list of |primary |printed )?sources",
+        ),
+        "fr": (
+            r"bibliographie(?: s[ée]lective| g[ée]n[ée]rale)?",
+            r"r[ée]f[ée]rences(?: bibliographiques)?",
+            r"sources(?: et bibliographie)?",
+        ),
+        "it": (
+            r"bibliografia",
+            r"fonti(?: e bibliografia)?", r"riferimenti bibliografici",
+        ),
+        "es": (r"bibliograf[íi]a", r"obras citadas"),
+        "pt": (
+            r"bibliografia", r"refer[êe]ncias(?: bibliogr[áa]ficas)?",
+            r"fontes(?: e bibliografia| impressas| manuscritas)?",
+        ),
+        "nl": (
+            r"bibliografie", r"literatuur(?:lijst|opgave)?",
+            r"geraadpleegde werken",
+        ),
+        "la": (r"bibliographia", r"conspectus librorum"),
+        "ru": (
+            r"библиография", r"список литературы", r"литература",
+            r"источники(?: и литература)?",
+        ),
+    },
+    "index": {
+        # Personen-, Sach-, Orts-, Namen-, Stellen-, Autoren-, Bibelstellen-
+        "de": (
+            r"(?:\w+[-\s]?)?register",
+            r"(?:namen|orts|personen|sach|stellen)verzeichnis",
+            r"index(?: der \w+)?",
+        ),
+        "en": (
+            r"(?:general |subject |name |author |place |scriptural )?index(?:es)?",
+            r"indices", r"index of (?:names|subjects|places|persons|passages)",
+        ),
+        # "Index des textes cités", "Index des auteurs modernes"; the
+        # complement runs to several words, as it does in Spanish below.
+        "fr": (
+            r"index des(?:[\s-]+[^\W\d_]{1,15}){1,4}",
+            r"index(?: g[ée]n[ée]ral| nominum)?", r"table onomastique",
+        ),
+        # The complement is what makes it a register. Bare "Indice"/"Índice"
+        # is the table of contents in Italian, Spanish and Portuguese and is
         # listed under `contents`; only English, German, French and Latin use
         # the plain word for the back-of-book index.
-        r"indice(?: dei nomi| dei luoghi| analitico| onomastico| dei manoscritti)",
+        "it": (
+            r"indice(?: dei nomi| dei luoghi| analitico| onomastico| dei manoscritti)",
+        ),
+        "es": (
+            r"[íi]ndice de(?:[\s-]+[^\W\d_]{1,15}){1,4}",
+            r"[íi]ndice(?: onom[áa]stico| anal[íi]tico| tem[áa]tico)",
+        ),
         # "Índice de Nomes e Pseudônimos" — the complement runs to several
         # words, so it is bounded by count rather than listed exhaustively.
-        r"[íi]ndice de(?:[\s-]+[^\W\d_]{1,15}){1,4}",
-        r"[íi]ndice(?: onom[áa]stico| anal[íi]tico| tem[áa]tico| remissivo)",
-        # nl
-        r"register(?: van \w+)?", r"zaakregister", r"namenregister",
-        # la
-        r"index (?:nominum|rerum|locorum|verborum|auctorum)",
-        # ru
-        r"указатель(?: имён| имен| названий)?", r"именной указатель",
-        r"предметный указатель",
-    ),
-    "abbreviations": (
-        # de
-        r"abk[üu]rzungs(?:verzeichnis|liste)?", r"abk[üu]rzungen",
-        r"siglen(?:verzeichnis)?", r"verzeichnis der abk[üu]rzungen",
-        # en
-        r"(?:list of |table of )?abbreviations", r"sigla", r"short titles",
-        # fr
-        r"abr[ée]viations(?: et sigles)?", r"liste des abr[ée]viations", r"sigles",
-        # it / es / pt
-        r"abbreviazioni", r"siglas(?: e abreviaturas)?",
-        r"abreviaturas?(?:[\s-]+(?:do|da|de|e)[\s-]+[^\W\d_]{1,15}){0,2}",
-        # nl
-        r"afkortingen(?:lijst)?", r"lijst van afkortingen",
-        # la
-        r"index siglorum", r"sigla",
-        # ru
-        r"список сокращений", r"сокращения", r"условные обозначения",
-    ),
-    "contents": (
+        "pt": (
+            r"[íi]ndice de(?:[\s-]+[^\W\d_]{1,15}){1,4}",
+            r"[íi]ndice(?: onom[áa]stico| anal[íi]tico| tem[áa]tico| remissivo)",
+        ),
+        "nl": (r"register(?: van \w+)?", r"zaakregister", r"namenregister"),
+        "la": (r"index (?:nominum|rerum|locorum|verborum|auctorum)",),
+        "ru": (
+            r"указатель(?: имён| имен| названий)?", r"именной указатель",
+            r"предметный указатель",
+        ),
+    },
+    "abbreviations": {
+        "de": (
+            r"abk[üu]rzungs(?:verzeichnis|liste)?", r"abk[üu]rzungen",
+            r"siglen(?:verzeichnis)?", r"verzeichnis der abk[üu]rzungen",
+        ),
+        "en": (
+            r"(?:list of |table of )?abbreviations", r"sigla", r"short titles",
+        ),
+        "fr": (
+            r"abr[ée]viations(?: et sigles)?", r"liste des abr[ée]viations",
+            r"sigles",
+        ),
+        "it": (r"abbreviazioni",),
+        "es": (
+            r"siglas(?: e abreviaturas)?",
+            r"abreviaturas?(?:[\s-]+(?:do|da|de|e)[\s-]+[^\W\d_]{1,15}){0,2}",
+        ),
+        "pt": (
+            r"siglas(?: e abreviaturas)?",
+            r"abreviaturas?(?:[\s-]+(?:do|da|de|e)[\s-]+[^\W\d_]{1,15}){0,2}",
+        ),
+        "nl": (r"afkortingen(?:lijst)?", r"lijst van afkortingen"),
+        "la": (r"index siglorum", r"sigla"),
+        "ru": (r"список сокращений", r"сокращения", r"условные обозначения"),
+    },
+    "contents": {
         # A table of contents at the *end* of a volume — Guilhiermoz 1902 and
         # Pückert 1899 both put it there. assign_modes only reaches the ones it
         # meets while still in front matter, so the region needs its own words.
-        r"inhalts(?:verzeichnis|[üu]bersicht|angabe)?", r"inhalt",
-        r"(?:table of )?contents", r"table des mati[èe]res", r"sommaire",
-        # Bare "Indice"/"Índice" — the table of contents in Italian, Spanish
-        # and Portuguese. See the note under `index`.
-        r"[íi]ndice(?: generale| general| geral)?", r"sum[áa]rio",
-        r"inhoud(?:sopgave)?", r"оглавление", r"содержание",
-    ),
-    "notes": (
+        "de": (r"inhalts(?:verzeichnis|[üu]bersicht|angabe)?", r"inhalt"),
+        "en": (r"(?:table of )?contents",),
+        "fr": (r"table des mati[èe]res", r"sommaire"),
+        # `sommario` is the counterpart to `sommaire`, and the word that made
+        # the case for one vocabulary instead of two: it lived only in the
+        # mode triggers, which knew no Dutch, while this table knew no
+        # `sommario`. Bare "Indice"/"Índice" — see the note under `index`.
+        "it": (r"sommario", r"[íi]ndice(?: generale)?"),
+        "es": (r"[íi]ndice(?: general)?",),
+        "pt": (r"[íi]ndice(?: geral)?", r"sum[áa]rio"),
+        "nl": (r"inhoud(?:sopgave)?",),
+        "ru": (r"оглавление", r"содержание"),
+        # No Latin volume in the corpus prints a table of contents: the word
+        # is used for indices (see `index`), not for the front matter.
+        "la": NOT_ATTESTED,
+    },
+    "preface": {
+        # What a book says about itself before it begins: how it came about,
+        # and who is thanked. Named, never excluded — see APPARATUS. Ten of
+        # sixteen measured volumes carry one, which is why this name and not
+        # the six other candidates measured beside it.
+        "de": (
+            r"vorwort(?: und dank(?:sagung)?)?", r"geleitwort", r"zum geleit",
+            r"danksagung(?:en)?", r"vorbemerkung(?:en)?",
+        ),
+        "en": (r"preface", r"acknowledge?ments?", r"author's note"),
+        "fr": (r"pr[ée]face", r"avant[- ]propos", r"remerciements"),
+        "it": (r"prefazione", r"premessa", r"ringraziamenti"),
+        "es": (
+            r"prefacio", r"agradecimientos", r"nota (?:previa|del autor)",
+        ),
+        "pt": (r"pref[áa]cio", r"agradecimentos"),
+        "nl": (r"voorwoord", r"dankwoord", r"woord vooraf"),
+        "ru": (r"предисловие", r"благодарности"),
+        # A Latin preface is titled "praefatio" — but no volume in the corpus
+        # prints one, and one attestation would be needed before guessing.
+        "la": NOT_ATTESTED,
+    },
+    "notes": {
         # A collected notes section, as distinct from the footnotes of §4.3.
-        r"anmerkungen", r"endnoten", r"anmerkungsapparat",
+        "de": (r"anmerkungen", r"endnoten", r"anmerkungsapparat"),
         # Plural only. A volume that heads a page "NOTE" is nearly always
         # making a publisher's remark, not opening an apparatus — Baynes does
         # exactly that on its imprint page.
-        r"notes", r"endnotes", r"reference notes",
-        r"notas", r"noten", r"adnotationes",
-        r"примечания", r"комментарии",
-    ),
-    "appendix": (
-        # A numbered or lettered appendix names itself that way — "Appendix IV",
-        # "Apéndice I", "ANEXO 2" — so the ordinal may follow the word as well
-        # as precede it.
-        r"anh[äa]nge?", r"anlagen?", r"beilagen?", r"tabellenanhang",
-        r"appendix(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]))?", r"appendices",
-        # A single trailing letter counts as an ordinal too ("Anexo A"), but
-        # only a single one: two letters are a word, and a word after the
-        # noun makes it a sentence rather than a heading.
-        r"annexes?", r"appendici?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
-        r"ap[êe]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
-        r"ap[ée]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
-        r"anexos?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
-        r"bijlagen?",
-        r"приложения?",
-    ),
+        "en": (r"notes", r"endnotes", r"reference notes"),
+        "fr": (r"notes",),
+        # Italian would head such a section "Note" — singular in form, and
+        # excluded for the reason given above. Nothing else is attested.
+        "it": NOT_ATTESTED,
+        "es": (r"notas",),
+        "pt": (r"notas",),
+        "nl": (r"noten",),
+        "la": (r"adnotationes",),
+        "ru": (r"примечания", r"комментарии"),
+    },
+    "appendix": {
+        # A numbered or lettered appendix names itself that way — "Appendix
+        # IV", "Apéndice I", "ANEXO 2" — so the ordinal may follow the word as
+        # well as precede it. A single trailing letter counts as an ordinal
+        # too ("Anexo A"), but only a single one: two letters are a word, and
+        # a word after the noun makes it a sentence rather than a heading.
+        "de": (r"anh[äa]nge?", r"anlagen?", r"beilagen?", r"tabellenanhang"),
+        "en": (
+            r"appendix(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]))?", r"appendices",
+        ),
+        "fr": (
+            r"annexes?", r"appendici?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+        ),
+        "it": (r"appendici?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",),
+        "es": (
+            r"ap[ée]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+            r"anexos?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+        ),
+        "pt": (
+            r"ap[êe]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+            r"anexos?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
+        ),
+        "nl": (r"bijlagen?",),
+        "ru": (r"приложения?",),
+        # "Appendix" is Latin, but a volume that prints it is setting an
+        # English or German heading; no Latin-language attestation.
+        "la": NOT_ATTESTED,
+    },
 }
 
-# An optional ordinal in front of the title: "13.", "IV.", "A.", "§ 3".
-_PREFIX = r"(?:(?:§\s*)?(?:\d{1,3}|[ivxlcdm]{1,6}|[a-z])[.)]?\s+)?"
+# An optional ordinal in front of the title: "13.", "IV.", "A.", "§ 3" — and
+# compounded, "VIII.1", "3.2.1". One level was not enough: De Gruyter heads
+# "VIII.1 Abkürzungen" and "VIII.2 Literatur", so a heading whose bare word the
+# vocabulary knows fell through on its number alone. It cannot make a heading
+# out of prose, because what follows still has to match a whole entry.
+_PREFIX = r"(?:(?:§\s*)?(?:\d{1,3}|[ivxlcdm]{1,6}|[a-z])(?:\.\d{1,3})*[.)]?\s+)?"
 
 # A heading is short. Beyond this the line is prose that happens to open with
 # the word, and prose is never a region marker.
@@ -236,12 +336,26 @@ def _fold(text: str) -> str:
 # becomes a heading by ending in a period.
 _TRAILING = r"[.,:;·•∙]?"
 
+def _patterns_of(by_language: dict[str, tuple[str, ...] | _NotAttested]) -> list[str]:
+    """Every pattern of a region, the language grouping read away again.
+
+    Language order is immaterial here: matching asks only whether *some*
+    pattern of the region fits, never which language answered.
+    """
+    out: list[str] = []
+    for patterns in by_language.values():
+        if patterns is NOT_ATTESTED:
+            continue
+        out.extend(patterns)
+    return out
+
+
 _COMPILED: dict[str, tuple[re.Pattern[str], ...]] = {
     region: tuple(
         re.compile(_undiacritic(rf"^{_PREFIX}{alt}\s*{_TRAILING}\s*$"), re.IGNORECASE)
-        for alt in alternatives
+        for alt in _patterns_of(by_language)
     )
-    for region, alternatives in _VOCABULARY.items()
+    for region, by_language in _VOCABULARY.items()
 }
 
 
@@ -385,6 +499,80 @@ def _opens_region(page) -> str | None:
     return None
 
 
+def _is_roman_label(label: str) -> bool:
+    from scriptor.reflow.pagelabel import MIN_ROMAN_LEN, ROMAN_RE
+
+    s = label.strip().lower()
+    return len(s) >= MIN_ROMAN_LEN and bool(ROMAN_RE.match(s))
+
+
+def front_matter_zone_end(
+    pages: list,
+    *,
+    page_headers: list[str | None] | None = None,
+    max_fraction: float = 0.1,
+) -> int:
+    """Index of the first body page — where the front matter stops.
+
+    Two signals, in order of how much they can be trusted.
+
+    The **pagination** is the publisher's own statement and needs no
+    vocabulary: a volume that sets its front matter in roman numerals and
+    restarts at 1 has said where its body begins (Themistios: contents
+    XI–XIII, body from 1).
+
+    Where a volume paginates straight through (Bauer: preface on 7), the
+    fallback is the **last list printed in the opening tenth** — a table of
+    contents or a list of abbreviations. The bound matters more than it looks:
+    nine of sixteen measured volumes print their contents at the *end*, and
+    without it one at 98 % would declare the whole book front matter.
+
+    That fallback has to read the running heads, not only the mode. Bauer's
+    table of contents is not ``mode=toc`` on a single page: it is recognised
+    entirely from the head "Inhaltsverzeichnis" that all eight pages carry.
+    Reading the mode alone closed the zone after the five title pages, one
+    position ahead of the preface — which then counted as body text.
+
+    A preface **adjoining** the zone extends it, and only then. Reading the
+    lists alone put the boundary on the last one, so a volume that prints its
+    contents first and its preface behind it (Lizzi Testa) ended its front
+    matter on the very page the preface opens, and no such preface could ever
+    be named. Requiring the page to adjoin what has been found so far is what
+    keeps the rule from arguing in a circle: a stray "Vorwort zur Neuausgabe"
+    behind a few pages of running text would otherwise extend the zone to
+    itself, and licence itself by doing so.
+
+    Returns 0 where neither signal fires, which reads as "no front matter" and
+    leaves every page to the ordinary rules.
+    """
+    if page_headers is not None and len(page_headers) != len(pages):
+        page_headers = None
+
+    seen_roman = False
+    for position, page in enumerate(pages):
+        label = (getattr(page, "label", None) or "").strip()
+        if not label:
+            continue
+        if _is_roman_label(label):
+            seen_roman = True
+        elif seen_roman and label.isdigit():
+            return position
+
+    limit = max(1, int(len(pages) * max_fraction))
+    end = 0
+    for position, page in enumerate(pages[:limit]):
+        if getattr(page, "mode", "main") in ("frontmatter", "toc"):
+            end = position + 1
+            continue
+        head = page_headers[position] if page_headers else None
+        names = {_opens_region(page), region_of_running_head(head) if head else None}
+        if names & {"contents", "abbreviations"}:
+            end = position + 1
+        elif "preface" in names and position == end:
+            end = position + 1
+    return end
+
+
 def assign_regions(
     pages: list,
     *,
@@ -435,6 +623,7 @@ def assign_regions(
         page_headers = None
     ubiquitous = _ubiquitous_heads(page_headers, len(pages))
     tail_begins = len(pages) * (1.0 - tail_fraction)
+    zone_end = front_matter_zone_end(pages, page_headers=page_headers)
     current = "main"
     prose_run: list = []
     in_tail = False
@@ -461,6 +650,13 @@ def assign_regions(
             continue
 
         opened = _opens_region(page)
+        # A preface is named only where it stands in the opening zone. Behind
+        # it the same word means a chapter that leads into the argument —
+        # Pouderon prints "Introduction" twice, six pages of it in front and a
+        # whole PREMIÈRE PARTIE of four chapters after — and §4.4 would rather
+        # carry a stray page of thanks than lose one of those.
+        if opened == "preface" and position >= zone_end:
+            opened = None
 
         # The mode is a fallback, not an override, and the coarsest evidence
         # there is. It answers per page from a trigger that fires once and
@@ -469,7 +665,14 @@ def assign_regions(
         # region flickered index/contents page by page. So the mode may name a
         # page that has no region of its own — it may not overrule a region
         # already running, nor a page that names itself.
-        if opened is None and current == "main" and mode in ("frontmatter", "toc"):
+        #
+        # `preface` joins `main` here, and only those two. A preface runs a
+        # page or three and the contents follows it directly; if the fallback
+        # kept waiting for `main`, the contents behind a preface would never
+        # be named. An apparatus already running still may not be overruled —
+        # that is the defect this condition was written for.
+        if (opened is None and current in ("main", "preface")
+                and mode in ("frontmatter", "toc")):
             page.region = "front-matter" if mode == "frontmatter" else "contents"
             current, prose_run = "main", []
             continue
@@ -480,6 +683,15 @@ def assign_regions(
             # a region that began in the body keeps being closable even once
             # it has run into the tail.
             in_tail = position >= tail_begins
+        elif current == "preface" and position >= zone_end:
+            # A preface ends where the front matter does. None of the closing
+            # rules below reach it — they are written for an apparatus, and the
+            # prose rule would end a preface on its second page, a preface
+            # being prose. Left unclosed it ran to the next region of any kind:
+            # on Lizzi Testa that was the bibliography, 438 pages later. The
+            # zone is the same evidence that opened it, so the region lasts
+            # exactly as long as the grounds for naming it.
+            current, prose_run = "main", []
         elif current == "contents" and mode == "main":
             # The reflow's own frontmatter->main transition ends a table of
             # contents exactly: it fires on the first page that reads as

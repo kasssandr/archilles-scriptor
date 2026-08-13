@@ -11,6 +11,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from scriptor.reflow.regions import REGION_NAMES
+
 FOOTNOTE_STATUSES = {"intact", "marker_lost", "damaged"}
 REGIMES = {"r3", "r4", "none"}
 
@@ -52,12 +54,28 @@ class TruthBibEntry:
 
 
 @dataclass(frozen=True)
+class TruthRegion:
+    """One boundary: from this printed label on, the volume is in `name`.
+
+    Declared for the whole volume rather than for the sampled pages. A
+    footnote sample is drawn from body pages and so carries no apparatus at
+    all -- keying regions to it would leave the recall question with an empty
+    denominator. The boundary therefore need not appear in `pages`, and the
+    region reaches to the next boundary, exactly as the marker of spec §4.4
+    does.
+    """
+    from_page: str
+    name: str
+
+
+@dataclass(frozen=True)
 class GroundTruth:
     volume: str
     pages: list[str]
     footnotes: list[TruthFootnote] = field(default_factory=list)
     citations: list[TruthCitation] = field(default_factory=list)
     bibliography: list[TruthBibEntry] = field(default_factory=list)
+    regions: list[TruthRegion] = field(default_factory=list)
 
 
 def _require(cond: bool, msg: str) -> None:
@@ -104,6 +122,19 @@ def loads_truth(text: str) -> GroundTruth:
         _require(cit.page in page_set, f"citation page {cit.page!r} not in pages")
         citations.append(cit)
 
+    regions = []
+    seen_boundaries: set[str] = set()
+    for r in raw.get("regions", []):
+        reg = TruthRegion(from_page=str(r["from_page"]), name=r["name"])
+        _require(reg.name in REGION_NAMES,
+                 f"unknown region name {reg.name!r}; the vocabulary of spec "
+                 f"§4.4 is closed: {', '.join(REGION_NAMES)}")
+        _require(reg.from_page not in seen_boundaries,
+                 f"page {reg.from_page!r} opens a region twice -- one page "
+                 f"cannot begin two regions")
+        seen_boundaries.add(reg.from_page)
+        regions.append(reg)
+
     bibliography = [TruthBibEntry(key=b["key"], raw=b["raw"])
                     for b in raw.get("bibliography", [])]
     bib_keys = {b.key for b in bibliography}
@@ -111,7 +142,8 @@ def loads_truth(text: str) -> GroundTruth:
         if cit.resolves_to is not None:
             _require(cit.resolves_to in bib_keys,
                      f"citation resolves_to {cit.resolves_to!r} has no bibliography entry")
-    return GroundTruth(str(raw["volume"]), pages, footnotes, citations, bibliography)
+    return GroundTruth(str(raw["volume"]), pages, footnotes, citations,
+                       bibliography, regions)
 
 
 def load_truth(path: Path) -> GroundTruth:
