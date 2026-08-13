@@ -33,11 +33,18 @@ def _reflow(tmp_path):
     return out.read_text(encoding="utf-8")
 
 
+def _body(text):
+    """The prose after the YAML metadata block, which is itself a paragraph."""
+    if text.startswith("---\n"):
+        return text.split("\n---", 1)[1].lstrip("\n")
+    return text
+
+
 def test_the_paragraph_really_spans_the_page_break(tmp_path):
     """Guards the premise: if the paragraph ends at the page foot, the marker
     starts a fresh paragraph and there is nothing to place it inside of."""
     text = _reflow(tmp_path)
-    first_paragraph = text.split("\n\n")[0]
+    first_paragraph = _body(text).split("\n\n")[0]
     assert "[p. 1]" in first_paragraph and "[p. 2]" in first_paragraph
 
 
