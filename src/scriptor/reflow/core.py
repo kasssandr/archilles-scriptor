@@ -42,6 +42,27 @@ INDENT = "    "                # indent of footnotes at the end of the paragraph
 FnKey = tuple[int, int]
 
 
+@dataclass(frozen=True)
+class FolioCandidate:
+    """A line that *might* be the page's printed folio, and where it stood.
+
+    The detector used to delete the line it read as a label before anything had
+    checked whether it was one, so a chapter number or a footnote number at the
+    edge of a page vanished from the book without trace. Now the decision
+    belongs to the source consensus, and a candidate it does not confirm is put
+    back by ``restore_rejected_folios``.
+
+    The line is still lifted out of the page rather than left standing: on the
+    TXT path the footnote block is found by convention, and a folio sitting at
+    the foot of the page would be read as the tail of the last note.
+    """
+
+    line_index: int     # where it belongs in body_lines
+    text: str           # the whole line, as it stood
+    label: str          # what detect_page_label read out of it
+    edge: str           # "top" | "bottom"
+
+
 @dataclass
 class Page:
     num: int                              # ordinal value of the label (-1 = none)
@@ -76,6 +97,11 @@ class Page:
     # block: the tail of a note that began on the previous page. Consumed by
     # attach_continuations, None afterwards.
     fn_continuation: str | None = None
+    # Lines lifted out as possible folios, still awaiting the verdict.
+    folio_candidates: list[FolioCandidate] = field(default_factory=list)
+    # How much the source consensus trusts this page's label, 0..1. None where
+    # no verdict has run.
+    label_confidence: float | None = None
 
     def __post_init__(self) -> None:
         # ``num`` is the ordinal, ``label`` the identity. For an arabic page the
@@ -119,21 +145,34 @@ def parse_page(
     if not lines and not fn_block:
         return None
 
-    # Collect page-label candidates at the first AND last non-empty line.
-    # The choice (top vs. bottom) is made globally by reconcile_page_numbers.
+    # Collect page-label candidates at the first AND last non-empty line. Which
+    # edge the volume paginates at, and whether either candidate is a folio at
+    # all, is settled later by the source consensus. Each candidate is kept with
+    # the place it held, so one the consensus rejects can be put back
+    # (``restore_rejected_folios``) instead of being lost on a guess.
+    candidates: list[FolioCandidate] = []
     label_top = None
     label_bottom = None
     if lines:
         lb = detect_page_label(lines[-1])
         if lb is not None:
             label_bottom = lb
+            candidates.append(
+                FolioCandidate(len(lines) - 1, lines[-1], lb, "bottom"))
             lines.pop()
     if lines:
         lt = detect_page_label(lines[0])
         if lt is not None:
             label_top = lt
+            candidates.append(FolioCandidate(0, lines[0], lt, "top"))
             lines.pop(0)
-    page_num = -1  # provisional; reconcile_page_numbers sets num and label
+            # The bottom candidate moves up by one, and so does its home.
+            candidates = [
+                FolioCandidate(c.line_index - 1, c.text, c.label, c.edge)
+                if c.edge == "bottom" else c
+                for c in candidates
+            ]
+    page_num = -1  # provisional; the source consensus sets num and label
 
     # Footnote block: starting at the first line that begins with "NN)".
     # Only consulted where the geometry could not answer the question itself —
@@ -179,6 +218,7 @@ def parse_page(
         label_top=label_top,
         label_bottom=label_bottom,
         fn_continuation=fn_continuation,
+        folio_candidates=candidates,
     )
 
 
@@ -235,37 +275,6 @@ def attach_continuations(pages: list[Page]) -> int:
     return attached
 
 
-def _sequence_score(nums: list[int]) -> int:
-    """Count adjacent +1 steps among the non-missing entries (in order).
-    A higher score means the column forms a more consistent running pagination."""
-    score = 0
-    prev = None
-    for n in nums:
-        if n < 0:
-            prev = None
-            continue
-        if prev is not None and n == prev + 1:
-            score += 1
-        prev = n
-    return score
-
-
-def _ordinal(label: str | None) -> int:
-    """Sortable value of a label candidate; -1 when there is none."""
-    if label is None:
-        return -1
-    n = decode_label(label)
-    return -1 if n is None else n
-
-
-# A catalogue column needs this many pages where both it and a printed label
-# exist, agreeing at this rate, before it is believed. Below that, the printed
-# pages stand: scan tooling generates catalogues mechanically (physical =
-# printed), and believing one shifts every citation in the book.
-MIN_BACKEND_OVERLAP = 3
-BACKEND_AGREEMENT = 0.8
-
-
 def append_rescued_folio(text: str, folio: str | None) -> str:
     """Put a folio rescued from a running footer back into the page body.
 
@@ -290,147 +299,45 @@ def append_rescued_folio(text: str, folio: str | None) -> str:
 
 
 def reconcile_page_numbers(pages: list[Page]) -> str:
-    """Choose, globally, whether the book paginates at the top or the bottom,
-    and set each page's ``label`` and ``num`` from the winning column.
+    """Set every page's label from the source consensus; say what won.
 
-    The winner is the column whose candidates form the longer consistent
-    ascending run (sequence variant). Safe fallback: on a tie or no signal,
-    prefer the bottom column (the historical behaviour), else leave the page
-    unlabelled — never invent a number.
-
-    Scoring runs on the decoded ordinals, so a roman frontmatter run (i, ii, …)
-    scores like an arabic one. The label itself stays verbatim: it is what makes
-    the page citable, and roman ``xiv`` must not become arabic ``14``.
+    Kept under its old name because the call site and the tests speak it. The
+    work now happens in ``reflow/pagination``: witnesses state what each page is
+    called, and the plan that explains the most of them decides
+    (docs/internal/2026-08-13-quellen-verbund-design.md).
     """
-    top_labels = [p.label_top for p in pages]
-    bottom_labels = [p.label_bottom for p in pages]
-    top = [_ordinal(lbl) for lbl in top_labels]
-    bottom = [_ordinal(lbl) for lbl in bottom_labels]
-    top_score = _sequence_score(top)
-    bottom_score = _sequence_score(bottom)
-    has_top = any(n >= 0 for n in top)
-    has_bottom = any(n >= 0 for n in bottom)
+    from scriptor.reflow.pagination.verdict import run_verdict
 
-    if not has_top and not has_bottom:
-        # Without printed labels there is nothing to verify a catalogue column
-        # against — and an unverified catalogue is exactly the thing scan
-        # tooling generates mechanically. Stay unlabelled rather than guess.
-        return "none"
-    if top_score > bottom_score:
-        chosen_labels, chosen_nums, col = top_labels, top, "top"
-    elif bottom_score > top_score:
-        chosen_labels, chosen_nums, col = bottom_labels, bottom, "bottom"
-    else:  # tie — prefer whichever column actually has labels, bottom first
-        if has_bottom:
-            chosen_labels, chosen_nums, col = bottom_labels, bottom, "bottom"
-        else:
-            chosen_labels, chosen_nums, col = top_labels, top, "top"
-
-    # The catalogue column (PDF PageLabels) wins where it demonstrably agrees
-    # with the printed pages: it knows the pages the detector must guess — a
-    # chapter opening shows no running head, only the big chapter number.
-    backend_labels = [p.backend_label for p in pages]
-    both = [
-        (b, c)
-        for b, c in zip(backend_labels, chosen_labels)
-        if b is not None and c is not None
-    ]
-    agree = sum(1 for b, c in both if b.strip().lower() == c.strip().lower())
-    if len(both) >= MIN_BACKEND_OVERLAP and agree >= BACKEND_AGREEMENT * len(both):
-        for p, backend, lbl, n in zip(pages, backend_labels, chosen_labels, chosen_nums):
-            ordinal = _ordinal(backend) if backend is not None else -1
-            if ordinal >= 0:
-                p.num, p.label, p.label_source = ordinal, backend, "catalogue"
-            else:
-                p.num, p.label = n, (lbl if n >= 0 else None)
-                p.label_source = "printed" if p.label is not None else None
-        fill_page_label_gaps(pages)
-        return f"backend catalogue (agrees with {col} on {agree}/{len(both)} pages)"
-
-    for p, lbl, n in zip(pages, chosen_labels, chosen_nums):
-        p.num = n
-        p.label = lbl if n >= 0 else None
-        p.label_source = "printed" if p.label is not None else None
-    fill_page_label_gaps(pages)
-    return col
+    return run_verdict(pages).description
 
 
-# An arabic label is its own ordinal written out, so a page enclosed by two of
-# them can be labelled by counting. A roman one cannot be written back without
-# an encoder, and the roman stretch is the front matter — the one place where
-# an unprinted page is as likely to be uncounted (a plate, a blank verso) as
-# counted. Both reasons point the same way, so the rule stays arabic.
-def _is_arabic(label: str | None) -> bool:
-    return label is not None and label.strip().isdigit()
+def restore_rejected_folios(pages: list[Page]) -> int:
+    """Put back the candidate lines the consensus did not confirm. Returns how
+    many.
 
+    A line lifted out as a possible folio and then rejected is a line of the
+    book -- a chapter number, a footnote number, a year on the imprint page.
+    What it is instead is a question for the audit; that it stays in the text is
+    not.
 
-def fill_page_label_gaps(pages: list[Page]) -> int:
-    """Label the pages a volume counts but prints no folio on, and say how many.
-
-    A chapter opening carries no running head and no folio, so nothing is left
-    for the detector to read. But a page standing between a printed 12 and a
-    printed 14 is not guessed, it is enclosed: 13 is the only value it can
-    hold. This is the one departure from ``reconcile_page_numbers``' rule never
-    to invent a number, and it is bounded by two conditions.
-
-    The gap must close arithmetically -- as many physical pages as the labels
-    count apart. Where it does not, the volume did not merely stop printing:
-    it stopped counting, and the pages in between are an uncounted plate whose
-    number nobody knows.
-
-    That condition is not a formality. Measured over the sixteen corpus
-    volumes, 181 of 190 interior gaps close exactly; the nine that do not are
-    every kind of thing this rule must not touch -- a year misread as a label
-    ("2020" on the imprint page, "2005" on Pouderon's), a script change in
-    mid-volume ("vii" to "177"), and four gaps in Gli Actus Silvestri where one
-    physical page spans two counted ones, the signature of a double-page scan.
-    Refusing them costs two volumes nothing and saves the rest from confident
-    nonsense.
-
-    The front edge is counted backwards from the first arabic label, which
-    needs no right-hand anchor because the sequence has a floor: page 1. The
-    run stops there, and it stops at any page that prints a label of its own —
-    a roman one ends the arabic stretch by definition. At Bauer this recovers
-    five title pages (first printed label "7" on physical page 7), and the
-    catalogue independently agrees with every one of them; at Themistios it
-    recovers exactly the "1" and then halts, because the fifteen pages before
-    it are roman. An inconsistency in the front matter is cheap: nothing cites
-    a half-title, and the pages there are named by position, not by number.
-
-    The back edge is not extrapolated. There is no floor on that side and no
-    anchor beyond it, so a run there is unbounded guessing.
+    Restored at the place it held, clamped to the body's length: where the page
+    also carried an apparatus, the body is shorter than the page was, and a
+    rejected bottom candidate lands at the end of the prose rather than below
+    the notes. The line survives; its exact seat is a judgement nobody can make
+    from a rejected reading.
     """
-    known = [i for i, p in enumerate(pages) if p.label is not None and p.index >= 0]
-    filled = 0
-    if known and _is_arabic(pages[known[0]].label):
-        first = pages[known[0]]
-        for p in reversed(pages[:known[0]]):
-            if p.index < 0:
-                break
-            n = first.num - (first.index - p.index)
-            if n < 1:
-                break
-            p.num, p.label, p.label_source = n, str(n), "computed"
-            filled += 1
-    for left, right in zip(known, known[1:]):
-        lo, hi = pages[left], pages[right]
-        if right - left < 2:
-            continue
-        if not (_is_arabic(lo.label) and _is_arabic(hi.label)):
-            continue
-        # Physical distance against numeric distance. ``index`` is the file
-        # ordinal, so a page dropped as empty still occupies its position and
-        # the two stay comparable.
-        if hi.index - lo.index != hi.num - lo.num:
-            continue
-        for p in pages[left + 1:right]:
-            if p.label is not None or p.index < 0:
+    restored = 0
+    for p in pages:
+        for c in sorted(p.folio_candidates, key=lambda c: c.line_index,
+                        reverse=True):
+            confirmed = (p.label is not None
+                         and p.label_source == "printed"
+                         and c.label == p.label)
+            if confirmed:
                 continue
-            p.num = lo.num + (p.index - lo.index)
-            p.label = str(p.num)
-            p.label_source = "computed"
-            filled += 1
-    return filled
+            p.body_lines.insert(min(c.line_index, len(p.body_lines)), c.text)
+            restored += 1
+    return restored
 
 
 # ----------------------------------------------------------------------
@@ -1645,7 +1552,14 @@ def main(
         )
 
     page_col = reconcile_page_numbers(pages)
+    restored = restore_rejected_folios(pages)
     print(f"Page label position: {page_col}", file=sys.stderr)
+    if restored:
+        print(
+            f"Folio candidates the consensus rejected, returned to the text: "
+            f"{restored}",
+            file=sys.stderr,
+        )
 
     assign_modes(pages)
     mode_counts = Counter(p.mode for p in pages)

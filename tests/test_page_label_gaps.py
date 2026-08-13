@@ -21,7 +21,7 @@ A computed label is marked as such (``Page.label_source``), because rules that
 draw structural conclusions from a label must not draw them from an inference.
 """
 
-from scriptor.reflow.core import Page, fill_page_label_gaps, reconcile_page_numbers
+from scriptor.reflow.core import Page, reconcile_page_numbers
 
 
 def _page(index, label):
@@ -148,12 +148,11 @@ def test_without_physical_indices_nothing_is_filled():
     assert _labels(pages) == ["12", None, "14"]
 
 
-def test_the_helper_reports_how_many_it_filled():
+def test_the_verdict_reports_how_many_labels_it_computed():
+    from scriptor.reflow.pagination.verdict import run_verdict
+
     pages = [_page(1, "12"), _page(2, None), _page(3, "14")]
-    reconcile_page_numbers(pages)  # sets label/num from the printed column
-    pages[1].label, pages[1].num = None, -1  # undo, to call the helper directly
-    assert fill_page_label_gaps(pages) == 1
-    assert fill_page_label_gaps(pages) == 0  # nothing left to fill
+    assert run_verdict(pages).computed_count == 1
 
 
 # ----------------------------------------------------------------------

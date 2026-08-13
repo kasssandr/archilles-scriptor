@@ -68,6 +68,26 @@ def decode_label(label: str) -> int | None:
     return None
 
 
+def style_of(label: str) -> str | None:
+    """Which numbering system a label is written in, or None if it is not one.
+
+    The pagination plan models a stretch of pages as one numbering system, so a
+    roman label inside an arabic stretch is a contradiction rather than a value
+    to compare. Uppercase roman is accepted here although ``detect_page_label``
+    refuses it: the detector's refusal protects the body text from having a
+    running head deleted, while this classifier is only ever asked about a label
+    somebody already produced -- and the PDF catalogue does state "XIV".
+    """
+    s = label.strip()
+    if not s:
+        return None
+    if ARABIC_RE.match(s):
+        return "arabic" if 1 <= int(s) <= 9999 else None
+    if len(s) >= MIN_ROMAN_LEN and ROMAN_RE.match(s.lower()):
+        return "roman-lower" if s.islower() else "roman-upper"
+    return None
+
+
 def is_running_head_like(text: str) -> bool:
     """True if ``text`` looks like a running header/footer (mostly uppercase
     letters, few lowercase) rather than ordinary prose."""

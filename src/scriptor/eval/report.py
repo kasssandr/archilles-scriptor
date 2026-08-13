@@ -7,7 +7,8 @@ from dataclasses import asdict
 from scriptor.eval.runner import VolumeReport
 
 _HEADER = ("| Volume | Candidate | Anchor | Handled | Silent damage | Labels "
-           "| Flag prec. | R3 P/R | Regions |\n|---|---|---|---|---|---|---|---|---|")
+           "| Wrong | Flag prec. | R3 P/R | Regions |"
+           "\n|---|---|---|---|---|---|---|---|---|---|")
 
 
 def _pct(x: float) -> str:
@@ -31,7 +32,7 @@ def _row(r: VolumeReport) -> str:
     return (f"| {r.volume} | {r.candidate} | {_pct(a.anchor_rate)} "
             f"({anchored}/{len(a.outcomes)}) | {_pct(a.handled_rate)} "
             f"| {_pct(a.silent_damage_rate)} | {_pct(r.labels.label_fidelity)} "
-            f"| {fp} | {cit} | {reg} |")
+            f"| {r.labels.wrong} | {fp} | {cit} | {reg} |")
 
 
 def _details(r: VolumeReport) -> list[str]:
