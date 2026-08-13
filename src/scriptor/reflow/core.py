@@ -53,7 +53,15 @@ class Page:
     # what it is — a bibliography a publisher indents like prose is still a
     # bibliography. None until assign_regions has run.
     region: str | None = None
-    label: str | None = None              # printed label, verbatim ("xiv", "312")
+    label: str | None = None              # the page's label, verbatim ("xiv", "312")
+    # Where ``label`` comes from. "printed" was read off the page, "catalogue"
+    # comes from the PDF's own PageLabels, "computed" was derived from the
+    # pagination sequence for a page that prints no folio. The distinction is
+    # not bookkeeping: a computed label is an inference, and a rule that draws
+    # structural conclusions from a label must not draw them from an inference
+    # — assign_modes reads the printed "1" as the start of the body, and the
+    # title page of a volume counted from 1 would otherwise claim it.
+    label_source: str | None = None
     index: int = -1                       # physical page, 1-based file ordinal
     label_top: str | None = None          # label candidate at top of the page
     label_bottom: str | None = None       # label candidate at bottom of the page
@@ -75,6 +83,8 @@ class Page:
         # still get a usable label. reconcile_page_numbers sets both explicitly.
         if self.label is None and self.num >= 0:
             self.label = str(self.num)
+        if self.label is not None and self.label_source is None:
+            self.label_source = "printed"
 
 
 # ----------------------------------------------------------------------
@@ -307,15 +317,97 @@ def reconcile_page_numbers(pages: list[Page]) -> str:
         for p, backend, lbl, n in zip(pages, backend_labels, chosen_labels, chosen_nums):
             ordinal = _ordinal(backend) if backend is not None else -1
             if ordinal >= 0:
-                p.num, p.label = ordinal, backend
+                p.num, p.label, p.label_source = ordinal, backend, "catalogue"
             else:
                 p.num, p.label = n, (lbl if n >= 0 else None)
+                p.label_source = "printed" if p.label is not None else None
+        fill_page_label_gaps(pages)
         return f"backend catalogue (agrees with {col} on {agree}/{len(both)} pages)"
 
     for p, lbl, n in zip(pages, chosen_labels, chosen_nums):
         p.num = n
         p.label = lbl if n >= 0 else None
+        p.label_source = "printed" if p.label is not None else None
+    fill_page_label_gaps(pages)
     return col
+
+
+# An arabic label is its own ordinal written out, so a page enclosed by two of
+# them can be labelled by counting. A roman one cannot be written back without
+# an encoder, and the roman stretch is the front matter — the one place where
+# an unprinted page is as likely to be uncounted (a plate, a blank verso) as
+# counted. Both reasons point the same way, so the rule stays arabic.
+def _is_arabic(label: str | None) -> bool:
+    return label is not None and label.strip().isdigit()
+
+
+def fill_page_label_gaps(pages: list[Page]) -> int:
+    """Label the pages a volume counts but prints no folio on, and say how many.
+
+    A chapter opening carries no running head and no folio, so nothing is left
+    for the detector to read. But a page standing between a printed 12 and a
+    printed 14 is not guessed, it is enclosed: 13 is the only value it can
+    hold. This is the one departure from ``reconcile_page_numbers``' rule never
+    to invent a number, and it is bounded by two conditions.
+
+    The gap must close arithmetically -- as many physical pages as the labels
+    count apart. Where it does not, the volume did not merely stop printing:
+    it stopped counting, and the pages in between are an uncounted plate whose
+    number nobody knows.
+
+    That condition is not a formality. Measured over the sixteen corpus
+    volumes, 181 of 190 interior gaps close exactly; the nine that do not are
+    every kind of thing this rule must not touch -- a year misread as a label
+    ("2020" on the imprint page, "2005" on Pouderon's), a script change in
+    mid-volume ("vii" to "177"), and four gaps in Gli Actus Silvestri where one
+    physical page spans two counted ones, the signature of a double-page scan.
+    Refusing them costs two volumes nothing and saves the rest from confident
+    nonsense.
+
+    The front edge is counted backwards from the first arabic label, which
+    needs no right-hand anchor because the sequence has a floor: page 1. The
+    run stops there, and it stops at any page that prints a label of its own —
+    a roman one ends the arabic stretch by definition. At Bauer this recovers
+    five title pages (first printed label "7" on physical page 7), and the
+    catalogue independently agrees with every one of them; at Themistios it
+    recovers exactly the "1" and then halts, because the fifteen pages before
+    it are roman. An inconsistency in the front matter is cheap: nothing cites
+    a half-title, and the pages there are named by position, not by number.
+
+    The back edge is not extrapolated. There is no floor on that side and no
+    anchor beyond it, so a run there is unbounded guessing.
+    """
+    known = [i for i, p in enumerate(pages) if p.label is not None and p.index >= 0]
+    filled = 0
+    if known and _is_arabic(pages[known[0]].label):
+        first = pages[known[0]]
+        for p in reversed(pages[:known[0]]):
+            if p.index < 0:
+                break
+            n = first.num - (first.index - p.index)
+            if n < 1:
+                break
+            p.num, p.label, p.label_source = n, str(n), "computed"
+            filled += 1
+    for left, right in zip(known, known[1:]):
+        lo, hi = pages[left], pages[right]
+        if right - left < 2:
+            continue
+        if not (_is_arabic(lo.label) and _is_arabic(hi.label)):
+            continue
+        # Physical distance against numeric distance. ``index`` is the file
+        # ordinal, so a page dropped as empty still occupies its position and
+        # the two stay comparable.
+        if hi.index - lo.index != hi.num - lo.num:
+            continue
+        for p in pages[left + 1:right]:
+            if p.label is not None or p.index < 0:
+                continue
+            p.num = lo.num + (p.index - lo.index)
+            p.label = str(p.num)
+            p.label_source = "computed"
+            filled += 1
+    return filled
 
 
 # ----------------------------------------------------------------------
@@ -497,7 +589,14 @@ def assign_modes(pages: list[Page]) -> None:
             # by nothing but where it stands.
             if is_toc_page(p) and (mode == "frontmatter" or position < front_limit):
                 mode = "toc"
-            elif mode in ("frontmatter", "toc") and (is_prose_page(p, width) or p.label == "1"):
+            # The printed "1" says the body starts here. A computed one says
+            # only that the volume counts its title page, which every volume
+            # counted from 1 does — reading it as the body would hand the whole
+            # front matter to the main text.
+            elif mode in ("frontmatter", "toc") and (
+                is_prose_page(p, width)
+                or (p.label == "1" and p.label_source == "printed")
+            ):
                 mode = "main"
         p.mode = mode
 
