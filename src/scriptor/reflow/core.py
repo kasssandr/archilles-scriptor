@@ -266,6 +266,29 @@ MIN_BACKEND_OVERLAP = 3
 BACKEND_AGREEMENT = 0.8
 
 
+def append_rescued_folio(text: str, folio: str | None) -> str:
+    """Put a folio rescued from a running footer back into the page body.
+
+    Where the geometry cut the apparatus, a running footer sits inside the
+    footnote block, and the page number embedded in it is rescued there. It
+    belongs to the body, which no longer has it -- unless the page prints its
+    folio below the apparatus, and then the body has it already.
+
+    Carlomagno (Javaloys) is why the second case has to be checked. Its notes
+    read "N Obra citada. Página NN." page after page, so a note is similar
+    enough to its neighbours to pass as a running footer, and the number
+    rescued from it is the note's own. Appended, it landed behind the printed
+    folio at the very foot of the page -- and the last line is what parse_page
+    reads. Physical page 39 prints "41" and came out labelled "17".
+    """
+    if folio is None:
+        return text
+    lines = text.rstrip().splitlines()
+    if lines and detect_page_label(lines[-1]) is not None:
+        return text
+    return f"{text}\n{folio}"
+
+
 def reconcile_page_numbers(pages: list[Page]) -> str:
     """Choose, globally, whether the book paginates at the top or the bottom,
     and set each page's ``label`` and ``num`` from the winning column.
@@ -1582,7 +1605,7 @@ def main(
     cleaned, headers, footers = strip_running_elements(raw_texts, foot_blocks=fn_blocks)
     fn_blocks, rescued_folios = remove_running_footers_from_blocks(fn_blocks, footers)
     cleaned = [
-        text if folio is None else f"{text}\n{folio}"
+        append_rescued_folio(text, folio)
         for text, folio in zip(cleaned, rescued_folios)
     ]
     if headers:
