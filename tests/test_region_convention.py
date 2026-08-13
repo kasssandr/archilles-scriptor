@@ -52,6 +52,16 @@ def test_romance_and_latin_headings():
     assert region_of_heading("Afkortingen") == "abbreviations"
 
 
+def test_italian_sommario_is_a_table_of_contents():
+    """The word `assign_modes` knew and this vocabulary did not. Two lists for
+    one question, each with its own gaps: the old trigger list carried
+    "SOMMARIO" but no Dutch, this one had Dutch but not "Sommario". Merging
+    them has to be a union, or a volume loses a table of contents it used to
+    have (Le radici giudaico-cristiane, three pages)."""
+    assert region_of_heading("Sommario") == "contents"
+    assert region_of_heading("SOMMARIO") == "contents"
+
+
 def test_cyrillic_headings():
     assert region_of_heading("Библиография") == "bibliography"
     assert region_of_heading("Указатель имён") == "index"

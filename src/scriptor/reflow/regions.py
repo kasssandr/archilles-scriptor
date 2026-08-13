@@ -152,6 +152,10 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
         # meets while still in front matter, so the region needs its own words.
         r"inhalts(?:verzeichnis|[üu]bersicht|angabe)?", r"inhalt",
         r"(?:table of )?contents", r"table des mati[èe]res", r"sommaire",
+        # it — the counterpart to `sommaire`, and the word that made the case
+        # for one vocabulary instead of two: it lived only in the mode
+        # triggers, which knew no Dutch, while this table knew no `sommario`.
+        r"sommario",
         # Bare "Indice"/"Índice" — the table of contents in Italian, Spanish
         # and Portuguese. See the note under `index`.
         r"[íi]ndice(?: generale| general| geral)?", r"sum[áa]rio",
