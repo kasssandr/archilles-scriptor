@@ -114,3 +114,29 @@ def test_physical_index_is_recorded_for_every_page(tmp_path):
         pg.index = ordinal
     assert [pg.index for pg in pages] == [1, 2]
     assert all(pg.label is None for pg in pages)   # nothing printed, nothing invented
+
+
+def test_style_of_tells_the_numbering_systems_apart():
+    from scriptor.reflow.pagelabel import style_of
+
+    assert style_of("312") == "arabic"
+    assert style_of("xiv") == "roman-lower"
+    assert style_of("XIV") == "roman-upper"
+
+
+def test_style_of_returns_none_for_what_is_not_a_label():
+    from scriptor.reflow.pagelabel import style_of
+
+    assert style_of("Kapitel") is None
+    assert style_of("") is None
+
+
+def test_style_of_accepts_uppercase_roman_although_the_detector_does_not():
+    # detect_page_label refuses uppercase roman on purpose ("BOOK II" in a
+    # running head must not be read as a page label). The catalogue states its
+    # labels directly and does print "XIV", so the classifier has to know the
+    # style even where the detector would never produce it.
+    from scriptor.reflow.pagelabel import detect_page_label, style_of
+
+    assert detect_page_label("XIV") is None
+    assert style_of("XIV") == "roman-upper"
