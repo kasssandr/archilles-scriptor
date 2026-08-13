@@ -140,7 +140,17 @@ def run_verdict(pages, params: FitParams | None = None) -> Verdict:
                 continue
             lo, hi = span
             enclosed = lo <= pos <= hi
-            front = pos < lo and seg.start_pos == first_start
+            # Counting backwards is allowed only where the run actually lands on
+            # page 1. The floor is the whole justification for treating the
+            # front edge differently from the back, and "the value stays above
+            # zero" is not the same thing: at L'Empire a year misread as a folio
+            # ("1972" on the imprint page) had the first three pages of the
+            # volume counted back as 1968, 1969, 1970, and at La masonería an
+            # arabic run reached back across a roman front matter. Requiring the
+            # run to reach the floor exactly is what the older chain achieved by
+            # starting from the volume's first label and stopping at 1.
+            front = (pos < lo and seg.start_pos == first_start
+                     and plan.value_at(seg.start_pos) == 1)
             if not (enclosed or front):
                 continue
             computed = plan.label_of(pos)

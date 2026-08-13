@@ -175,3 +175,25 @@ def test_the_losing_edge_is_not_a_finding():
                   label_bottom=str(i), label_top="12") for i in range(1, 8)]
     verdict = run_verdict(pages)
     assert verdict.rejected == []
+
+
+def test_counting_backwards_needs_the_floor_it_claims():
+    # L'Empire prints a year on its imprint page and no folio for pages either
+    # side of it. Counting back from 1972 gave the first three pages of the
+    # volume the labels 1968, 1969, 1970 -- a run with nothing under it. The
+    # front edge differs from the back edge only because of the floor at page 1,
+    # so a run that does not reach the floor has no more standing than a run off
+    # the back.
+    pages = [_page(1), _page(2), _page(3), _page(4, "1972"), _page(5)]
+    run_verdict(pages)
+    assert _labels(pages) == [None, None, None, "1972", None]
+
+
+def test_an_arabic_run_does_not_reach_back_across_a_roman_front_matter():
+    # La masonería paginates its front matter in roman up to LXII. An arabic run
+    # counted back over it and relabelled the page printing "vii" as "148".
+    pages = ([_page(i) for i in range(1, 9)] + [_page(9, "vii")]
+             + [_page(i, str(i + 138)) for i in range(10, 20)])
+    run_verdict(pages)
+    assert pages[8].label != "148"
+    assert all(p.label is None for p in pages[:8])
