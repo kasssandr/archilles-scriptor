@@ -324,6 +324,25 @@ def reconcile_page_numbers(pages: list[Page]) -> str:
 
 # Short German connecting words before which a hyphen is kept (a compound
 # with an elided base word, e.g. 'Einzel- und Gesamt…').
+#
+# German, and it has to stay German while the language of a passage is
+# unknown — this is the counter-example to the catalogue in
+# ``scriptor.languages``, where every language applies at once. That is safe
+# for the heading vocabulary, which is asked at six lines per page and must
+# match a whole short line. This rule is asked at every line of the volume,
+# and at that reach a second language does not add recognition, it destroys
+# it.
+#
+# Measured over the corpus: adding the Dutch `en` fires eight times in Bauer's
+# 3100 hyphenated line pairs, and every one of them is a German inflectional
+# ending torn in half — "Re-Fotografi- en", "Muse- en", "neu- en",
+# "Kriteri- en" — against ten genuine hits of the German rule. The commonest
+# German word ending is the Dutch connecting word.
+#
+# Nor is there anything to gain by it: the elided compound is a German habit.
+# The Italian rule fires once in 3831 hyphen pairs, the French none in 1045.
+# Internationalising this is possible only once the language of the passage
+# is known. See docs/internal/2026-08-13-sprachstruktur-design.md §5.1.
 KEEP_HYPHEN_BEFORE = re.compile(
     r"^(und|oder|bis|sowie|wie|als|zur?|zum?|noch|aber)\b", re.IGNORECASE
 )
