@@ -103,6 +103,16 @@ class FitParams:
                         worth", and it is a knife edge: at equality every
                         misreading ties with the truth and only the tie-break
                         decides.
+
+    Swept over the sixteen corpus volumes: every combination with mu in
+    [1.5, 3.0] and lam in [1.5, 2.5] gives the identical result -- 2481 labels
+    over 38 segments -- so the values below sit in the middle of a plateau
+    rather than on a slope. The result only changes once lam reaches about twice
+    the threshold (lam = 4.0), where it falls to 26 segments and *rises* to 2622
+    labels: with boundaries priced out, stretches merge and the fit extrapolates
+    across a jump it should have modelled. More labels is the wrong direction
+    there, which is why the sweep is read against segment count and not against
+    label count alone.
     """
 
     mu: float = 2.0      # weight of a contradiction
