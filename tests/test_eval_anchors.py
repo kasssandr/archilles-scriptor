@@ -108,3 +108,32 @@ def test_misanchored_when_anchor_on_wrong_page():
     res = evaluate_anchors(TRUTH, parse_prepared(bad))
     by_num = {(o.truth.page, o.truth.num): o.status for o in res.outcomes}
     assert by_num[("2", 1)] == "misanchored"
+
+
+REPEATED = loads_truth("""
+volume = "t"
+pages = ["106"]
+
+[[footnotes]]
+page = "106"
+num = 354
+anchor_after = "ständig Bilder produziert und transformiert"
+definition_starts = "Han, Im Schwarm."
+status = "intact"
+""")
+
+REPEATED_OUTPUT = """[p. 21] Doch dafür müssen ständig Bilder produziert und transformiert werden.
+
+[p. 106] Mit Smartphones werden ständig Bilder produziert und transformiert [^361]: jedes Outfit.
+
+[^361]: Han, Im Schwarm. Ansichten des Digitalen, 4. Aufl. 2017, S. 40.
+"""
+
+
+def test_anchor_snippet_is_looked_for_on_its_own_page():
+    # Bauer writes the same phrase on p. 21 and again on p. 106, where the note
+    # hangs. Searching the whole volume finds p. 21 first and scores a correctly
+    # placed anchor as misanchored -- a snippet is a search key within a page,
+    # not an identity across 348 of them.
+    res = evaluate_anchors(REPEATED, parse_prepared(REPEATED_OUTPUT))
+    assert [o.status for o in res.outcomes] == ["anchored_exact"]

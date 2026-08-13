@@ -634,9 +634,15 @@ def reconstruct_body(
         if not seg:
             return
         if pending_hyphen:
-            cur_chunks.append(seg)            # no space, completes the word
             pending_hyphen = False
-            flush_page_marker()               # insert the marker only after the word
+            # The marker waits for the broken word to be whole, and not one
+            # word longer: a segment is a whole line, so flushing after it
+            # hands the first line of the new page to the page before it.
+            head, _, rest = seg.partition(" ")
+            cur_chunks.append(head)           # no space, completes the word
+            flush_page_marker()
+            if rest:
+                cur_chunks.append(" " + rest)
         else:
             flush_page_marker()
             if cur_chunks:
