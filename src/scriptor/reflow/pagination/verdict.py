@@ -62,38 +62,34 @@ def _agrees(obs: Observation, plan: PaginationPlan) -> bool:
             and decode_label(obs.label) == plan.value_at(obs.pos))
 
 
-def _label_only(pages) -> None:
-    """Pages without a physical index keep what they printed, and no more.
-
-    No index, no distance; without a distance no sequence can be checked, so
-    there is nothing to enclose such a page with. This is the bare TXT path.
-    """
-    for p in pages:
-        if p.index >= 1:
-            continue
-        label = p.label_bottom or p.label_top
-        value = decode_label(label) if label is not None else None
-        p.label = label if value is not None else None
-        p.num = value if value is not None else -1
-        p.label_source = "printed" if p.label is not None else None
-
-
 def run_verdict(pages, params: FitParams | None = None) -> Verdict:
     """Set every page's label, its source and its confidence. Say what won."""
     params = params or FitParams()
-    _label_only(pages)
-
-    placed = [p for p in pages if p.index >= 1]
-    for p in placed:
+    for p in pages:
         p.num, p.label, p.label_source, p.label_confidence = -1, None, None, None
-    if not placed:
+    if not pages:
         return Verdict(PaginationPlan(), "none")
 
-    cat_weight = catalogue_weight(pages)
-    observations = (printed_observations(pages)
-                    + catalogue_observations(pages, cat_weight))
-    last_pos = max(p.index for p in placed)
-    plan = fit(observations, boundary_candidates(pages, observations),
+    # Where a page states no physical index -- hand-built pages, the bare TXT
+    # path -- its place in the list is the only ordering there is. Ordering by
+    # it is sound: it is what decides which edge the volume paginates at, and
+    # which catalogue reading a page confirms. Reading it as a physical
+    # *distance* is not sound, because nothing says the list is complete, so
+    # such a document gets only labels somebody observed. Nothing is enclosed
+    # where the distance between two pages is unknown.
+    stated = {id(p): p.index for p in pages if p.index >= 1}
+    if stated:
+        pos_of, may_compute = (lambda p: p.index), True
+    else:
+        fallback = {id(p): i for i, p in enumerate(pages, start=1)}
+        pos_of, may_compute = (lambda p: fallback[id(p)]), False
+
+    cat_weight = catalogue_weight(pages, pos_of)
+    observations = (printed_observations(pages, pos_of)
+                    + catalogue_observations(pages, cat_weight, pos_of))
+    last_pos = max(pos_of(p) for p in pages)
+    plan = fit(observations,
+               boundary_candidates(pages, observations, pos_of),
                last_pos, params)
 
     at: dict[int, list[Observation]] = {}
@@ -125,11 +121,12 @@ def run_verdict(pages, params: FitParams | None = None) -> Verdict:
                         if s.kind == "counted"), None)
     verdict = Verdict(plan=plan, description="none")
 
-    for p in placed:
-        seg = plan.segment_at(p.index)
+    for p in pages:
+        pos = pos_of(p)
+        seg = plan.segment_at(pos)
         if seg is None or seg.kind == "uncounted":
             continue
-        group = confirming.get(p.index, [])
+        group = confirming.get(pos, [])
         printed = [o for o in group if o.source.startswith("printed")]
         if printed:
             p.label, p.label_source = printed[0].label, "printed"
@@ -139,19 +136,21 @@ def run_verdict(pages, params: FitParams | None = None) -> Verdict:
             span = spans.get(seg.start_pos)
             if span is None:
                 continue
+            if not may_compute:
+                continue
             lo, hi = span
-            enclosed = lo <= p.index <= hi
-            front = p.index < lo and seg.start_pos == first_start
+            enclosed = lo <= pos <= hi
+            front = pos < lo and seg.start_pos == first_start
             if not (enclosed or front):
                 continue
-            computed = plan.label_of(p.index)
+            computed = plan.label_of(pos)
             if computed is None:
                 continue
             p.label, p.label_source = computed, "computed"
             verdict.computed_count += 1
         p.num = decode_label(p.label) or -1
-        p.label_confidence = _confidence(p.index, seg.start_pos, group,
-                                         at.get(p.index, []), spans, attested)
+        p.label_confidence = _confidence(pos, seg.start_pos, group,
+                                         at.get(pos, []), spans, attested)
 
     # Rejected: an observation the plan contradicts, at a position where nothing
     # else confirms. Where something does confirm, the other statement is the
@@ -161,7 +160,7 @@ def run_verdict(pages, params: FitParams | None = None) -> Verdict:
         o for pos, group in sorted(at.items()) for o in group
         if not confirming.get(pos) and not _agrees(o, plan)
     ]
-    verdict.description = _describe(placed, confirming, plan, cat_weight)
+    verdict.description = _describe(pages, confirming, cat_weight)
     return verdict
 
 
@@ -180,14 +179,25 @@ def _confidence(pos, seg_start, group, all_at_pos, spans, attested) -> float:
     return support * (DISTANCE_DECAY ** distance) / (1.0 + contra)
 
 
-def _describe(placed, confirming, plan, cat_weight) -> str:
-    if not any(p.label for p in placed):
+def _describe(pages, confirming, cat_weight) -> str:
+    """The one-line summary printed to stderr, in the older chain's vocabulary.
+
+    "top" / "bottom" name the edge the volume paginates at, which is now a
+    consequence of the fit rather than a decision taken before it. The catalogue
+    is only named where it actually settled a page -- saying "backend catalogue"
+    because a catalogue merely exists would credit it with work it did not do.
+    """
+    if not any(p.label for p in pages):
         return "none"
     counts: dict[str, int] = {}
     for group in confirming.values():
         for o in group:
             counts[o.source] = counts.get(o.source, 0) + 1
-    winner = max(sorted(counts), key=lambda s: counts[s]) if counts else "none"
-    printed = sum(1 for p in placed if p.label_source == "printed")
-    return (f"{winner} ({len(plan.segments)} segments, {printed} printed, "
-            f"catalogue {cat_weight:.2f})")
+    edges = {e: counts.get(f"printed-{e}", 0) for e in ("bottom", "top")}
+    edge = max(("bottom", "top"), key=lambda e: edges[e]) if any(
+        edges.values()) else "none"
+    settled = sum(1 for p in pages if p.label_source == "catalogue")
+    if settled:
+        return (f"backend catalogue (agrees with {edge}, settles {settled} "
+                f"pages, weight {cat_weight:.2f})")
+    return edge

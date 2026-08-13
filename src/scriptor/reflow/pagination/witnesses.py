@@ -17,13 +17,25 @@ from scriptor.reflow.pagination.observation import Observation
 
 PRINTED_WEIGHT = 1.0
 
+
+def _index(page) -> int:
+    """Where a page sits, as the document states it.
+
+    Every witness takes ``pos_of`` so a caller can supply an ordering the pages
+    themselves do not carry -- hand-built pages and the bare TXT path have no
+    physical index. Ordering them by their place in the list is sound; treating
+    that place as a physical *distance* is not, and the verdict keeps the two
+    apart by refusing to compute labels for such a document.
+    """
+    return page.index
+
 # A catalogue column needs this many pages where both it and a printed label
 # exist before its agreement rate means anything. Two agreements cannot tell a
 # real catalogue from a mechanically generated one (physical == printed).
 MIN_CATALOGUE_OVERLAP = 3
 
 
-def printed_observations(pages) -> list[Observation]:
+def printed_observations(pages, pos_of=_index) -> list[Observation]:
     """What the pages themselves print, at either edge.
 
     Both edges are asked. Which one the volume actually paginates at is not
@@ -32,20 +44,20 @@ def printed_observations(pages) -> list[Observation]:
     """
     out: list[Observation] = []
     for p in pages:
-        if p.index < 1:
+        if pos_of(p) < 1:
             continue
         for label, edge in ((p.label_bottom, "bottom"), (p.label_top, "top")):
             if label is None or decode_label(label) is None:
                 continue
             out.append(Observation(
-                pos=p.index, label=label, source=f"printed-{edge}",
+                pos=pos_of(p), label=label, source=f"printed-{edge}",
                 weight=PRINTED_WEIGHT,
-                why=f"{edge} line of physical page {p.index}",
+                why=f"{edge} line of physical page {pos_of(p)}",
             ))
     return out
 
 
-def catalogue_weight(pages) -> float:
+def catalogue_weight(pages, pos_of=_index) -> float:
     """How much this volume's PDF catalogue has earned, from 0 to 1.
 
     The rate at which it agrees with the printed pages, over the pages where
@@ -55,7 +67,7 @@ def catalogue_weight(pages) -> float:
     both = [
         (p.backend_label, p.label_bottom or p.label_top)
         for p in pages
-        if p.index >= 1 and p.backend_label is not None
+        if pos_of(p) >= 1 and p.backend_label is not None
         and (p.label_bottom or p.label_top) is not None
     ]
     if len(both) < MIN_CATALOGUE_OVERLAP:
@@ -64,15 +76,16 @@ def catalogue_weight(pages) -> float:
     return agree / len(both)
 
 
-def catalogue_observations(pages, weight: float) -> list[Observation]:
+def catalogue_observations(pages, weight: float,
+                           pos_of=_index) -> list[Observation]:
     """What the PDF's own PageLabels state, where they have earned a hearing."""
     if weight <= 0.0:
         return []
     return [
-        Observation(pos=p.index, label=p.backend_label, source="catalogue",
+        Observation(pos=pos_of(p), label=p.backend_label, source="catalogue",
                     weight=weight, why="PDF PageLabels")
         for p in pages
-        if p.index >= 1 and p.backend_label is not None
+        if pos_of(p) >= 1 and p.backend_label is not None
         and decode_label(p.backend_label) is not None
     ]
 
@@ -117,7 +130,7 @@ def _consistent_steps(sequence: list[tuple[int, str]]) -> int:
     return steps
 
 
-def boundary_candidates(pages, observations) -> list[int]:
+def boundary_candidates(pages, observations, pos_of=_index) -> list[int]:
     """Positions at which a segment may begin. Position 1 always may.
 
     Deliberately short. Every candidate multiplies the work of the fit and --
@@ -132,10 +145,10 @@ def boundary_candidates(pages, observations) -> list[int]:
     # candidates. Which edge is right is still the fit's decision -- this only
     # decides whose breaks are worth looking at.
     edges = {
-        "bottom": [(p.index, p.label_bottom) for p in pages
-                   if p.index >= 1 and p.label_bottom is not None],
-        "top": [(p.index, p.label_top) for p in pages
-                if p.index >= 1 and p.label_top is not None],
+        "bottom": [(pos_of(p), p.label_bottom) for p in pages
+                   if pos_of(p) >= 1 and p.label_bottom is not None],
+        "top": [(pos_of(p), p.label_top) for p in pages
+                if pos_of(p) >= 1 and p.label_top is not None],
     }
     # Ties go to the bottom, which is where volumes paginate far more often and
     # which the older chain also preferred.
@@ -145,8 +158,8 @@ def boundary_candidates(pages, observations) -> list[int]:
     # Where the catalogue changes its numbering. Its values may be wrong and its
     # structure still right -- Bauer's catalogue is off by one on all 339 pages
     # and knows exactly where the volume turns from roman to arabic.
-    cat = [(p.index, p.backend_label) for p in pages
-           if p.index >= 1 and p.backend_label is not None]
+    cat = [(pos_of(p), p.backend_label) for p in pages
+           if pos_of(p) >= 1 and p.backend_label is not None]
     candidates |= _breaks(sorted(cat))
 
     # Where the volume would have started counting from 1, given what a page
