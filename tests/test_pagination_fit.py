@@ -4,8 +4,10 @@ The fit knows nothing but observations, so these tests build them by hand -- no
 PDF, no pages, no pipeline.
 """
 
+import pytest
+
 from scriptor.reflow.pagination.observation import Observation
-from scriptor.reflow.pagination.plan import FitParams, best_segment
+from scriptor.reflow.pagination.plan import FitParams, best_segment, fit
 
 P = FitParams()
 
@@ -96,3 +98,103 @@ def test_declaring_an_observed_stretch_uncounted_costs():
 
     assert score_uncounted([_obs(1, "12")], 1, 4, P) == -P.mu
     assert score_uncounted([], 1, 4, P) == 0.0
+
+
+# ----------------------------------------------------------------------
+# the fit: which sequence of segments explains the volume
+# ----------------------------------------------------------------------
+
+def test_one_consistent_run_yields_one_segment():
+    obs = [_obs(p, str(10 + p)) for p in range(1, 6)]
+    plan = fit(obs, boundaries=[1], last_pos=5, params=P)
+    assert len(plan.segments) == 1
+    assert [plan.value_at(p) for p in range(1, 6)] == [11, 12, 13, 14, 15]
+
+
+def test_a_script_change_becomes_a_second_segment():
+    obs = [_obs(1, "vii"), _obs(2, "viii"), _obs(3, "1"), _obs(4, "2")]
+    plan = fit(obs, boundaries=[1, 3], last_pos=4, params=P)
+    assert len(plan.segments) == 2
+    assert plan.segments[1].start_pos == 3
+    assert plan.segments[1].style == "arabic"
+    assert plan.value_at(4) == 2
+
+
+def test_a_boundary_that_buys_nothing_is_not_taken():
+    # The segment price must exceed what one observation is worth, or the fit
+    # cuts the volume into pieces at every candidate.
+    obs = [_obs(p, str(10 + p)) for p in range(1, 6)]
+    plan = fit(obs, boundaries=[1, 3], last_pos=5, params=P)
+    assert len(plan.segments) == 1
+
+
+def test_a_volume_nobody_can_read_gets_an_uncounted_plan():
+    plan = fit([], boundaries=[1], last_pos=5, params=P)
+    assert all(s.kind == "uncounted" for s in plan.segments)
+    assert plan.value_at(3) is None
+
+
+def test_the_offset_may_jump_at_a_boundary():
+    # Carlomagno: the PDF drops the blank before a chapter opening, so the
+    # printed number runs one further than the physical page from there on.
+    obs = [_obs(1, "1"), _obs(2, "2"), _obs(3, "4"), _obs(4, "5")]
+    plan = fit(obs, boundaries=[1, 3], last_pos=4, params=P)
+    assert len(plan.segments) == 2
+    assert [plan.value_at(p) for p in range(1, 5)] == [1, 2, 4, 5]
+
+
+def test_an_unreadable_stretch_between_two_runs_is_left_uncounted():
+    # An uncounted plate: the numbers on either side do not meet across it.
+    obs = [_obs(1, "12"), _obs(4, "14")]
+    plan = fit(obs, boundaries=[1, 4], last_pos=4, params=P)
+    assert [plan.value_at(p) for p in (1, 4)] == [12, 14]
+
+
+def test_the_fit_stays_fast_on_a_whole_volume():
+    # The largest corpus volume has 371 pages. The work is quadratic in the
+    # number of boundary candidates, which is why the candidate list is kept
+    # deliberately short.
+    import time
+
+    # A boundary per page is the worst a volume can propose. Scoring each
+    # candidate offset separately took 12 seconds at 200 boundaries; carrying
+    # the tally forward brings the same case to a fifth of a second.
+    obs = [_obs(p, str(p)) for p in range(1, 401)]
+    bounds = list(range(1, 401))
+    t0 = time.perf_counter()
+    plan = fit(obs, boundaries=bounds, last_pos=400, params=P)
+    elapsed = time.perf_counter() - t0
+    assert elapsed < 2.0, f"fit took {elapsed:.2f}s"
+    assert len(plan.segments) == 1
+
+
+def test_the_fast_tally_agrees_with_the_plain_definition():
+    """score_segment states what a score *is*; the tally computes it quickly.
+
+    The speed comes from an algebraic identity, not from a different rule, so
+    the two have to agree exactly -- including on the awkward inputs: two edges
+    at odds, a witness of lesser weight, a numbering change mid-stretch.
+    """
+    from scriptor.reflow.pagination.plan import score_segment, score_uncounted
+
+    cases = [
+        [_obs(1, "11"), _obs(2, "12"), _obs(4, "14")],
+        [_obs(1, "11"), _obs(1, "77", source="printed-top"), _obs(2, "12")],
+        [_obs(1, "11"), _obs(1, "40", weight=0.3, source="catalogue")],
+        [_obs(1, "vii"), _obs(2, "viii"), _obs(3, "1"), _obs(4, "2")],
+        [_obs(1, "2020"), _obs(2, "12"), _obs(3, "13")],
+    ]
+    for obs in cases:
+        seg, score = best_segment(obs, 1, 9, P)
+        assert score_uncounted(obs, 1, 9, P) == pytest.approx(
+            _plain_uncounted(obs)
+        )
+        if seg is not None:
+            assert score == pytest.approx(score_segment(obs, seg, 1, 9, P))
+
+
+def _plain_uncounted(obs):
+    from scriptor.reflow.pagination.plan import _by_position
+
+    return -P.mu * sum(max(o.weight for o in g)
+                       for g in _by_position(obs).values())

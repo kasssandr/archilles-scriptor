@@ -173,36 +173,158 @@ def score_uncounted(observations, start_pos: int, stop_pos: int,
     return total
 
 
+# Scoring one candidate offset against a stretch, position by position, is the
+# obvious way and it is too slow: the work is candidates * positions * boundary
+# pairs, and a volume whose pagination is hard to read produces the most
+# candidates -- 200 boundary candidates over 400 pages took 12 seconds.
+#
+# The identity below removes the "candidates" factor. Writing maxw(p) for the
+# heaviest observation at position p and agree(p, o) for the heaviest one there
+# voting for offset o:
+#
+#     score(o) = SUM  [ agree(p, o)  if p agrees, else -mu * maxw(p) ]
+#              = -mu * SUM maxw(p)  +  SUM       [ agree(p, o) + mu * maxw(p) ]
+#                                       p agrees
+#              = score_uncounted     +  gain(o)
+#
+# So a single pass over the observations accumulates ``gain`` for every offset
+# at once, and the same pass extended position by position serves every stretch
+# that starts at the same place. That is what ``_Tally`` is for.
+
+
+class _Tally:
+    """Running score of every candidate offset over a growing stretch."""
+
+    def __init__(self, params: FitParams) -> None:
+        self.params = params
+        self.base = 0.0                              # the uncounted score
+        self.gain: dict[tuple[str, int], float] = {}  # (style, offset) -> gain
+
+    def add(self, group) -> None:
+        """Fold in one position's observations."""
+        maxw = max(o.weight for o in group)
+        self.base -= self.params.mu * maxw
+        agree: dict[tuple[str, int], float] = {}
+        for o in group:
+            style, value = style_of(o.label), decode_label(o.label)
+            if style is None or value is None:
+                continue
+            key = (style, value - o.pos)
+            agree[key] = max(agree.get(key, 0.0), o.weight)
+        for key, weight in agree.items():
+            self.gain[key] = self.gain.get(key, 0.0) + weight + self.params.mu * maxw
+
+    def best(self, start_pos: int) -> tuple[Segment | None, float]:
+        """The best counted segment starting at ``start_pos``, and its score.
+
+        Ties go to the smaller offset, then to the alphabetically first style,
+        so the result never depends on dict ordering.
+        """
+        best_seg: Segment | None = None
+        best_score = float("-inf")
+        for (style, offset) in sorted(self.gain, key=lambda k: (k[1], k[0])):
+            start_value = offset + start_pos
+            # No volume counts backwards past its own first page.
+            if start_value < 1:
+                continue
+            score = self.base + self.gain[(style, offset)]
+            if score > best_score:
+                best_seg = Segment(start_pos=start_pos,
+                                   start_label=str(start_value), style=style)
+                best_score = score
+        return (best_seg, best_score) if best_seg is not None else (None, 0.0)
+
+
 def best_segment(observations, start_pos: int, stop_pos: int,
                  params: FitParams) -> tuple[Segment | None, float]:
     """The counted segment that best explains ``[start_pos, stop_pos)``.
 
     Candidate offsets are not searched, they are read off the observations: an
     observation at ``pos`` claiming ordinal ``n`` votes for the offset
-    ``n - pos``. Ties go to the smaller offset, then to the alphabetically first
-    style, so the result never depends on iteration order.
+    ``n - pos``.
 
     The best segment is returned even where its score is negative. Whether a
     stretch is better left uncounted is the caller's comparison to make, and
     withholding the option here would decide it silently.
     """
-    inside = [o for o in observations if start_pos <= o.pos < stop_pos]
-    candidates: set[tuple[str, int]] = set()
-    for o in inside:
-        style, value = style_of(o.label), decode_label(o.label)
-        if style is not None and value is not None:
-            candidates.add((style, value - o.pos))
+    tally = _Tally(params)
+    for pos, group in sorted(_by_position(observations).items()):
+        if start_pos <= pos < stop_pos:
+            tally.add(group)
+    return tally.best(start_pos)
 
-    best_seg: Segment | None = None
-    best_score = float("-inf")
-    for style, offset in sorted(candidates, key=lambda c: (c[1], c[0])):
-        start_value = offset + start_pos
-        # No volume counts backwards past its own first page.
-        if start_value < 1:
-            continue
-        seg = Segment(start_pos=start_pos, start_label=str(start_value),
-                      style=style)
-        score = score_segment(inside, seg, start_pos, stop_pos, params)
-        if score > best_score:
-            best_seg, best_score = seg, score
-    return (best_seg, best_score) if best_seg is not None else (None, 0.0)
+
+def _better(a, b) -> bool:
+    """Higher score wins; on a tie, fewer segments; then the lower first start.
+
+    Written out rather than left to tuple comparison, because the first key
+    sorts descending and the second ascending. Ties are common enough to matter:
+    an isolated misreading and the truth can score alike, and then this decides.
+    """
+    if a[0] != b[0]:
+        return a[0] > b[0]
+    if a[1] != b[1]:
+        return a[1] < b[1]
+    return (a[2][0].start_pos, a[2][0].style, a[2][0].start_label) < (
+        b[2][0].start_pos, b[2][0].style, b[2][0].start_label
+    )
+
+
+def fit(observations, boundaries, last_pos: int,
+        params: FitParams) -> PaginationPlan:
+    """The plan that best explains the observations, over the given boundaries.
+
+    Only positions listed in ``boundaries`` may start a segment. Keeping that
+    list short is what keeps the fit fast and, more importantly, readable: a
+    boundary is proposed where a printed observation breaks the running count,
+    where the catalogue changes its numbering, and where a volume would have
+    started counting from 1 -- a few dozen candidates over a whole volume, not
+    hundreds. Every extra candidate is one more place for a misreading to hide a
+    segment of its own.
+
+    Straight dynamic programming over those candidates. For a fixed segment
+    start the tally is carried forward as the stretch grows, so all stretches
+    beginning at the same boundary are scored in one pass over the volume rather
+    than one pass each.
+    """
+    bounds = sorted({b for b in boundaries if 1 <= b <= last_pos} or {1})
+    by_pos = sorted(_by_position(observations).items())
+
+    # best[i] = (score, segment count, segments) for everything from bounds[i]
+    # to the end of the volume. Filled from the back.
+    best: list[tuple[float, int, tuple[Segment, ...]]] = [
+        (0.0, 0, ()) for _ in bounds
+    ]
+
+    for i in range(len(bounds) - 1, -1, -1):
+        start = bounds[i]
+        choice: tuple[float, int, tuple[Segment, ...]] | None = None
+        tally = _Tally(params)
+        fed = 0  # how far into by_pos the tally has been carried
+        # j is the boundary this segment runs up to; j == len(bounds) means it
+        # runs to the end of the volume.
+        for j in range(i + 1, len(bounds) + 1):
+            stop = bounds[j] if j < len(bounds) else last_pos + 1
+            while fed < len(by_pos) and by_pos[fed][0] < stop:
+                pos, group = by_pos[fed]
+                if pos >= start:
+                    tally.add(group)
+                fed += 1
+            tail_score, tail_count, tail_segs = (
+                best[j] if j < len(bounds) else (0.0, 0, ())
+            )
+            options: list[tuple[Segment, float]] = [(
+                Segment(start, "1", "arabic", kind="uncounted"), tally.base,
+            )]
+            counted, counted_score = tally.best(start)
+            if counted is not None:
+                options.append((counted, counted_score))
+            for seg, seg_score in options:
+                # The tail's segments each cost lam; this one is the free first.
+                score = seg_score + tail_score - params.lam * tail_count
+                cand = (score, tail_count + 1, (seg,) + tail_segs)
+                if choice is None or _better(cand, choice):
+                    choice = cand
+        best[i] = choice if choice is not None else (0.0, 0, ())
+
+    return PaginationPlan(segments=best[0][2])
