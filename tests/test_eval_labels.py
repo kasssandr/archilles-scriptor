@@ -28,3 +28,23 @@ def test_dropped_and_renumbered():
 def test_no_labels_at_all():
     res = evaluate_labels(TRUTH, _doc([]))
     assert res.label_fidelity == 0.0 and res.missing == 4
+
+
+def test_a_wrong_label_is_counted_as_wrong_not_merely_missing():
+    # The volume prints "1" on its second page; the tool claims "9" there.
+    # Counting that only as "missing 1, extra 9" hides that a citation built on
+    # it points at the wrong page — the failure the source consensus can newly
+    # produce.
+    res = evaluate_labels(TRUTH, _doc(["xiv", "9", "2", "3"]))
+    assert res.wrong == 1
+
+
+def test_a_perfect_sequence_has_nothing_wrong():
+    res = evaluate_labels(TRUTH, _doc(["xiv", "1", "2", "3"]))
+    assert res.wrong == 0
+
+
+def test_a_missing_label_is_not_wrong():
+    # Nothing is claimed at that position, so nothing is claimed falsely.
+    res = evaluate_labels(TRUTH, _doc(["xiv", "1", "3"]))
+    assert res.wrong == 0
