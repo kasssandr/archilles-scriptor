@@ -1615,6 +1615,39 @@ def main(
             file=sys.stderr,
         )
 
+    # The contents, as a second source of chapter openings — and the only one
+    # that knows what those pages are *called* in print. Nine of the eighteen
+    # corpus volumes carry no outline at all, and a chapter opening is the page
+    # a volume most often sets without a folio, so this is where the printed
+    # edge is silent and something else has to speak.
+    #
+    # Entries are placed by their title, never by their number: the number is a
+    # printed page, and turning it into a position would need the very plan this
+    # informs.
+    from scriptor.reflow.chapters import from_toc
+    from scriptor.reflow.toc import is_toc_page, parse_toc
+
+    toc_pages = [p for p in pages if is_toc_page(p)]
+    if toc_pages:
+        parsed = parse_toc(toc_pages)
+        if parsed.entries:
+            found = from_toc(
+                parsed.entries,
+                {p.index: p.body_lines for p in pages},
+                {p.index for p in toc_pages},
+            )
+            known = {c.pos for c in chapter_starts}
+            fresh = [c for c in found if c.pos not in known]
+            if fresh:
+                chapter_starts = sorted(chapter_starts + fresh,
+                                        key=lambda c: c.pos)
+                named = sum(1 for c in fresh if c.printed)
+                print(
+                    f"Contents: {len(fresh)} further chapter openings "
+                    f"({named} of them naming their printed page)",
+                    file=sys.stderr,
+                )
+
     page_col = reconcile_page_numbers(pages, chapter_starts)
     restored = restore_rejected_folios(pages)
     print(f"Page label position: {page_col}", file=sys.stderr)

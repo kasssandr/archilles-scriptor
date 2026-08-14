@@ -28,6 +28,7 @@ from scriptor.reflow.pagination.witnesses import (
     catalogue_observations,
     catalogue_weight,
     printed_observations,
+    toc_observations,
 )
 
 # A page in a segment carried by forty printed labels is better attested than
@@ -92,7 +93,8 @@ def run_verdict(pages, params: FitParams | None = None,
 
     cat_weight = catalogue_weight(pages, pos_of)
     observations = (printed_observations(pages, pos_of)
-                    + catalogue_observations(pages, cat_weight, pos_of))
+                    + catalogue_observations(pages, cat_weight, pos_of)
+                    + toc_observations(chapters))
     last_pos = max(pos_of(p) for p in pages)
     plan = fit(observations,
                boundary_candidates(pages, observations, pos_of, chapters),

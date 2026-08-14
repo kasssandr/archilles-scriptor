@@ -26,6 +26,11 @@ from scriptor.reflow.chapters import (
 from scriptor.reflow.outline import OutlineEntry
 
 
+def _toc(title, page, level=1):
+    from scriptor.reflow.toc import TocEntry
+    return TocEntry(title=title, page=page, level=level)
+
+
 def _pages(*page_texts):
     return [t.split("\n") for t in page_texts]
 
@@ -179,3 +184,92 @@ def test_ruling_every_level_out_leaves_the_count_in_charge():
     starts = [ChapterStart(p, f"1.{p} Onderdeel", 3, "outline")
               for p in (10, 11, 12)]
     assert principal_rank(starts) == 3
+
+
+# --- the table of contents as a source ----------------------------------------
+
+def test_a_toc_entry_is_placed_by_its_title_not_its_number():
+    """The number in a table of contents is a *printed* page, and mapping that
+    to a position needs the very plan this feeds. The title does not: it is
+    searched for across the volume, and where a page spells it out, that is the
+    position. What the entry says about the printed page is then carried along
+    as evidence rather than used as an address.
+    """
+    from scriptor.reflow.chapters import from_toc
+
+    toc = [_toc("Rey de los Francos", 61)]
+    pages = _pages("Inhalt", "Text", "Rey de los Francos\nDer Text beginnt.")
+    assert from_toc(toc, dict(enumerate(pages, start=1)), toc_positions={1}) == [
+        ChapterStart(pos=3, title="Rey de los Francos", rank=1, source="toc",
+                     printed="61")
+    ]
+
+
+def test_the_contents_pages_are_not_a_place_to_find_a_title():
+    # Every title stands there, as a contents line. Searching them finds each
+    # entry on the page it is listed on -- measured at Carlomagno, where two of
+    # four "hits" were the contents page itself.
+    from scriptor.reflow.chapters import from_toc
+
+    toc = [_toc("Rey de los Francos", 61)]
+    pages = _pages("Rey de los Francos .... 61", "Text ohne Titel")
+    assert from_toc(toc, dict(enumerate(pages, start=1)), toc_positions={1}) == []
+
+
+def test_ornaments_and_numbering_are_stripped_before_searching():
+    # A contents line sets the title differently from the chapter page:
+    # Carlomagno lists "• La humanidad de Carlos" and prints it without the
+    # bullet; numbered entries carry "III." in the list and on the page alike,
+    # but not always.
+    from scriptor.reflow.chapters import from_toc
+
+    toc = [_toc("• La humanidad de Carlos", 63)]
+    pages = _pages("Inhalt", "La humanidad de Carlos\nText.")
+    got = from_toc(toc, dict(enumerate(pages, start=1)), toc_positions={1})
+    assert [c.pos for c in got] == [2]
+
+
+def test_an_entry_without_a_printed_page_still_places_the_chapter():
+    from scriptor.reflow.chapters import from_toc
+
+    toc = [_toc("Anexos", -1)]
+    pages = _pages("Inhalt", "Anexos\nText.")
+    assert from_toc(toc, dict(enumerate(pages, start=1)), toc_positions={1})[0].printed is None
+
+
+def test_contents_entries_that_break_reading_order_are_dropped():
+    """A table of contents lists in reading order, so its printed pages rise.
+
+    The volume's own title is the trap: it stands in the contents and again on
+    the title page, and a title search finds it there. At De eerste minister
+    that produced "position 2 is printed page 250" -- which cost the volume its
+    front-matter segment and three markers.
+
+    Checking the offset instead would not do: Carlomagno's offset grows from 0
+    to 5 across the book, exactly as its PDF drops a blank before each opening,
+    and every one of those thirteen openings is right.
+    """
+    from scriptor.reflow.chapters import from_toc
+
+    toc = [_toc("De eerste minister van de Republiek", 250),
+           _toc("Opnieuw oorlog met Engeland", 140),
+           _toc("De spin in het bestuurlijke web", 144)]
+    pages = {
+        1: ["Inhoud"],
+        2: ["De eerste minister van de Republiek", "Ondertitel"],
+        142: ["Opnieuw oorlog met Engeland", "Tekst."],
+        146: ["De spin in het bestuurlijke web", "Tekst."],
+    }
+    got = from_toc(toc, pages, toc_positions={1})
+    assert [(c.pos, c.printed) for c in got] == [(142, "140"), (146, "144")]
+
+
+def test_a_growing_offset_is_not_a_contradiction():
+    # Carlomagno: 9 -> 9, 12 -> 13, 21 -> 23, 58 -> 61. Rising all the way.
+    from scriptor.reflow.chapters import from_toc
+
+    toc = [_toc("Prefacio", 9), _toc("Heredero", 13), _toc("El joven", 23)]
+    pages = {1: ["Indice"], 9: ["Prefacio", "T."], 12: ["Heredero", "T."],
+             21: ["El joven", "T."]}
+    got = from_toc(toc, pages, toc_positions={1})
+    assert [(c.pos, c.printed) for c in got] == [(9, "9"), (12, "13"), (21, "23")]

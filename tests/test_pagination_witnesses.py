@@ -121,3 +121,28 @@ def test_without_chapter_starts_the_candidates_are_what_they_were():
     pages = [_page(i, None) for i in range(1, 8)]
     assert (boundary_candidates(pages, [], chapters=[])
             == boundary_candidates(pages, []))
+
+
+def test_the_contents_speaks_for_a_page_that_prints_no_folio():
+    """A chapter opening is where a volume most often suppresses its folio, and
+    it is the one page a table of contents names by its printed number. The
+    cross-reference is worth less than the page's own printing -- it survives a
+    parser and a page search -- so it carries less weight and loses wherever the
+    page speaks for itself.
+    """
+    from scriptor.reflow.chapters import ChapterStart
+    from scriptor.reflow.pagination.witnesses import toc_observations
+
+    starts = [ChapterStart(pos=58, title="Rey de los Francos", rank=1,
+                           source="toc", printed="61")]
+    obs = toc_observations(starts)
+    assert [(o.pos, o.label, o.source) for o in obs] == [(58, "61", "toc")]
+    assert obs[0].weight < 1.0
+
+
+def test_a_chapter_start_without_a_printed_page_says_nothing_about_labels():
+    from scriptor.reflow.chapters import ChapterStart
+    from scriptor.reflow.pagination.witnesses import toc_observations
+
+    starts = [ChapterStart(pos=5, title="Anexos", rank=1, source="outline")]
+    assert toc_observations(starts) == []
