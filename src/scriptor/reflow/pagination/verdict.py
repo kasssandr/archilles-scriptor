@@ -55,6 +55,11 @@ class Verdict:
     description: str                    # printed to stderr, as before
     rejected: list[Observation] = field(default_factory=list)
     computed_count: int = 0
+    # The volume's folio habit, learnt in the first round, and how many pages
+    # the second round settled with it. Reported rather than merely used: a
+    # wider reading has to be able to say how far it reached.
+    band: object | None = None
+    geometric_count: int = 0
 
 
 def _agrees(obs: Observation, plan: PaginationPlan) -> bool:
@@ -184,7 +189,7 @@ def run_verdict(pages, params: FitParams | None = None,
     # come out uncounted, and the run's own head was then never reached.
     first_start = next((s.start_pos for s in plan.segments
                         if s.kind == "counted"), None)
-    verdict = Verdict(plan=plan, description="none")
+    verdict = Verdict(plan=plan, description="none", band=band)
 
     for p in pages:
         pos = pos_of(p)
@@ -242,6 +247,10 @@ def run_verdict(pages, params: FitParams | None = None,
         o for pos, group in sorted(at.items()) for o in group
         if not confirming.get(pos) and not _agrees(o, plan)
     ]
+    verdict.geometric_count = sum(
+        1 for group in confirming.values()
+        if any(o.source == "printed-geometric" for o in group)
+    )
     verdict.description = _describe(pages, confirming, cat_weight)
     return verdict
 

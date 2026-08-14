@@ -307,7 +307,7 @@ def append_rescued_folio(text: str, folio: str | None) -> str:
     return f"{text}\n{folio}"
 
 
-def reconcile_page_numbers(pages: list[Page], chapters=()) -> str:
+def reconcile_page_numbers(pages: list[Page], chapters=(), edges=None) -> str:
     """Set every page's label from the source consensus; say what won.
 
     Kept under its old name because the call site and the tests speak it. The
@@ -316,11 +316,12 @@ def reconcile_page_numbers(pages: list[Page], chapters=()) -> str:
     (docs/internal/2026-08-13-quellen-verbund-design.md).
 
     ``chapters`` are confirmed chapter openings; they contribute boundary
-    candidates, never a label.
+    candidates, never a label. ``edges`` are the measured outermost lines per
+    physical page, which buy the second reading (see ``run_verdict``).
     """
     from scriptor.reflow.pagination.verdict import run_verdict
 
-    return run_verdict(pages, chapters=chapters).description
+    return run_verdict(pages, chapters=chapters, edges=edges).description
 
 
 def restore_rejected_folios(pages: list[Page]) -> int:
@@ -1657,9 +1658,29 @@ def main(
                     file=sys.stderr,
                 )
 
-    page_col = reconcile_page_numbers(pages, chapter_starts)
+    # The outermost printed line of every physical page, measured. It is what
+    # lets the consensus ask a second time on the pages the narrow reading could
+    # not take -- and it has to come from the source page rather than from the
+    # body, because by now the running head has been stripped, and with it the
+    # versal folio that shared its line.
+    from scriptor.reflow.pagination.verdict import run_verdict
+    from scriptor.reflow.textlines import edge_lines
+
+    edges = {
+        ordinal: edge_lines(sp)
+        for ordinal, sp in enumerate(source_pages, start=1)
+    }
+    verdict = run_verdict(pages, chapters=chapter_starts, edges=edges)
+    page_col = verdict.description
     restored = restore_rejected_folios(pages)
     print(f"Page label position: {page_col}", file=sys.stderr)
+    if verdict.band is not None:
+        print(
+            f"Folio band: {verdict.band.edge} of the page, "
+            f"{verdict.band.lo:.3f}–{verdict.band.hi:.3f} of its height; "
+            f"read {plural(verdict.geometric_count, 'further folio')} there",
+            file=sys.stderr,
+        )
     if restored:
         print(
             f"Folio candidates the consensus rejected, returned to the text: "
