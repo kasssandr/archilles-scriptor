@@ -62,8 +62,14 @@ def _agrees(obs: Observation, plan: PaginationPlan) -> bool:
             and decode_label(obs.label) == plan.value_at(obs.pos))
 
 
-def run_verdict(pages, params: FitParams | None = None) -> Verdict:
-    """Set every page's label, its source and its confidence. Say what won."""
+def run_verdict(pages, params: FitParams | None = None,
+                chapters=()) -> Verdict:
+    """Set every page's label, its source and its confidence. Say what won.
+
+    ``chapters`` are the confirmed chapter openings (``reflow.chapters``). They
+    say nothing about what a page is called -- they say where the volume is
+    entitled to change its mind, which is what a boundary candidate is.
+    """
     params = params or FitParams()
     for p in pages:
         p.num, p.label, p.label_source, p.label_confidence = -1, None, None, None
@@ -89,7 +95,7 @@ def run_verdict(pages, params: FitParams | None = None) -> Verdict:
                     + catalogue_observations(pages, cat_weight, pos_of))
     last_pos = max(pos_of(p) for p in pages)
     plan = fit(observations,
-               boundary_candidates(pages, observations, pos_of),
+               boundary_candidates(pages, observations, pos_of, chapters),
                last_pos, params)
 
     at: dict[int, list[Observation]] = {}

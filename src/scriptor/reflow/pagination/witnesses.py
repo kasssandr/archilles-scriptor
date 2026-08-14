@@ -130,13 +130,23 @@ def _consistent_steps(sequence: list[tuple[int, str]]) -> int:
     return steps
 
 
-def boundary_candidates(pages, observations, pos_of=_index) -> list[int]:
+def boundary_candidates(pages, observations, pos_of=_index,
+                        chapters=()) -> list[int]:
     """Positions at which a segment may begin. Position 1 always may.
 
     Deliberately short. Every candidate multiplies the work of the fit and --
     worse -- gives a misreading one more place to hide a segment of its own.
     """
     candidates = {1}
+
+    # Where a chapter opens is where a printed count jumps: the printer
+    # suppresses the blank facing the opening, or starts a new sheet, and the
+    # offset between physical and printed page moves. Carlomagno's PDF drops
+    # that blank before every opening, so its offset grows by one each time --
+    # and the fit could only explain that with a boundary nobody offered it.
+    # Confirmed openings only (``chapters.from_outline``), so this stays the
+    # short list it has to be.
+    candidates |= {c.pos for c in chapters if c.pos >= 1}
 
     # Breaks are proposed by whichever edge reads as the more coherent run. Both
     # edges are witnesses, but they are not both boundary *proposers*: a running

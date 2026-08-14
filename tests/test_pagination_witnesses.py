@@ -96,3 +96,28 @@ def test_a_running_head_at_the_wrong_edge_does_not_propose_boundaries():
     pages = [_page(i, bottom=str(i), top="12") for i in range(1, 8)]
     obs = printed_observations(pages)
     assert boundary_candidates(pages, obs) == [1]
+
+
+# --- chapter starts as boundary candidates ------------------------------------
+
+def test_a_chapter_start_may_begin_a_segment():
+    """Where a chapter opens is where a printed count jumps.
+
+    The printer suppresses a blank or starts a new sheet there, so the offset
+    between physical and printed page changes at chapter openings and nowhere
+    else (Carlomagno: its PDF drops the blank before every opening, and the
+    offset grows by one each time). Without the opening among the candidates the
+    fit has to explain the jump with a boundary it was never offered.
+    """
+    from scriptor.reflow.chapters import ChapterStart
+
+    pages = [_page(i, None) for i in range(1, 8)]
+    starts = [ChapterStart(pos=4, title="Zweites Kapitel", rank=1,
+                           source="outline")]
+    assert 4 in boundary_candidates(pages, [], chapters=starts)
+
+
+def test_without_chapter_starts_the_candidates_are_what_they_were():
+    pages = [_page(i, None) for i in range(1, 8)]
+    assert (boundary_candidates(pages, [], chapters=[])
+            == boundary_candidates(pages, []))
