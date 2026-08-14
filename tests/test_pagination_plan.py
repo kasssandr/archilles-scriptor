@@ -41,14 +41,18 @@ def test_an_uncounted_segment_yields_nothing():
     assert plan.label_of(2) is None
 
 
-def test_a_roman_segment_predicts_a_value_but_emits_no_label():
-    # The roman stretch is the front matter, where an unprinted page is as
-    # likely to be uncounted as counted, and no corpus volume shows an interior
-    # roman gap to verify a rule against. So roman positions are scored (the
-    # witness "vii" must be able to confirm the plan) but not written back.
+def test_a_roman_segment_emits_the_label_in_its_own_system():
+    # The ordinal is the same question for every style; the spelling is not. A
+    # segment carries its style precisely so that what it writes back looks like
+    # what the volume prints.
     plan = _plan(Segment(start_pos=1, start_label="7", style="roman-lower"))
     assert plan.value_at(3) == 9
-    assert plan.label_of(3) is None
+    assert plan.label_of(3) == "ix"
+
+
+def test_a_versal_segment_writes_versal_labels():
+    plan = _plan(Segment(start_pos=1, start_label="7", style="roman-upper"))
+    assert plan.label_of(3) == "IX"
 
 
 def test_an_observation_carries_its_reason():

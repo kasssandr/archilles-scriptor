@@ -81,10 +81,13 @@ def test_the_tail_is_never_extrapolated():
     assert _labels(pages) == ["8", "9", None, None]
 
 
-def test_a_roman_gap_stays_open_and_roman_labels_stay_roman():
+def test_a_roman_gap_closes_and_roman_labels_stay_roman():
+    # Both halves matter: the enclosed page is filled now (La masonería has 21
+    # such pages), and it is filled as "viii" -- an ordinal written back into a
+    # roman stretch as "8" would send a contents link into the body.
     pages = [_page(1, "vii"), _page(2), _page(3, "ix")]
     run_verdict(pages)
-    assert _labels(pages) == ["vii", None, "ix"]
+    assert _labels(pages) == ["vii", "viii", "ix"]
 
 
 def test_a_script_change_leaves_the_page_between_undecided():

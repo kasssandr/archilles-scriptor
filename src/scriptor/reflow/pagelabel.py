@@ -137,6 +137,43 @@ def ordinal_of(label: str) -> int | None:
     return None
 
 
+_ROMAN_NUMERALS = (
+    (1000, "m"), (900, "cm"), (500, "d"), (400, "cd"),
+    (100, "c"), (90, "xc"), (50, "l"), (40, "xl"),
+    (10, "x"), (9, "ix"), (5, "v"), (4, "iv"), (1, "i"),
+)
+
+
+def encode_label(value: int, style: str) -> str | None:
+    """Write an ordinal in the numbering system a stretch of pages runs in.
+
+    For positions **nobody observed**. A label somebody observed travels
+    verbatim and is never re-encoded, or "XIV" comes back as "xiv" and the
+    volume is cited in a form it never printed.
+
+    This is what the pagination lacked while it could only write back arabic
+    labels: an arabic label is its own ordinal written out, so a stretch of
+    roman front matter had its gaps left open however well attested it was. La
+    masonería is the volume that made the omission cost something -- 64 printed,
+    counted pages, of which the second round can read 43 and the remaining 21
+    are enclosed between them.
+    """
+    if value < 1:
+        return None
+    if style == "arabic":
+        return str(value)
+    if style not in ("roman-lower", "roman-upper"):
+        return None
+    out = []
+    left = value
+    for size, numeral in _ROMAN_NUMERALS:
+        while left >= size:
+            out.append(numeral)
+            left -= size
+    roman = "".join(out)
+    return roman if style == "roman-lower" else roman.upper()
+
+
 def read_label_relaxed(line: str) -> str | None:
     """Read a folio off a line the geometry has already vouched for.
 

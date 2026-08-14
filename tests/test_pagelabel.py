@@ -249,6 +249,31 @@ def test_a_lone_roman_character_is_a_page_to_the_pagination():
     assert style_of("X") == "roman-upper"
 
 
+def test_a_label_can_be_written_in_the_system_its_segment_runs_in():
+    # Only for positions nobody observed: an observed label travels verbatim.
+    from scriptor.reflow.pagelabel import encode_label
+
+    assert encode_label(14, "arabic") == "14"
+    assert encode_label(14, "roman-lower") == "xiv"
+    assert encode_label(14, "roman-upper") == "XIV"
+    assert encode_label(1949, "roman-lower") == "mcmxlix"
+
+
+def test_encoding_and_ordering_are_inverse():
+    from scriptor.reflow.pagelabel import encode_label, ordinal_of
+
+    for n in range(1, 400):
+        for style in ("arabic", "roman-lower", "roman-upper"):
+            assert ordinal_of(encode_label(n, style)) == n
+
+
+def test_nothing_is_encoded_in_a_system_that_has_no_numerals():
+    from scriptor.reflow.pagelabel import encode_label
+
+    assert encode_label(14, "alphabetic") is None
+    assert encode_label(0, "roman-lower") is None
+
+
 def test_what_is_not_a_label_stays_none_in_both_readings():
     from scriptor.reflow.pagelabel import ordinal_of, style_of
 

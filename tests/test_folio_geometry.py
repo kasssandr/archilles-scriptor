@@ -223,6 +223,30 @@ def test_without_geometry_the_verdict_is_what_it_was():
     assert [p.label for p in pages[4:]] == ["1", "2", "3", "4", "5", "6"]
 
 
+def test_a_roman_gap_between_two_confirmed_pages_is_closed():
+    # Etappe 1 wrote nothing back into a roman stretch, because an arabic label
+    # is its own ordinal and roman needed an encoder that did not exist. The
+    # unprinted page between XI and XIII is enclosed exactly as 13 is between 12
+    # and 14 -- the reason for the restraint was the encoder, not the arithmetic.
+    pages, edges = _volume()
+    edges[2] = [_edge("bottom", "Vorwort", 0.95)]     # this page prints no folio
+    run_verdict(pages, edges=edges)
+    assert [p.label for p in pages[:4]] == ["XI", "XII", "XIII", "XIV"]
+    assert pages[1].label_source == "computed"
+
+
+def test_a_computed_roman_label_keeps_the_case_of_its_segment():
+    # A volume setting "XI" is cited as "XI". Writing back "xi" would invent a
+    # page the volume never printed -- the same mistake as re-encoding an
+    # observed label.
+    pages, edges = _volume()
+    for i, label in enumerate(["xi", "xii", "xiii", "xiv"], start=1):
+        edges[i] = [_edge("bottom", label, 0.95)]
+    edges[2] = [_edge("bottom", "Vorwort", 0.95)]
+    run_verdict(pages, edges=edges)
+    assert [p.label for p in pages[:4]] == ["xi", "xii", "xiii", "xiv"]
+
+
 def test_a_lone_geometric_reading_founds_nothing():
     # min_attested applies to the second round exactly as to the first: seven of
     # thirty segments once rested on a single reading and every one was wrong.

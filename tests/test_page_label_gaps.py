@@ -135,13 +135,15 @@ def test_the_tail_is_never_extrapolated():
     assert _labels(pages) == ["8", "9", None, None]
 
 
-def test_roman_gaps_are_left_open():
-    # The roman stretch is the front matter, where an unprinted page is as
-    # likely to be uncounted as counted. No corpus volume shows an interior
-    # roman gap, so there is nothing here to verify a rule against.
+def test_a_roman_gap_closes_like_any_other():
+    # Left open until 2026-08-14, on the grounds that no corpus volume showed an
+    # interior roman gap to verify a rule against. La masonería shows 21 of
+    # them, between the 43 versal folios of its front matter, so the rule now
+    # has its witness -- and the arithmetic between vii and ix was never the
+    # doubtful part.
     pages = [_page(1, "vii"), _page(2, None), _page(3, "ix")]
     reconcile_page_numbers(pages)
-    assert _labels(pages) == ["vii", None, "ix"]
+    assert _labels(pages) == ["vii", "viii", "ix"]
 
 
 # ----------------------------------------------------------------------
