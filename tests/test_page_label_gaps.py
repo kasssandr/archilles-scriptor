@@ -19,6 +19,11 @@ The back edge has neither and is left alone.
 
 A computed label is marked as such (``Page.label_source``), because rules that
 draw structural conclusions from a label must not draw them from an inference.
+
+The runs below print two labels rather than one on either side of a gap. One
+would do to state the arithmetic, but a single reading no longer establishes a
+numbering system at all (``FitParams.min_attested``), so a one-label run would
+be testing that rule instead of this one.
 """
 
 from scriptor.reflow.core import Page, reconcile_page_numbers
@@ -68,48 +73,54 @@ def test_the_filled_page_carries_the_ordinal_too():
 
 def test_an_uncounted_plate_leaves_the_gap_open():
     # Two physical pages, one missing number: the volume does not count them.
-    pages = [_page(1, "12"), _page(2, None), _page(3, None), _page(4, "14")]
+    pages = [_page(1, "11"), _page(2, "12"), _page(3, None), _page(4, None),
+             _page(5, "14"), _page(6, "15")]
     reconcile_page_numbers(pages)
-    assert _labels(pages) == ["12", None, None, "14"]
+    assert _labels(pages) == ["11", "12", None, None, "14", "15"]
 
 
 def test_a_double_page_scan_leaves_the_gap_open():
     # Gli Actus Silvestri: one physical sheet carries two printed pages, so the
     # labels count further than the pages do. Four of its gaps look like this.
-    pages = [_page(1, "12"), _page(2, None), _page(3, "15")]
+    pages = [_page(1, "11"), _page(2, "12"), _page(3, None), _page(4, "15"),
+             _page(5, "16")]
     reconcile_page_numbers(pages)
-    assert _labels(pages) == ["12", None, "15"]
+    assert _labels(pages) == ["11", "12", None, "15", "16"]
 
 
 def test_a_gap_that_counts_backwards_is_left_alone():
-    pages = [_page(1, "40"), _page(2, None), _page(3, "12")]
+    pages = [_page(1, "40"), _page(2, "41"), _page(3, None), _page(4, "12"),
+             _page(5, "13")]
     reconcile_page_numbers(pages)
-    assert _labels(pages) == ["40", None, "12"]
+    assert _labels(pages) == ["40", "41", None, "12", "13"]
 
 
 def test_the_front_is_counted_backwards_from_the_first_arabic_label():
     # Bauer prints "7" on physical page 7; the five pages before it are the
     # title pages, and the volume counts them.
-    pages = [_page(i, None) for i in range(1, 7)] + [_page(7, "7")]
+    pages = [_page(i, None) for i in range(1, 7)] + [_page(7, "7"),
+                                                     _page(8, "8")]
     reconcile_page_numbers(pages)
-    assert _labels(pages) == ["1", "2", "3", "4", "5", "6", "7"]
+    assert _labels(pages) == ["1", "2", "3", "4", "5", "6", "7", "8"]
 
 
 def test_counting_backwards_stops_at_page_one():
     # Themistios prints "2" on physical page 17: exactly one page is reachable,
     # and the roman front matter before it is not touched.
-    pages = [_page(i, None) for i in range(14, 17)] + [_page(17, "2")]
+    pages = ([_page(i, None) for i in range(14, 17)]
+             + [_page(17, "2"), _page(18, "3")])
     reconcile_page_numbers(pages)
-    assert _labels(pages) == [None, None, "1", "2"]
+    assert _labels(pages) == [None, None, "1", "2", "3"]
 
 
 def test_a_script_change_leaves_the_page_between_undecided():
     # Roman "iv", then arabic "3". The page between them is where the volume
     # switches script, and nothing says which side it falls on -- counting
     # backwards from the 3 would claim it for the body on no evidence.
-    pages = [_page(1, None), _page(2, "iv"), _page(3, None), _page(4, "3")]
+    pages = [_page(1, "iii"), _page(2, "iv"), _page(3, None), _page(4, "3"),
+             _page(5, "4")]
     reconcile_page_numbers(pages)
-    assert _labels(pages) == [None, "iv", None, "3"]
+    assert _labels(pages) == ["iii", "iv", None, "3", "4"]
 
 
 def test_a_backwards_run_does_not_start_from_a_roman_label():
@@ -190,7 +201,7 @@ def test_a_computed_one_does_not_start_the_body():
     # and acting on it would hand the whole front matter to the body.
     from scriptor.reflow.core import assign_modes
 
-    pages = [_page(1, None), _page(2, None), _page(3, "3")]
+    pages = [_page(1, None), _page(2, None), _page(3, "3"), _page(4, "4")]
     for p in pages:
         p.body_lines = ["Kurze Zeile."]
     reconcile_page_numbers(pages)

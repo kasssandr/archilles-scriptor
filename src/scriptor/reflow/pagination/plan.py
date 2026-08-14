@@ -119,6 +119,24 @@ class FitParams:
     lam: float = 2.0     # price of one additional segment; > (1+mu)/2 = 1.5
     rho: float = 0.0     # recto bonus; measured per volume, unused for now
 
+    # How many *positions* have to agree before a stretch may be called counted.
+    #
+    # The segment price protects a running count from being cut up, but it does
+    # not protect a stretch nobody can read: there the choice is between an
+    # uncounted segment and a counted one, both cost lam, and the counted one is
+    # ahead by one confirmation plus the contradiction it avoids. So a single
+    # reading at the front of a volume always founds a segment, whatever lam is.
+    #
+    # Measured over the sixteen corpus volumes: seven of thirty counted segments
+    # rested on one observation. Each wrote exactly one label -- its own, filling
+    # no gap -- and each of those seven was wrong: imprint years (A comemoração
+    # "2020", L'Empire "1972"), a chapter number in a running head (Gli Actus "5"
+    # on a page between printed 177 and 180), OCR artefacts (Les apologistes read
+    # "li" twice, ninety-six pages apart). The smallest segment that was right
+    # had two: Carlomagno's closing pages. Hence two, and hence positions rather
+    # than observations -- both edges of one page are one page.
+    min_attested: int = 2
+
     def __post_init__(self) -> None:
         if self.mu <= 1.0:
             raise ValueError("mu must exceed 1")
@@ -173,8 +191,13 @@ def score_uncounted(observations, start_pos: int, stop_pos: int,
     that prints "12" is numbered, so an observation there contradicts the claim
     exactly as it would contradict a wrong counted segment. Without this an
     uncounted segment would score zero everywhere and beat any counted one whose
-    evidence is thin -- and a volume with a single printed label would come out
-    with no labels at all.
+    evidence is thin.
+
+    It does not, however, keep a lone misreading from founding a segment: there
+    the counted option pays the same segment price and is ahead by the very
+    confirmation the misreading provides. That is what ``min_attested`` is for,
+    and it is why a stretch offering a single reading now does come out
+    uncounted.
     """
     total = 0.0
     for pos, group in _by_position(observations).items():
@@ -209,6 +232,7 @@ class _Tally:
         self.params = params
         self.base = 0.0                              # the uncounted score
         self.gain: dict[tuple[str, int], float] = {}  # (style, offset) -> gain
+        self.hits: dict[tuple[str, int], int] = {}    # ... -> positions agreeing
 
     def add(self, group) -> None:
         """Fold in one position's observations."""
@@ -223,6 +247,9 @@ class _Tally:
             agree[key] = max(agree.get(key, 0.0), o.weight)
         for key, weight in agree.items():
             self.gain[key] = self.gain.get(key, 0.0) + weight + self.params.mu * maxw
+            # One per position, not one per observation: ``agree`` is already a
+            # dict, so a page whose two edges print the same number counts once.
+            self.hits[key] = self.hits.get(key, 0) + 1
 
     def best(self, start_pos: int) -> tuple[Segment | None, float]:
         """The best counted segment starting at ``start_pos``, and its score.
@@ -236,6 +263,9 @@ class _Tally:
             start_value = offset + start_pos
             # No volume counts backwards past its own first page.
             if start_value < 1:
+                continue
+            # Nor does one reading make a numbering system (FitParams.min_attested).
+            if self.hits[(style, offset)] < self.params.min_attested:
                 continue
             score = self.base + self.gain[(style, offset)]
             if score > best_score:
@@ -255,7 +285,10 @@ def best_segment(observations, start_pos: int, stop_pos: int,
 
     The best segment is returned even where its score is negative. Whether a
     stretch is better left uncounted is the caller's comparison to make, and
-    withholding the option here would decide it silently.
+    withholding the option here would decide it silently. Returns None where no
+    offset reaches ``params.min_attested`` -- that is not a comparison but a
+    question of standing: one reading is not a numbering system, so there is
+    nothing here for the caller to weigh.
     """
     tally = _Tally(params)
     for pos, group in sorted(_by_position(observations).items()):

@@ -133,6 +133,12 @@ def _pages_dir(tmp_path):
         "5) Fuenfte Note.\n6) Sechste Note.\n7) Siebte Note.\n1\n",
         encoding="utf-8",
     )
+    # A second numbered page: one printed reading does not establish a numbering
+    # system on its own (FitParams.min_attested), and the test speaks of "p. 1".
+    (pages / "00000002.txt").write_text(
+        "Der Text laeuft auf der zweiten Seite ohne Anmerkung weiter.\n2\n",
+        encoding="utf-8",
+    )
     return pages
 
 

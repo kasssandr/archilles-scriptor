@@ -75,6 +75,45 @@ def test_an_interval_without_observations_has_no_counted_segment():
     assert seg is None and score == 0.0
 
 
+def test_one_observation_cannot_buy_itself_a_segment():
+    # A segment costs lam and one confirmation pays 1 + mu, so at the front of a
+    # volume -- where the alternative is an uncounted stretch that pays the same
+    # price -- a lone misreading always wins. Measured over the sixteen corpus
+    # volumes: seven of thirty counted segments rested on a single observation,
+    # each wrote exactly one label, and every one of those labels was wrong (an
+    # imprint year, a chapter number, an OCR artefact). No segment carried by two
+    # observations was wrong. The line between one witness and two is where the
+    # measurement puts it.
+    seg, _ = best_segment([_obs(1, "2020")], 1, 20, P)
+    assert seg is None
+
+
+def test_two_observations_are_enough():
+    seg, _ = best_segment([_obs(1, "11"), _obs(2, "12")], 1, 20, P)
+    assert seg is not None and seg.start_label == "11"
+
+
+def test_both_edges_of_one_page_are_one_witness_not_two():
+    # A page speaks with one voice for scoring, and it does here too: a running
+    # head and a folio printing the same number are one page saying one thing.
+    obs = [_obs(1, "11", source="printed-bottom"),
+           _obs(1, "11", source="printed-top")]
+    seg, _ = best_segment(obs, 1, 20, P)
+    assert seg is None
+
+
+def test_the_support_rule_leaves_an_isolated_reading_uncounted():
+    # L'Empire: a printing year on the imprint page, then the volume's real
+    # count starting further in. The year must not found a segment of its own --
+    # that is what made the first ten pages come out as 1968..1977 and, worse,
+    # took the floor at page 1 away from the segment that deserved it.
+    obs = [_obs(4, "1972")] + [_obs(p, str(p - 10)) for p in range(11, 20)]
+    plan = fit(obs, boundaries=[1, 11], last_pos=19, params=P)
+    assert plan.segments[0].kind == "uncounted"
+    assert plan.value_at(4) is None
+    assert plan.value_at(11) == 1
+
+
 def test_a_segment_may_not_start_below_page_one():
     # "2" on position 17 would put value -14 at position 1. No volume counts
     # backwards past its own first page.
@@ -83,10 +122,11 @@ def test_a_segment_may_not_start_below_page_one():
 
 
 def test_ties_go_to_the_smaller_offset():
-    # Two offsets explain one observation each; the result must not depend on
-    # dict ordering.
-    obs = [_obs(1, "5"), _obs(3, "9")]
-    seg, _ = best_segment(obs, 1, 4, P)
+    # Two offsets explain two positions each; the result must not depend on dict
+    # ordering. Two rather than one on either side because a single reading no
+    # longer founds a segment at all (FitParams.min_attested).
+    obs = [_obs(1, "5"), _obs(2, "6"), _obs(4, "10"), _obs(5, "11")]
+    seg, _ = best_segment(obs, 1, 6, P)
     assert seg.start_label == "5"
 
 
@@ -144,10 +184,14 @@ def test_the_offset_may_jump_at_a_boundary():
 
 
 def test_an_unreadable_stretch_between_two_runs_is_left_uncounted():
-    # An uncounted plate: the numbers on either side do not meet across it.
-    obs = [_obs(1, "12"), _obs(4, "14")]
-    plan = fit(obs, boundaries=[1, 4], last_pos=4, params=P)
-    assert [plan.value_at(p) for p in (1, 4)] == [12, 14]
+    # An uncounted plate: the numbers on either side do not meet across it, so
+    # the fit takes the boundary rather than extrapolating one run over the
+    # other. A run of two on either side, because one reading alone no longer
+    # founds a segment (FitParams.min_attested).
+    obs = [_obs(1, "12"), _obs(2, "13"), _obs(5, "14"), _obs(6, "15")]
+    plan = fit(obs, boundaries=[1, 5], last_pos=6, params=P)
+    assert [plan.value_at(p) for p in (1, 2, 5, 6)] == [12, 13, 14, 15]
+    assert plan.value_at(3) == 14  # inside the first segment, not vouched for
 
 
 def test_the_fit_stays_fast_on_a_whole_volume():
