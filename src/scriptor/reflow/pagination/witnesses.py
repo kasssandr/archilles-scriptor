@@ -156,8 +156,17 @@ def boundary_candidates(pages, observations, pos_of=_index) -> list[int]:
     candidates |= _breaks(edges[best_edge])
 
     # Where the catalogue changes its numbering. Its values may be wrong and its
-    # structure still right -- Bauer's catalogue is off by one on all 339 pages
-    # and knows exactly where the volume turns from roman to arabic.
+    # structure still right: at L'Empire and La masonería the catalogue is silent
+    # over the front matter and starts counting at physical page 12 resp. 67,
+    # which is precisely where each volume's arabic count begins.
+    #
+    # Expect little more than that. Of the sixteen corpus volumes six carry
+    # PageLabels at all, and all six are mechanical -- the label is the physical
+    # page plus a fixed offset (A comemoração -2, Asclepios -1, L'Empire -10,
+    # La masonería -66, Bauer -1, Making Martyrs 0). Not one of them knows a
+    # numbering change of the volume it describes; what they know is where their
+    # own run starts. Bauer in particular has no roman-to-arabic turn to know:
+    # it paginates straight through from its first page.
     cat = [(pos_of(p), p.backend_label) for p in pages
            if pos_of(p) >= 1 and p.backend_label is not None]
     candidates |= _breaks(sorted(cat))
