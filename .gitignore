@@ -16,6 +16,8 @@ scratch/
 tmp/
 # subagent-driven-development scratch (briefs, reports, ledger, diffs)
 .superpowers/
+# local tool configuration (permission allowlist), not part of the project
+.claude/
 # local test corpora (large IA ZIPs / extracted book dirs)
 Test-ZIPs/
 corpora/
