@@ -20,13 +20,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from scriptor.reflow.pagelabel import decode_label, style_of
+from scriptor.reflow.pagelabel import ordinal_of, style_of
 from scriptor.reflow.pagination.observation import Observation
 from scriptor.reflow.pagination.plan import FitParams, PaginationPlan, fit
 from scriptor.reflow.pagination.witnesses import (
     boundary_candidates,
     catalogue_observations,
     catalogue_weight,
+    folio_band,
+    geometric_observations,
     printed_observations,
     toc_observations,
 )
@@ -53,6 +55,11 @@ class Verdict:
     description: str                    # printed to stderr, as before
     rejected: list[Observation] = field(default_factory=list)
     computed_count: int = 0
+    # The volume's folio habit, learnt in the first round, and how many pages
+    # the second round settled with it. Reported rather than merely used: a
+    # wider reading has to be able to say how far it reached.
+    band: object | None = None
+    geometric_count: int = 0
 
 
 def _agrees(obs: Observation, plan: PaginationPlan) -> bool:
@@ -60,16 +67,54 @@ def _agrees(obs: Observation, plan: PaginationPlan) -> bool:
     if seg is None or seg.kind == "uncounted":
         return False
     return (style_of(obs.label) == seg.style
-            and decode_label(obs.label) == plan.value_at(obs.pos))
+            and ordinal_of(obs.label) == plan.value_at(obs.pos))
+
+
+def _confirming(observations, plan) -> dict[int, list[Observation]]:
+    """Per position, the observations the plan agrees with."""
+    at: dict[int, list[Observation]] = {}
+    for o in observations:
+        at.setdefault(o.pos, []).append(o)
+    return {pos: [o for o in group if _agrees(o, plan)]
+            for pos, group in at.items()}
+
+
+def _sightings(confirming, edges):
+    """Where the folios the first round confirmed actually stood on the page.
+
+    The edge comes from the witness that was confirmed, not from a search
+    through the text: the first round asked each edge by name, so a confirmed
+    ``printed-bottom`` says the folio was at the foot, and the geometry only has
+    to supply the height it was at.
+    """
+    out = []
+    for pos, group in confirming.items():
+        lines = edges.get(pos) or []
+        for o in group:
+            if not o.source.startswith("printed-"):
+                continue
+            edge = o.source.split("-")[-1]
+            for line in lines:
+                if line.edge == edge:
+                    out.append((edge, line.height))
+    return out
 
 
 def run_verdict(pages, params: FitParams | None = None,
-                chapters=()) -> Verdict:
+                chapters=(), edges=None) -> Verdict:
     """Set every page's label, its source and its confidence. Say what won.
 
     ``chapters`` are the confirmed chapter openings (``reflow.chapters``). They
     say nothing about what a page is called -- they say where the volume is
     entitled to change its mind, which is what a boundary candidate is.
+
+    ``edges`` are the measured outermost lines per position
+    (``textlines.edge_lines``). With them the verdict is taken in two rounds:
+    the first uses the readings that need no evidence beyond their own
+    vocabulary, and where those succeed they show the volume's habit -- which
+    edge it paginates at, at what height. The second round reads the pages the
+    first could not, at that place and nowhere else. Without ``edges`` only the
+    first round happens, which is exactly the behaviour of stage 1.
     """
     params = params or FitParams()
     for p in pages:
@@ -99,12 +144,29 @@ def run_verdict(pages, params: FitParams | None = None,
     plan = fit(observations,
                boundary_candidates(pages, observations, pos_of, chapters),
                last_pos, params)
+    confirming = _confirming(observations, plan)
+
+    # Second round. What the first round confirmed shows the volume's habit, and
+    # the habit is what makes a wider reading of the remaining pages defensible.
+    # The whole of it is conditional on the first round having succeeded
+    # somewhere: a volume that showed no habit gets no second reading, which is
+    # why this can only ever add labels to a volume that already had some.
+    band = folio_band(_sightings(confirming, edges)) if edges else None
+    if band is not None:
+        second = geometric_observations(
+            edges, band, spoken_for={pos for pos, group in confirming.items()
+                                     if group},
+        )
+        if second:
+            observations = observations + second
+            plan = fit(observations,
+                       boundary_candidates(pages, observations, pos_of, chapters),
+                       last_pos, params)
+            confirming = _confirming(observations, plan)
 
     at: dict[int, list[Observation]] = {}
     for o in observations:
         at.setdefault(o.pos, []).append(o)
-    confirming = {pos: [o for o in group if _agrees(o, plan)]
-                  for pos, group in at.items()}
 
     # Per segment: the first and last position an observation confirms, and the
     # positions a *printed* one confirms -- the latter is what attests a segment
@@ -120,14 +182,7 @@ def run_verdict(pages, params: FitParams | None = None,
         if any(o.source.startswith("printed") for o in group):
             attested.setdefault(seg.start_pos, []).append(pos)
 
-    # The floor at page 1 belongs to the first segment the volume *counts*. An
-    # uncounted stretch before it -- plates, an unnumbered half-title -- does not
-    # move where counting begins, and taking the first segment of any kind here
-    # cost Themistios its page 1: the fifteen roman pages before its arabic run
-    # come out uncounted, and the run's own head was then never reached.
-    first_start = next((s.start_pos for s in plan.segments
-                        if s.kind == "counted"), None)
-    verdict = Verdict(plan=plan, description="none")
+    verdict = Verdict(plan=plan, description="none", band=band)
 
     for p in pages:
         pos = pos_of(p)
@@ -160,12 +215,17 @@ def run_verdict(pages, params: FitParams | None = None,
             # front edge differently from the back, and "the value stays above
             # zero" is not the same thing: at L'Empire a year misread as a folio
             # ("1972" on the imprint page) had the first three pages of the
-            # volume counted back as 1968, 1969, 1970, and at La masonería an
-            # arabic run reached back across a roman front matter. Requiring the
-            # run to reach the floor exactly is what the older chain achieved by
+            # volume counted back as 1968, 1969, 1970. Requiring the run to
+            # reach the floor exactly is what the older chain achieved by
             # starting from the volume's first label and stopping at 1.
-            front = (pos < lo and seg.start_pos == first_start
-                     and plan.value_at(seg.start_pos) == 1)
+            #
+            # It is not required to be the volume's *first* counted segment.
+            # That condition once stood here and was measured wrong the day the
+            # front matter became legible: Themistios grew a roman segment in
+            # front of its arabic one and page 16 -- the volume's printed page 1
+            # -- lost the label it had. A run never leaves its own segment
+            # anyway, because ``lo`` is a position inside it.
+            front = pos < lo and plan.value_at(seg.start_pos) == 1
             if not (enclosed or front):
                 continue
             computed = plan.label_of(pos)
@@ -173,7 +233,7 @@ def run_verdict(pages, params: FitParams | None = None,
                 continue
             p.label, p.label_source = computed, "computed"
             verdict.computed_count += 1
-        p.num = decode_label(p.label) or -1
+        p.num = ordinal_of(p.label) or -1
         p.label_confidence = _confidence(pos, seg.start_pos, group,
                                          at.get(pos, []), spans, attested)
 
@@ -185,6 +245,10 @@ def run_verdict(pages, params: FitParams | None = None,
         o for pos, group in sorted(at.items()) for o in group
         if not confirming.get(pos) and not _agrees(o, plan)
     ]
+    verdict.geometric_count = sum(
+        1 for group in confirming.values()
+        if any(o.source == "printed-geometric" for o in group)
+    )
     verdict.description = _describe(pages, confirming, cat_weight)
     return verdict
 

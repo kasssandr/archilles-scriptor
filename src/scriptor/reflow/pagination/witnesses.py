@@ -12,7 +12,9 @@ shifts every citation in the book.
 
 from __future__ import annotations
 
-from scriptor.reflow.pagelabel import decode_label, style_of
+from dataclasses import dataclass
+
+from scriptor.reflow.pagelabel import ordinal_of, read_label_relaxed, style_of
 from scriptor.reflow.pagination.observation import Observation
 
 PRINTED_WEIGHT = 1.0
@@ -47,7 +49,7 @@ def printed_observations(pages, pos_of=_index) -> list[Observation]:
         if pos_of(p) < 1:
             continue
         for label, edge in ((p.label_bottom, "bottom"), (p.label_top, "top")):
-            if label is None or decode_label(label) is None:
+            if label is None or ordinal_of(label) is None:
                 continue
             out.append(Observation(
                 pos=pos_of(p), label=label, source=f"printed-{edge}",
@@ -86,7 +88,7 @@ def catalogue_observations(pages, weight: float,
                     weight=weight, why="PDF PageLabels")
         for p in pages
         if pos_of(p) >= 1 and p.backend_label is not None
-        and decode_label(p.backend_label) is not None
+        and ordinal_of(p.backend_label) is not None
     ]
 
 
@@ -107,7 +109,7 @@ def toc_observations(chapters, pos_of=None) -> list[Observation]:
     """
     out: list[Observation] = []
     for c in chapters:
-        if not getattr(c, "printed", None) or decode_label(c.printed) is None:
+        if not getattr(c, "printed", None) or ordinal_of(c.printed) is None:
             continue
         out.append(Observation(
             pos=c.pos, label=c.printed, source="toc", weight=TOC_WEIGHT,
@@ -116,11 +118,106 @@ def toc_observations(chapters, pos_of=None) -> list[Observation]:
     return out
 
 
+# What a folio read on geometric grounds is worth. Less than one the narrow
+# reading could take, because it rests on two things being true at once -- the
+# volume keeps its habit on this page, and the wider vocabulary did not overshoot
+# -- where the narrow reading rests on the vocabulary alone. More than the
+# catalogue's word, because it is still the page speaking about itself.
+GEOMETRIC_WEIGHT = 0.8
+
+# How far outside the observed spread a line may still count as standing in the
+# band. Measured over the corpus: where a volume has a habit it holds it to a
+# hundredth of the page height (Gli Actus prints 340 folios at 0.1043 exactly,
+# Themistios 235 at 0.0515), while a scan wanders -- La masonería's 134 folios
+# spread over 0.9442 to 0.9681. The margin is for the wandering, not for the
+# habit, and it stays well under the distance to the first line of text.
+BAND_TOLERANCE = 0.015
+
+# Confirmed folios needed before the volume is credited with a habit. Below this
+# the band would be fitted to accidents: a last line of prose ending in a year,
+# a chapter number in a running head. Five is not a threshold the corpus argues
+# over -- the volumes that have a habit show it 134 to 340 times, and the ones
+# that do not show it at all.
+MIN_SIGHTINGS = 5
+
+
+@dataclass(frozen=True)
+class Band:
+    """Where this volume prints its folios: one edge, one height range."""
+
+    edge: str      # "top" | "bottom"
+    lo: float
+    hi: float
+
+    def holds(self, line) -> bool:
+        return line.edge == self.edge and self.lo <= line.height <= self.hi
+
+
+def folio_band(sightings) -> Band | None:
+    """Learn where the folios stood, from ``(edge, height)`` of confirmed ones.
+
+    Only one edge is learnt -- the one that carried the most confirmations. Both
+    edges are read in the first round, and on a volume paginated at the head the
+    foot still confirms the odd label by accident: Gli Actus has 340 at the top
+    and 8 at the bottom, and those eight are lines of prose that happened to end
+    in a number. A band learnt from them would point the wider reading straight
+    into the body text.
+    """
+    by_edge: dict[str, list[float]] = {}
+    for edge, height in sightings:
+        by_edge.setdefault(edge, []).append(height)
+    if not by_edge:
+        return None
+    # Sorted first, so a tie between the two edges does not depend on which was
+    # seen first.
+    edge = max(sorted(by_edge), key=lambda e: len(by_edge[e]))
+    heights = sorted(by_edge[edge])
+    if len(heights) < MIN_SIGHTINGS:
+        return None
+    lo = heights[int(0.05 * (len(heights) - 1))]
+    hi = heights[int(0.95 * (len(heights) - 1))]
+    return Band(edge=edge, lo=lo - BAND_TOLERANCE, hi=hi + BAND_TOLERANCE)
+
+
+def geometric_observations(edges_by_pos, band: Band | None,
+                           spoken_for=()) -> list[Observation]:
+    """Read the folio again, where the volume's habit says one should be.
+
+    This is the second round, and it exists because the narrow reading has to
+    refuse things a printer does: versal front matter, a lone "x", a number the
+    rule dressed up. Those refusals are safe only as long as a refusal is all
+    that follows; here the place carries the burden the vocabulary used to.
+
+    Silent where the page already stated a label the first round could read --
+    a second, weaker voice could only argue with the first.
+    """
+    if band is None:
+        return []
+    out: list[Observation] = []
+    for pos in sorted(edges_by_pos):
+        if pos in spoken_for or pos < 1:
+            continue
+        for line in edges_by_pos[pos]:
+            if not band.holds(line):
+                continue
+            label = read_label_relaxed(line.text)
+            if label is None:
+                continue
+            where = "head" if line.edge == "top" else "foot"
+            out.append(Observation(
+                pos=pos, label=label, source="printed-geometric",
+                weight=GEOMETRIC_WEIGHT,
+                why=f"{label!r} at the {where} of physical page {pos}, "
+                    f"where this volume prints its folios",
+            ))
+    return out
+
+
 def _decoded(sequence: list[tuple[int, str]]) -> list[tuple[int, int, str]]:
     """(pos, ordinal, style) for the entries that are labels at all."""
     out = []
     for pos, label in sequence:
-        value, style = decode_label(label), style_of(label)
+        value, style = ordinal_of(label), style_of(label)
         if value is not None and style is not None:
             out.append((pos, value, style))
     return out
@@ -216,7 +313,7 @@ def boundary_candidates(pages, observations, pos_of=_index,
     for o in observations:
         if not o.source.startswith("printed"):
             continue
-        value = decode_label(o.label)
+        value = ordinal_of(o.label)
         if value is not None and style_of(o.label) == "arabic":
             start = o.pos - value + 1
             if start >= 1:

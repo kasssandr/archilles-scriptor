@@ -224,6 +224,74 @@ def reconstruct(
     )
 
 
+@dataclass(frozen=True)
+class EdgeLine:
+    """The outermost printed line of a page, with the place it holds.
+
+    The folio is the one thing on a page whose *position* is the evidence. A
+    volume prints it at the same height on every page, and that height is what
+    lets a wider reading be risked on lines the narrow one refuses -- "XII" is a
+    page number at the top of a Themistios page and a division number anywhere
+    else in the book.
+
+    ``height`` is the baseline as a fraction of the page height, because
+    absolute points say nothing across volumes: an A4 reprint and an octavo put
+    their folios in the same place and at different coordinates.
+    """
+
+    edge: str            # "top" | "bottom"
+    text: str
+    height: float        # baseline / page height; 0.0 at the top of the page
+    x0: float
+    x1: float
+    size: float | None
+
+
+def edge_lines(page: SourcePage, *, tolerance: float = BASELINE_TOLERANCE
+               ) -> list[EdgeLine]:
+    """The topmost and bottommost printed line of ``page``.
+
+    Assembled the same way the body is (fragments clustered on the baseline), or
+    "XVIII" and "INTRODUZIONE" arrive as two lines and the folio is legible in
+    neither. Lines set across the page are left out: a margin stamp carries a
+    baseline that would make it the top of the page.
+
+    Empty where nothing was measured -- the bare TXT path has no geometry, and a
+    witness that reasons about place has nothing to say there.
+    """
+    if not page.height:
+        return []
+    measured = [ln for ln in page.lines
+                if ln.baseline is not None and ln.box is not None
+                and ln.text.strip() and not _sideways(ln)]
+    if not measured:
+        return []
+
+    clusters = sorted(_cluster(measured, tolerance),
+                      key=lambda c: c[0].baseline)
+
+    def edge_of(cluster, edge: str) -> EdgeLine:
+        ordered = sorted(cluster, key=lambda ln: ln.box.x0)
+        return EdgeLine(
+            edge=edge,
+            text=" ".join(ln.text for ln in ordered).strip(),
+            height=cluster[0].baseline / page.height,
+            x0=min(ln.box.x0 for ln in ordered),
+            x1=max(ln.box.x1 for ln in ordered),
+            size=_cluster_size(cluster),
+        )
+
+    if len(clusters) == 1:
+        # One line is one witness. Which edge it belongs to is decided by where
+        # it sits: a page holding nothing but its folio is a real case (a blank
+        # verso between chapters), and calling that line both edges would let a
+        # single page appear to speak twice.
+        only = clusters[0]
+        edge = "top" if only[0].baseline / page.height < 0.5 else "bottom"
+        return [edge_of(only, edge)]
+    return [edge_of(clusters[0], "top"), edge_of(clusters[-1], "bottom")]
+
+
 # A first-line paragraph indent, relative to the page's stable left edge. The
 # edge itself scatters by ~0.3pt (OCR boxes), so the band starts well above
 # that; a centred heading or a deep quotation sits far beyond it and is not a

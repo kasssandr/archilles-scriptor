@@ -307,7 +307,7 @@ def append_rescued_folio(text: str, folio: str | None) -> str:
     return f"{text}\n{folio}"
 
 
-def reconcile_page_numbers(pages: list[Page], chapters=()) -> str:
+def reconcile_page_numbers(pages: list[Page], chapters=(), edges=None) -> str:
     """Set every page's label from the source consensus; say what won.
 
     Kept under its old name because the call site and the tests speak it. The
@@ -316,11 +316,42 @@ def reconcile_page_numbers(pages: list[Page], chapters=()) -> str:
     (docs/internal/2026-08-13-quellen-verbund-design.md).
 
     ``chapters`` are confirmed chapter openings; they contribute boundary
-    candidates, never a label.
+    candidates, never a label. ``edges`` are the measured outermost lines per
+    physical page, which buy the second reading (see ``run_verdict``).
     """
     from scriptor.reflow.pagination.verdict import run_verdict
 
-    return run_verdict(pages, chapters=chapters).description
+    return run_verdict(pages, chapters=chapters, edges=edges).description
+
+
+def cut_confirmed_folios(pages: list[Page], edge: str) -> int:
+    """Take the folio out of the body where the consensus confirmed it there.
+
+    ``parse_page`` lifts out what the narrow reading recognises. What the second
+    round reads it never saw, so those lines are still standing in the text --
+    and a page number inside running prose is not a duplicate, it is damage: La
+    masonería joined "… años de an" to "helos compartidos" across a page break
+    and produced "anXI helos", a word torn in half by its own folio.
+
+    Only a line that is *nothing but* the label goes, ornament included, and
+    only at the edge this volume paginates at. A line saying more than the
+    number is a running head the generic stripper left standing, and deleting it
+    would cost a word of the book to save a number.
+    """
+    from scriptor.reflow.pagelabel import strip_ornament
+
+    cut = 0
+    for p in pages:
+        if p.label is None or p.label_source != "printed":
+            continue
+        indices = [i for i, ln in enumerate(p.body_lines) if ln.strip()]
+        if not indices:
+            continue
+        i = indices[-1] if edge == "bottom" else indices[0]
+        if strip_ornament(p.body_lines[i]) == p.label.strip():
+            del p.body_lines[i]
+            cut += 1
+    return cut
 
 
 def restore_rejected_folios(pages: list[Page]) -> int:
@@ -1657,9 +1688,33 @@ def main(
                     file=sys.stderr,
                 )
 
-    page_col = reconcile_page_numbers(pages, chapter_starts)
+    # The outermost printed line of every physical page, measured. It is what
+    # lets the consensus ask a second time on the pages the narrow reading could
+    # not take -- and it has to come from the source page rather than from the
+    # body, because by now the running head has been stripped, and with it the
+    # versal folio that shared its line.
+    from scriptor.reflow.pagination.verdict import run_verdict
+    from scriptor.reflow.textlines import edge_lines
+
+    edges = {
+        ordinal: edge_lines(sp)
+        for ordinal, sp in enumerate(source_pages, start=1)
+    }
+    verdict = run_verdict(pages, chapters=chapter_starts, edges=edges)
+    page_col = verdict.description
     restored = restore_rejected_folios(pages)
     print(f"Page label position: {page_col}", file=sys.stderr)
+    if verdict.band is not None:
+        # After restoring, not before: a rejected candidate goes back into the
+        # text, and only then is the text what the reader will see.
+        cut = cut_confirmed_folios(pages, verdict.band.edge)
+        print(
+            f"Folio band: {verdict.band.edge} of the page, "
+            f"{verdict.band.lo:.3f}–{verdict.band.hi:.3f} of its height; "
+            f"read {plural(verdict.geometric_count, 'further folio')} there, "
+            f"{cut} of them taken out of the body",
+            file=sys.stderr,
+        )
     if restored:
         print(
             f"Folio candidates the consensus rejected, returned to the text: "

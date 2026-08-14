@@ -81,10 +81,13 @@ def test_the_tail_is_never_extrapolated():
     assert _labels(pages) == ["8", "9", None, None]
 
 
-def test_a_roman_gap_stays_open_and_roman_labels_stay_roman():
+def test_a_roman_gap_closes_and_roman_labels_stay_roman():
+    # Both halves matter: the enclosed page is filled now (La masonería has 21
+    # such pages), and it is filled as "viii" -- an ordinal written back into a
+    # roman stretch as "8" would send a contents link into the body.
     pages = [_page(1, "vii"), _page(2), _page(3, "ix")]
     run_verdict(pages)
-    assert _labels(pages) == ["vii", None, "ix"]
+    assert _labels(pages) == ["vii", "viii", "ix"]
 
 
 def test_a_script_change_leaves_the_page_between_undecided():
@@ -98,6 +101,34 @@ def test_a_backwards_run_does_not_start_from_a_roman_label():
     pages = [_page(1), _page(2), _page(3, "vii"), _page(4, "viii")]
     run_verdict(pages)
     assert _labels(pages) == [None, None, "vii", "viii"]
+
+
+def test_the_arabic_count_reaches_its_own_page_one_behind_a_front_matter():
+    # Themistios, once its versal front matter is legible: the volume runs
+    # roman to XIII, then starts counting at 1 on physical page 6, and prints
+    # nothing there -- the first arabic folio it prints is the "2" on page 7.
+    #
+    # Measured regression: while the front matter was unreadable the arabic
+    # stretch was the volume's first counted segment and reached its own head;
+    # with a roman segment in front of it, it stopped doing so and page 6 lost
+    # the label it used to have. Being first was never the point. What protects
+    # the run is that it stays inside its own segment and that the segment
+    # begins at 1 -- L'Empire's misread "1972" is refused by the second
+    # condition, not by the first.
+    pages = [_page(1, "xi"), _page(2, "xii"), _page(3, "xiii"),
+             _page(4), _page(5), _page(6), _page(7, "2"), _page(8, "3")]
+    run_verdict(pages)
+    assert [p.label for p in pages] == [
+        "xi", "xii", "xiii", None, None, "1", "2", "3",
+    ]
+
+
+def test_a_later_segment_that_starts_at_a_year_reaches_nothing_backwards():
+    # L'Empire prints its edition year "1972" in the imprint. A segment founded
+    # on it must not count the pages before it as 1968, 1969, 1970.
+    pages = [_page(1), _page(2), _page(3, "1972"), _page(4, "1973")]
+    run_verdict(pages)
+    assert [p.label for p in pages[:2]] == [None, None]
 
 
 def test_a_fully_printed_volume_is_untouched():

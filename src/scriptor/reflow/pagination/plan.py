@@ -22,23 +22,31 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from scriptor.reflow.pagelabel import decode_label, style_of
+from scriptor.reflow.pagelabel import encode_label, ordinal_of, style_of
 
-# Numbering systems whose unobserved positions may be written back. Arabic only,
-# for two reasons pointing the same way: an arabic label is its own ordinal
-# written out and needs no encoder, and the roman stretch is the front matter --
-# the one place where an unprinted page is as likely to be uncounted (a plate, a
-# blank verso) as counted. No corpus volume shows an interior roman gap, so
-# there is nothing here to verify a rule against. Lifting this is one line, the
-# day a volume shows one.
-EXTRAPOLATED_STYLES = ("arabic",)
+# Numbering systems whose unobserved positions may be written back.
+#
+# Arabic only, until 2026-08-14. The restraint rested on two grounds and both
+# have since been answered. The first was that an arabic label is its own
+# ordinal written out while roman needed an encoder -- ``encode_label`` is that
+# encoder. The second was that no corpus volume showed an interior roman gap, so
+# there was nothing to verify a rule against: La masonería shows 21 of them,
+# enclosed between the 43 versal folios the second reading takes off its front
+# matter.
+#
+# What the restraint was right about is still true and is now carried elsewhere:
+# the front matter is where an unprinted page may genuinely be uncounted -- a
+# plate, a blank verso -- so a roman stretch has to earn its extrapolation the
+# same way an arabic one does, by being enclosed between observations
+# (``verdict``) and by resting on more than one of them (``min_attested``).
+EXTRAPOLATED_STYLES = ("arabic", "roman-lower", "roman-upper")
 
 
 @dataclass(frozen=True)
 class Segment:
     start_pos: int          # positional index this segment takes over at
     # The label at ``start_pos``. Written as an arabic numeral even for a roman
-    # segment: it carries the ordinal, which ``decode_label`` reads back, while
+    # segment: it carries the ordinal, which ``ordinal_of`` reads back, while
     # ``style`` carries the numbering system. What a page is *called* never
     # comes from here -- it comes verbatim from whoever observed it.
     start_label: str
@@ -65,21 +73,22 @@ class PaginationPlan:
         seg = self.segment_at(pos)
         if seg is None or seg.kind == "uncounted":
             return None
-        start = decode_label(seg.start_label)
+        start = ordinal_of(seg.start_label)
         return None if start is None else start + (pos - seg.start_pos)
 
     def label_of(self, pos: int) -> str | None:
         """The label the plan writes back for ``pos``, or None.
 
-        Only arabic segments are written back (see EXTRAPOLATED_STYLES). This
-        concerns *unobserved* positions only: a page that printed its own label
-        keeps it verbatim, and the verdict never asks this method for those.
+        Written in the segment's own numbering system (see EXTRAPOLATED_STYLES),
+        which is why a versal stretch yields "XIV" and not "xiv". This concerns
+        *unobserved* positions only: a page that printed its own label keeps it
+        verbatim, and the verdict never asks this method for those.
         """
         seg = self.segment_at(pos)
         if seg is None or seg.style not in EXTRAPOLATED_STYLES:
             return None
         value = self.value_at(pos)
-        return None if value is None else str(value)
+        return None if value is None else encode_label(value, seg.style)
 
 
 @dataclass(frozen=True)
@@ -174,7 +183,7 @@ def score_segment(observations, seg: Segment, start_pos: int, stop_pos: int,
         predicted = plan.value_at(pos)
         agreeing = [
             o for o in group
-            if style_of(o.label) == seg.style and decode_label(o.label) == predicted
+            if style_of(o.label) == seg.style and ordinal_of(o.label) == predicted
         ]
         if agreeing:
             total += max(o.weight for o in agreeing)
@@ -240,7 +249,7 @@ class _Tally:
         self.base -= self.params.mu * maxw
         agree: dict[tuple[str, int], float] = {}
         for o in group:
-            style, value = style_of(o.label), decode_label(o.label)
+            style, value = style_of(o.label), ordinal_of(o.label)
             if style is None or value is None:
                 continue
             key = (style, value - o.pos)
