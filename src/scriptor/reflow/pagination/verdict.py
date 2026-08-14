@@ -182,13 +182,6 @@ def run_verdict(pages, params: FitParams | None = None,
         if any(o.source.startswith("printed") for o in group):
             attested.setdefault(seg.start_pos, []).append(pos)
 
-    # The floor at page 1 belongs to the first segment the volume *counts*. An
-    # uncounted stretch before it -- plates, an unnumbered half-title -- does not
-    # move where counting begins, and taking the first segment of any kind here
-    # cost Themistios its page 1: the fifteen roman pages before its arabic run
-    # come out uncounted, and the run's own head was then never reached.
-    first_start = next((s.start_pos for s in plan.segments
-                        if s.kind == "counted"), None)
     verdict = Verdict(plan=plan, description="none", band=band)
 
     for p in pages:
@@ -222,12 +215,17 @@ def run_verdict(pages, params: FitParams | None = None,
             # front edge differently from the back, and "the value stays above
             # zero" is not the same thing: at L'Empire a year misread as a folio
             # ("1972" on the imprint page) had the first three pages of the
-            # volume counted back as 1968, 1969, 1970, and at La masonería an
-            # arabic run reached back across a roman front matter. Requiring the
-            # run to reach the floor exactly is what the older chain achieved by
+            # volume counted back as 1968, 1969, 1970. Requiring the run to
+            # reach the floor exactly is what the older chain achieved by
             # starting from the volume's first label and stopping at 1.
-            front = (pos < lo and seg.start_pos == first_start
-                     and plan.value_at(seg.start_pos) == 1)
+            #
+            # It is not required to be the volume's *first* counted segment.
+            # That condition once stood here and was measured wrong the day the
+            # front matter became legible: Themistios grew a roman segment in
+            # front of its arabic one and page 16 -- the volume's printed page 1
+            # -- lost the label it had. A run never leaves its own segment
+            # anyway, because ``lo`` is a position inside it.
+            front = pos < lo and plan.value_at(seg.start_pos) == 1
             if not (enclosed or front):
                 continue
             computed = plan.label_of(pos)
