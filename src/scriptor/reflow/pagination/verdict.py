@@ -27,6 +27,8 @@ from scriptor.reflow.pagination.witnesses import (
     boundary_candidates,
     catalogue_observations,
     catalogue_weight,
+    folio_band,
+    geometric_observations,
     printed_observations,
     toc_observations,
 )
@@ -63,13 +65,51 @@ def _agrees(obs: Observation, plan: PaginationPlan) -> bool:
             and ordinal_of(obs.label) == plan.value_at(obs.pos))
 
 
+def _confirming(observations, plan) -> dict[int, list[Observation]]:
+    """Per position, the observations the plan agrees with."""
+    at: dict[int, list[Observation]] = {}
+    for o in observations:
+        at.setdefault(o.pos, []).append(o)
+    return {pos: [o for o in group if _agrees(o, plan)]
+            for pos, group in at.items()}
+
+
+def _sightings(confirming, edges):
+    """Where the folios the first round confirmed actually stood on the page.
+
+    The edge comes from the witness that was confirmed, not from a search
+    through the text: the first round asked each edge by name, so a confirmed
+    ``printed-bottom`` says the folio was at the foot, and the geometry only has
+    to supply the height it was at.
+    """
+    out = []
+    for pos, group in confirming.items():
+        lines = edges.get(pos) or []
+        for o in group:
+            if not o.source.startswith("printed-"):
+                continue
+            edge = o.source.split("-")[-1]
+            for line in lines:
+                if line.edge == edge:
+                    out.append((edge, line.height))
+    return out
+
+
 def run_verdict(pages, params: FitParams | None = None,
-                chapters=()) -> Verdict:
+                chapters=(), edges=None) -> Verdict:
     """Set every page's label, its source and its confidence. Say what won.
 
     ``chapters`` are the confirmed chapter openings (``reflow.chapters``). They
     say nothing about what a page is called -- they say where the volume is
     entitled to change its mind, which is what a boundary candidate is.
+
+    ``edges`` are the measured outermost lines per position
+    (``textlines.edge_lines``). With them the verdict is taken in two rounds:
+    the first uses the readings that need no evidence beyond their own
+    vocabulary, and where those succeed they show the volume's habit -- which
+    edge it paginates at, at what height. The second round reads the pages the
+    first could not, at that place and nowhere else. Without ``edges`` only the
+    first round happens, which is exactly the behaviour of stage 1.
     """
     params = params or FitParams()
     for p in pages:
@@ -99,12 +139,29 @@ def run_verdict(pages, params: FitParams | None = None,
     plan = fit(observations,
                boundary_candidates(pages, observations, pos_of, chapters),
                last_pos, params)
+    confirming = _confirming(observations, plan)
+
+    # Second round. What the first round confirmed shows the volume's habit, and
+    # the habit is what makes a wider reading of the remaining pages defensible.
+    # The whole of it is conditional on the first round having succeeded
+    # somewhere: a volume that showed no habit gets no second reading, which is
+    # why this can only ever add labels to a volume that already had some.
+    band = folio_band(_sightings(confirming, edges)) if edges else None
+    if band is not None:
+        second = geometric_observations(
+            edges, band, spoken_for={pos for pos, group in confirming.items()
+                                     if group},
+        )
+        if second:
+            observations = observations + second
+            plan = fit(observations,
+                       boundary_candidates(pages, observations, pos_of, chapters),
+                       last_pos, params)
+            confirming = _confirming(observations, plan)
 
     at: dict[int, list[Observation]] = {}
     for o in observations:
         at.setdefault(o.pos, []).append(o)
-    confirming = {pos: [o for o in group if _agrees(o, plan)]
-                  for pos, group in at.items()}
 
     # Per segment: the first and last position an observation confirms, and the
     # positions a *printed* one confirms -- the latter is what attests a segment
