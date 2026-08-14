@@ -247,6 +247,53 @@ def test_a_computed_roman_label_keeps_the_case_of_its_segment():
     assert [p.label for p in pages[:4]] == ["xi", "xii", "xiii", "xiv"]
 
 
+def test_the_confirmed_folio_line_leaves_the_body():
+    # La masonería sets "XI" on its own line at the foot. The narrow reading
+    # could not take it, so parse_page left it standing, and the page joined to
+    # the next one as "… años de anXI helos compartidos" -- a word torn in half
+    # by a page number. Once the consensus confirms what the line is, it is not
+    # part of the text.
+    from scriptor.reflow.core import cut_confirmed_folios
+
+    pages, edges = _volume()
+    pages[0].body_lines = ["Vorwort.", "XI"]
+    run_verdict(pages, edges=edges)
+    assert cut_confirmed_folios(pages, "bottom") == 1
+    assert pages[0].body_lines == ["Vorwort."]
+
+
+def test_a_line_that_only_contains_the_folio_is_cut_ornament_and_all():
+    from scriptor.reflow.core import cut_confirmed_folios
+
+    pages, edges = _volume()
+    pages[0].body_lines = ["Vorwort.", ". XI ."]
+    run_verdict(pages, edges=edges)
+    assert cut_confirmed_folios(pages, "bottom") == 1
+    assert pages[0].body_lines == ["Vorwort."]
+
+
+def test_a_line_that_says_more_than_the_folio_stays():
+    # "XII ABBREVIAZIONI" is a running head. Where the generic stripper did not
+    # take it, it is text on the page, and cutting it here would delete a word
+    # of the book to save a duplicate number.
+    from scriptor.reflow.core import cut_confirmed_folios
+
+    pages, edges = _volume()
+    pages[0].body_lines = ["Vorwort.", "XI ABBREVIAZIONI"]   # at the edge it cuts
+    run_verdict(pages, edges=edges)
+    assert cut_confirmed_folios(pages, "bottom") == 0
+    assert pages[0].body_lines == ["Vorwort.", "XI ABBREVIAZIONI"]
+
+
+def test_nothing_is_cut_at_the_edge_the_volume_does_not_paginate_at():
+    from scriptor.reflow.core import cut_confirmed_folios
+
+    pages, edges = _volume()
+    pages[0].body_lines = ["XI", "Vorwort."]
+    run_verdict(pages, edges=edges)
+    assert cut_confirmed_folios(pages, "bottom") == 0
+
+
 def test_a_lone_geometric_reading_founds_nothing():
     # min_attested applies to the second round exactly as to the first: seven of
     # thirty segments once rested on a single reading and every one was wrong.

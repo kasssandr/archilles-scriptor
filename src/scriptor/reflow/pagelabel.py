@@ -144,6 +144,11 @@ _ROMAN_NUMERALS = (
 )
 
 
+def strip_ornament(text: str) -> str:
+    """The line without the rule the typography set around it."""
+    return text.strip().strip(_ORNAMENT)
+
+
 def encode_label(value: int, style: str) -> str | None:
     """Write an ordinal in the numbering system a stretch of pages runs in.
 
@@ -197,7 +202,7 @@ def read_label_relaxed(line: str) -> str | None:
     The label comes back verbatim. "XII" stays versal -- that is what the page
     prints, and a citation has to match the page.
     """
-    s = line.strip().strip(_ORNAMENT)
+    s = strip_ornament(line)
     if not s:
         return None
 
