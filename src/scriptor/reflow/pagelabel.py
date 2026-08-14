@@ -46,6 +46,29 @@ _HEAD_LEAD = re.compile(rf"^({_LABEL_TOKEN})\s+(.+)$")
 _HEAD_TRAIL = re.compile(rf"^(.+?)\s+({_LABEL_TOKEN})$")
 
 
+# Ornament a typesetter sets around a folio: rules, dots, dashes, brackets.
+# Masones prints ". 50.", others "— 50 —". The rule belongs to the page's
+# design, the number to the page.
+_ORNAMENT = " \t.,-–—·•*_()[]"
+
+# What the relaxed reading takes for a number. Three digits, not four: no corpus
+# volume prints a four-digit folio (the largest is the Oxford Handbook's 894),
+# while four digits at the edge of a page have twice been an imprint year that
+# founded a segment of its own -- A comemoração "2020", L'Empire "1972".
+_RELAXED_LABEL = r"\d{1,3}|[mdclxvi]+|[MDCLXVI]+"
+_RELAXED_ALONE = re.compile(rf"^({_RELAXED_LABEL})$")
+_RELAXED_LEAD = re.compile(rf"^({_RELAXED_LABEL})\s+(.+)$")
+_RELAXED_TRAIL = re.compile(rf"^(.+?)\s+({_RELAXED_LABEL})$")
+
+# A running head is short and reads as a title. Prose that merely begins with a
+# number -- a drop cap the extractor lost, "1 he fall of the city …" -- runs on
+# in more words and carries the punctuation of a sentence; a bibliography line
+# carries digits of its own ("Bruxelles, 1936 (Subsidia Hagiographica, XXII)").
+_HEAD_MAX_CHARS = 60
+_HEAD_MAX_WORDS = 6
+_NOT_IN_HEAD = re.compile(r"[,;()\[\]\d]")
+
+
 def _roman_to_int(s: str) -> int:
     values = [_ROMAN_VALUES[c] for c in s]
     total = 0
@@ -76,16 +99,94 @@ def style_of(label: str) -> str | None:
     to compare. Uppercase roman is accepted here although ``detect_page_label``
     refuses it: the detector's refusal protects the body text from having a
     running head deleted, while this classifier is only ever asked about a label
-    somebody already produced -- and the PDF catalogue does state "XIV".
+    somebody already produced -- and the PDF catalogue does state "XIV". A lone
+    roman character passes for the same reason, and it has to: it is the pages
+    i, v and x, and classifying them as nothing at all would make them
+    contradict every plan they belong to. Kept in step with ``ordinal_of``, so
+    that whatever can be ordered can also be classified.
     """
     s = label.strip()
     if not s:
         return None
     if ARABIC_RE.match(s):
         return "arabic" if 1 <= int(s) <= 9999 else None
-    if len(s) >= MIN_ROMAN_LEN and ROMAN_RE.match(s.lower()):
+    if ROMAN_RE.match(s.lower()):
         return "roman-lower" if s.islower() else "roman-upper"
     return None
+
+
+def ordinal_of(label: str) -> int | None:
+    """The ordinal a label denotes, in whatever case it is written.
+
+    ``decode_label`` refuses versal roman, and refuses a lone roman character,
+    for the reason its module docstring gives: it is asked about lines of the
+    author's text, where "BOOK II" must not become a page and a stray "l" must
+    not become 50. The pagination is asked about a label somebody has already
+    produced -- the PDF catalogue states "XIV", a volume may set its front
+    matter versal, and page "x" of Artificial Humanities is a page. There the
+    case and the length are matters of spelling, not of identity, and a reading
+    that cannot be ordered is a reading that silently does not count.
+    ``style_of`` is its counterpart on the classifying side.
+    """
+    s = label.strip().lower()
+    if ARABIC_RE.match(s):
+        n = int(s)
+        return n if 1 <= n <= 9999 else None
+    if ROMAN_RE.match(s):
+        return _roman_to_int(s)
+    return None
+
+
+def read_label_relaxed(line: str) -> str | None:
+    """Read a folio off a line the geometry has already vouched for.
+
+    ``detect_page_label`` is narrow because the caller deletes the line it reads
+    a label out of, so each of its refusals protects the author's text. This
+    reading answers a different question: a witness has put this line at the
+    height and the edge where the volume has been printing folios all along, no
+    character is removed on its word alone, and the fit weighs what it says
+    against every other page. The vocabulary therefore opens up exactly where
+    printers differ from the narrow rule:
+
+    versal front matter          La masonería "XII", Gli Actus "XVIII INTRODUZIONE"
+    a single roman character     Artificial Humanities "x" over its illustrations
+    a title set in ordinary case Themistios "XII Inhaltsverzeichnis"
+    a number dressed by the rule Masones ". 50."
+
+    Narrower in one respect, see ``_RELAXED_LABEL``: four digits are refused
+    here, because at this end of the page they are an imprint year far more
+    often than a folio.
+
+    The label comes back verbatim. "XII" stays versal -- that is what the page
+    prints, and a citation has to match the page.
+    """
+    s = line.strip().strip(_ORNAMENT)
+    if not s:
+        return None
+
+    m = _RELAXED_ALONE.match(s)
+    if m:
+        return s if ordinal_of(s) is not None else None
+
+    for rx, token_group, text_group in ((_RELAXED_LEAD, 1, 2), (_RELAXED_TRAIL, 2, 1)):
+        m = rx.match(s)
+        if not m:
+            continue
+        token, text = m.group(token_group), m.group(text_group).strip(_ORNAMENT)
+        if ordinal_of(token) is None or not _reads_as_a_head(text):
+            continue
+        return token
+    return None
+
+
+def _reads_as_a_head(text: str) -> bool:
+    """Is this the title beside a folio, rather than a line of the book?"""
+    return (
+        len(text) <= _HEAD_MAX_CHARS
+        and len(text.split()) <= _HEAD_MAX_WORDS
+        and sum(1 for c in text if c.isalpha()) >= 2
+        and not _NOT_IN_HEAD.search(text)
+    )
 
 
 def is_running_head_like(text: str) -> bool:

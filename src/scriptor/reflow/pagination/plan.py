@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from scriptor.reflow.pagelabel import decode_label, style_of
+from scriptor.reflow.pagelabel import ordinal_of, style_of
 
 # Numbering systems whose unobserved positions may be written back. Arabic only,
 # for two reasons pointing the same way: an arabic label is its own ordinal
@@ -38,7 +38,7 @@ EXTRAPOLATED_STYLES = ("arabic",)
 class Segment:
     start_pos: int          # positional index this segment takes over at
     # The label at ``start_pos``. Written as an arabic numeral even for a roman
-    # segment: it carries the ordinal, which ``decode_label`` reads back, while
+    # segment: it carries the ordinal, which ``ordinal_of`` reads back, while
     # ``style`` carries the numbering system. What a page is *called* never
     # comes from here -- it comes verbatim from whoever observed it.
     start_label: str
@@ -65,7 +65,7 @@ class PaginationPlan:
         seg = self.segment_at(pos)
         if seg is None or seg.kind == "uncounted":
             return None
-        start = decode_label(seg.start_label)
+        start = ordinal_of(seg.start_label)
         return None if start is None else start + (pos - seg.start_pos)
 
     def label_of(self, pos: int) -> str | None:
@@ -174,7 +174,7 @@ def score_segment(observations, seg: Segment, start_pos: int, stop_pos: int,
         predicted = plan.value_at(pos)
         agreeing = [
             o for o in group
-            if style_of(o.label) == seg.style and decode_label(o.label) == predicted
+            if style_of(o.label) == seg.style and ordinal_of(o.label) == predicted
         ]
         if agreeing:
             total += max(o.weight for o in agreeing)
@@ -240,7 +240,7 @@ class _Tally:
         self.base -= self.params.mu * maxw
         agree: dict[tuple[str, int], float] = {}
         for o in group:
-            style, value = style_of(o.label), decode_label(o.label)
+            style, value = style_of(o.label), ordinal_of(o.label)
             if style is None or value is None:
                 continue
             key = (style, value - o.pos)

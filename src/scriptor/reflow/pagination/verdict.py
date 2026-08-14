@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from scriptor.reflow.pagelabel import decode_label, style_of
+from scriptor.reflow.pagelabel import ordinal_of, style_of
 from scriptor.reflow.pagination.observation import Observation
 from scriptor.reflow.pagination.plan import FitParams, PaginationPlan, fit
 from scriptor.reflow.pagination.witnesses import (
@@ -60,7 +60,7 @@ def _agrees(obs: Observation, plan: PaginationPlan) -> bool:
     if seg is None or seg.kind == "uncounted":
         return False
     return (style_of(obs.label) == seg.style
-            and decode_label(obs.label) == plan.value_at(obs.pos))
+            and ordinal_of(obs.label) == plan.value_at(obs.pos))
 
 
 def run_verdict(pages, params: FitParams | None = None,
@@ -173,7 +173,7 @@ def run_verdict(pages, params: FitParams | None = None,
                 continue
             p.label, p.label_source = computed, "computed"
             verdict.computed_count += 1
-        p.num = decode_label(p.label) or -1
+        p.num = ordinal_of(p.label) or -1
         p.label_confidence = _confidence(pos, seg.start_pos, group,
                                          at.get(pos, []), spans, attested)
 

@@ -144,3 +144,114 @@ def test_style_of_accepts_uppercase_roman_although_the_detector_does_not():
 
     assert detect_page_label("XIV") is None
     assert style_of("XIV") == "roman-upper"
+
+
+# ----------------------------------------------------------------------
+# The relaxed reading: what a page may be asked once the geometry vouches
+# ----------------------------------------------------------------------
+
+def test_the_relaxed_reading_accepts_uppercase_roman():
+    # La masonería sets its front matter as "XI", "XII", "XIV" and nothing else
+    # on the line, at the very foot of the page. detect_page_label refuses those
+    # because a refusal used to be the only protection the body text had.
+    from scriptor.reflow.pagelabel import read_label_relaxed
+
+    assert read_label_relaxed("XII") == "XII"
+    assert read_label_relaxed("xii") == "xii"
+
+
+def test_the_relaxed_reading_returns_the_label_verbatim():
+    # The style is the page's identity: "XII" must not come back as "xii", or a
+    # volume setting versal front matter is cited in a form it never printed.
+    from scriptor.reflow.pagelabel import read_label_relaxed
+
+    assert read_label_relaxed("XVIII  INTRODUZIONE") == "XVIII"
+
+
+def test_the_relaxed_reading_accepts_a_single_roman_character():
+    # Artificial Humanities prints "x" over its list of illustrations. Two
+    # characters are demanded of the conservative reading because a lone "l" is
+    # more often a misread "1" than roman 50 -- a risk the fit now carries.
+    from scriptor.reflow.pagelabel import read_label_relaxed
+
+    assert read_label_relaxed("x\t Illustrations") == "x"
+
+
+def test_the_relaxed_reading_takes_a_folio_beside_an_ordinary_title():
+    # Themistios heads its front matter "XII Inhaltsverzeichnis": one capital in
+    # eighteen letters, so is_running_head_like says no. At the edge the volume
+    # paginates at, that verdict costs the page its number.
+    from scriptor.reflow.pagelabel import read_label_relaxed
+
+    assert read_label_relaxed("XII Inhaltsverzeichnis") == "XII"
+    assert read_label_relaxed("Inhaltsverzeichnis XIII") == "XIII"
+
+
+def test_the_relaxed_reading_looks_past_the_ornament():
+    # Masones sets its folios as ". 50." -- the rule is the typography's, and
+    # the number is the page's all the same.
+    from scriptor.reflow.pagelabel import read_label_relaxed
+
+    assert read_label_relaxed(". 50.") == "50"
+    assert read_label_relaxed("— 50 —") == "50"
+
+
+def test_the_relaxed_reading_still_refuses_prose():
+    # The geometry says where to look, not what counts. A line of text that
+    # happens to open with a number is not a folio at any height.
+    from scriptor.reflow.pagelabel import read_label_relaxed
+
+    assert read_label_relaxed(
+        "1 he fall of the city was not the end of its story, and the"
+    ) is None
+    assert read_label_relaxed("Bruxelles, 1936 (Subsidia Hagiographica, XXII)") is None
+
+
+def test_the_relaxed_reading_refuses_a_year():
+    # A comemoração prints 2020 on its title page, L'Empire 1972 in its imprint.
+    # Both founded a segment of their own before min_attested stopped them, and
+    # both would be read here if four digits were enough.
+    from scriptor.reflow.pagelabel import read_label_relaxed
+
+    assert read_label_relaxed("2020") is None
+    assert read_label_relaxed("© 1972") is None
+
+
+def test_the_conservative_reading_is_untouched():
+    # parse_page still lifts a line out of the body on this answer, so it keeps
+    # its old vocabulary exactly.
+    from scriptor.reflow.pagelabel import detect_page_label
+
+    assert detect_page_label("XII") is None
+    assert detect_page_label("XII Inhaltsverzeichnis") is None
+    assert detect_page_label(". 50.") is None
+
+
+def test_the_ordinal_is_read_in_whatever_case_the_label_is_written():
+    # A reading the pagination cannot order is a reading that silently does not
+    # count: the fit asks for style and ordinal together, and a versal label
+    # answered the first question and not the second.
+    from scriptor.reflow.pagelabel import decode_label, ordinal_of, style_of
+
+    assert ordinal_of("XIV") == 14
+    assert ordinal_of("xiv") == 14
+    assert ordinal_of("312") == 312
+    assert decode_label("XIV") is None      # the detector stays narrow
+
+
+def test_a_lone_roman_character_is_a_page_to_the_pagination():
+    # Pages i, v and x exist. Classifying them as nothing makes them contradict
+    # every plan they belong to.
+    from scriptor.reflow.pagelabel import ordinal_of, style_of
+
+    assert ordinal_of("x") == 10
+    assert style_of("x") == "roman-lower"
+    assert style_of("X") == "roman-upper"
+
+
+def test_what_is_not_a_label_stays_none_in_both_readings():
+    from scriptor.reflow.pagelabel import ordinal_of, style_of
+
+    for text in ("Kapitel", "", "Inhalt", "1a"):
+        assert ordinal_of(text) is None
+        assert style_of(text) is None

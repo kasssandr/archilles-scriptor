@@ -12,7 +12,7 @@ shifts every citation in the book.
 
 from __future__ import annotations
 
-from scriptor.reflow.pagelabel import decode_label, style_of
+from scriptor.reflow.pagelabel import ordinal_of, style_of
 from scriptor.reflow.pagination.observation import Observation
 
 PRINTED_WEIGHT = 1.0
@@ -47,7 +47,7 @@ def printed_observations(pages, pos_of=_index) -> list[Observation]:
         if pos_of(p) < 1:
             continue
         for label, edge in ((p.label_bottom, "bottom"), (p.label_top, "top")):
-            if label is None or decode_label(label) is None:
+            if label is None or ordinal_of(label) is None:
                 continue
             out.append(Observation(
                 pos=pos_of(p), label=label, source=f"printed-{edge}",
@@ -86,7 +86,7 @@ def catalogue_observations(pages, weight: float,
                     weight=weight, why="PDF PageLabels")
         for p in pages
         if pos_of(p) >= 1 and p.backend_label is not None
-        and decode_label(p.backend_label) is not None
+        and ordinal_of(p.backend_label) is not None
     ]
 
 
@@ -107,7 +107,7 @@ def toc_observations(chapters, pos_of=None) -> list[Observation]:
     """
     out: list[Observation] = []
     for c in chapters:
-        if not getattr(c, "printed", None) or decode_label(c.printed) is None:
+        if not getattr(c, "printed", None) or ordinal_of(c.printed) is None:
             continue
         out.append(Observation(
             pos=c.pos, label=c.printed, source="toc", weight=TOC_WEIGHT,
@@ -120,7 +120,7 @@ def _decoded(sequence: list[tuple[int, str]]) -> list[tuple[int, int, str]]:
     """(pos, ordinal, style) for the entries that are labels at all."""
     out = []
     for pos, label in sequence:
-        value, style = decode_label(label), style_of(label)
+        value, style = ordinal_of(label), style_of(label)
         if value is not None and style is not None:
             out.append((pos, value, style))
     return out
@@ -216,7 +216,7 @@ def boundary_candidates(pages, observations, pos_of=_index,
     for o in observations:
         if not o.source.startswith("printed"):
             continue
-        value = decode_label(o.label)
+        value = ordinal_of(o.label)
         if value is not None and style_of(o.label) == "arabic":
             start = o.pos - value + 1
             if start >= 1:
