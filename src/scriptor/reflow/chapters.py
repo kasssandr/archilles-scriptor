@@ -118,6 +118,30 @@ def from_outline(
     return [best[p] for p in sorted(best)]
 
 
+# How far into a volume a table of contents may still begin. The same bound
+# assign_modes uses, and for the same reason: a name register is lines ending in
+# page numbers, exactly like a contents list, and De eerste minister sets two
+# columns of them at the back. Nothing in the text tells the two apart -- where
+# they stand does.
+CONTENTS_FRACTION = 0.15
+
+
+def contents_pages(pages) -> list:
+    """The pages that are a table of contents, asked only where one can be.
+
+    Position is part of the question. Asked over the whole volume, the register
+    of De eerste minister answers yes, and so do the bibliography pages of the
+    Oxford Handbook -- 24 "contents pages" with 1174 lines, against a real
+    contents of a few.
+    """
+    from scriptor.reflow.toc import is_toc_page
+
+    if not pages:
+        return []
+    limit = max(1, int(len(pages) * CONTENTS_FRACTION))
+    return [p for i, p in enumerate(pages) if i < limit and is_toc_page(p)]
+
+
 def from_toc(
     entries, lines_by_pos: dict[int, list[str]], toc_positions: set[int]
 ) -> list[ChapterStart]:

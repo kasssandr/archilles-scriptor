@@ -1633,10 +1633,10 @@ def main(
     # Entries are placed by their title, never by their number: the number is a
     # printed page, and turning it into a position would need the very plan this
     # informs.
-    from scriptor.reflow.chapters import from_toc
-    from scriptor.reflow.toc import is_toc_page, parse_toc
+    from scriptor.reflow.chapters import contents_pages, from_toc
+    from scriptor.reflow.toc import parse_toc
 
-    toc_pages = [p for p in pages if is_toc_page(p)]
+    toc_pages = contents_pages(pages)
     if toc_pages:
         parsed = parse_toc(toc_pages)
         if parsed.entries:

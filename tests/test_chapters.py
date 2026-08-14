@@ -273,3 +273,29 @@ def test_a_growing_offset_is_not_a_contradiction():
              21: ["El joven", "T."]}
     got = from_toc(toc, pages, toc_positions={1})
     assert [(c.pos, c.printed) for c in got] == [(9, "9"), (12, "13"), (21, "23")]
+
+
+def test_a_register_at_the_back_is_not_a_table_of_contents():
+    """A name register looks exactly like a contents list: lines ending in page
+    numbers. De eerste minister's runs two columns of them at the back, and
+    reading it as contents offers hundreds of "chapter titles" that are
+    surnames. What tells them apart is where they stand, which is why
+    assign_modes only asks is_toc_page in the front of a volume -- and why the
+    chapter search has to ask the same way.
+    """
+    from scriptor.reflow.core import Page
+    from scriptor.reflow.chapters import contents_pages
+
+    def _p(index, lines):
+        return Page(num=-1, body_lines=lines, index=index)
+
+    front = ["Woord vooraf 7", "Hoofdstuk 1 11", "Hoofdstuk 2 26",
+             "Hoofdstuk 3 60", "Conclusie 244"]
+    back = ["Buckingham, George 215, 216", "Buys, Paulus 29, 46",
+            "Caron, Noël de 77, 81", "Coligny, Louise 93",
+            "Cromwell, Oliver 51, 52"]
+    pages = ([_p(i, ["Tekst."]) for i in range(1, 5)]
+             + [_p(5, front)]
+             + [_p(i, ["Tekst."]) for i in range(6, 100)]
+             + [_p(100, back)])
+    assert [p.index for p in contents_pages(pages)] == [5]
