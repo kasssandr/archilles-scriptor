@@ -4,6 +4,11 @@ These tests are the behavioural contract of the rebuild. Every case below is one
 that ``tests/test_page_label_gaps.py`` already pins on the older chain -- if one
 of them changes, the rebuild changed behaviour, and the change has to be argued
 rather than absorbed.
+
+The runs print two labels on either side of a gap rather than one. One would
+state the arithmetic just as well, but a lone reading no longer establishes a
+numbering system at all (``FitParams.min_attested``), so a one-label run would
+be testing that rule instead of the one it is here to state.
 """
 
 from scriptor.reflow.core import Page
@@ -36,35 +41,38 @@ def test_a_run_of_unprinted_pages_is_filled():
 
 
 def test_an_uncounted_plate_leaves_the_gap_open():
-    pages = [_page(1, "12"), _page(2), _page(3), _page(4, "14")]
+    pages = [_page(1, "11"), _page(2, "12"), _page(3), _page(4),
+             _page(5, "14"), _page(6, "15")]
     run_verdict(pages)
-    assert _labels(pages) == ["12", None, None, "14"]
+    assert _labels(pages) == ["11", "12", None, None, "14", "15"]
 
 
 def test_a_double_page_scan_leaves_the_gap_open():
-    pages = [_page(1, "12"), _page(2), _page(3, "15")]
+    pages = [_page(1, "11"), _page(2, "12"), _page(3), _page(4, "15"),
+             _page(5, "16")]
     run_verdict(pages)
-    assert _labels(pages) == ["12", None, "15"]
+    assert _labels(pages) == ["11", "12", None, "15", "16"]
 
 
 def test_a_gap_that_counts_backwards_is_left_alone():
-    pages = [_page(1, "40"), _page(2), _page(3, "12")]
+    pages = [_page(1, "40"), _page(2, "41"), _page(3), _page(4, "12"),
+             _page(5, "13")]
     run_verdict(pages)
-    assert _labels(pages) == ["40", None, "12"]
+    assert _labels(pages) == ["40", "41", None, "12", "13"]
 
 
 def test_the_front_is_counted_backwards_to_page_one():
     # Bauer prints "7" on physical page 7; the six before it are title pages.
-    pages = [_page(i) for i in range(1, 7)] + [_page(7, "7")]
+    pages = [_page(i) for i in range(1, 7)] + [_page(7, "7"), _page(8, "8")]
     run_verdict(pages)
-    assert _labels(pages) == ["1", "2", "3", "4", "5", "6", "7"]
+    assert _labels(pages) == ["1", "2", "3", "4", "5", "6", "7", "8"]
 
 
 def test_counting_backwards_stops_at_page_one():
     # Themistios prints "2" on physical page 17: exactly one page is reachable.
-    pages = [_page(i) for i in range(14, 17)] + [_page(17, "2")]
+    pages = [_page(i) for i in range(14, 17)] + [_page(17, "2"), _page(18, "3")]
     run_verdict(pages)
-    assert _labels(pages) == [None, None, "1", "2"]
+    assert _labels(pages) == [None, None, "1", "2", "3"]
 
 
 def test_the_tail_is_never_extrapolated():
@@ -80,9 +88,10 @@ def test_a_roman_gap_stays_open_and_roman_labels_stay_roman():
 
 
 def test_a_script_change_leaves_the_page_between_undecided():
-    pages = [_page(1), _page(2, "iv"), _page(3), _page(4, "3")]
+    pages = [_page(1, "iii"), _page(2, "iv"), _page(3), _page(4, "3"),
+             _page(5, "4")]
     run_verdict(pages)
-    assert _labels(pages) == [None, "iv", None, "3"]
+    assert _labels(pages) == ["iii", "iv", None, "3", "4"]
 
 
 def test_a_backwards_run_does_not_start_from_a_roman_label():
@@ -178,15 +187,23 @@ def test_the_losing_edge_is_not_a_finding():
 
 
 def test_counting_backwards_needs_the_floor_it_claims():
-    # L'Empire prints a year on its imprint page and no folio for pages either
-    # side of it. Counting back from 1972 gave the first three pages of the
-    # volume the labels 1968, 1969, 1970 -- a run with nothing under it. The
-    # front edge differs from the back edge only because of the floor at page 1,
-    # so a run that does not reach the floor has no more standing than a run off
-    # the back.
+    # The front edge differs from the back edge only because of the floor at
+    # page 1, so a run that does not reach the floor has no more standing than a
+    # run off the back. Two readings, because with one the support rule would
+    # decide the case before the floor was ever consulted.
+    pages = [_page(1), _page(2), _page(3), _page(4, "1972"), _page(5, "1973")]
+    run_verdict(pages)
+    assert _labels(pages) == [None, None, None, "1972", "1973"]
+
+
+def test_a_lone_year_on_an_imprint_page_founds_nothing():
+    # L'Empire: a year on the imprint page, no folio on the pages either side.
+    # Counting back from it gave the first three pages the labels 1968, 1969,
+    # 1970. Two rules now stand in the way and the outer one answers first --
+    # one reading is not a numbering system, so there is no run to count back.
     pages = [_page(1), _page(2), _page(3), _page(4, "1972"), _page(5)]
     run_verdict(pages)
-    assert _labels(pages) == [None, None, None, "1972", None]
+    assert _labels(pages) == [None, None, None, None, None]
 
 
 def test_an_arabic_run_does_not_reach_back_across_a_roman_front_matter():
@@ -199,14 +216,20 @@ def test_an_arabic_run_does_not_reach_back_across_a_roman_front_matter():
     assert all(p.label is None for p in pages[:8])
 
 
-def test_a_printed_label_stands_where_the_plan_attests_nothing():
+def test_a_segment_does_not_reach_past_what_it_attests():
     # Between its first and last confirmation a segment speaks for the pages in
     # between -- that is what lets it overrule a chapter number read as a folio.
-    # Where it has confirmed nothing, the page's own reading is what stands.
+    # Backwards past its own first page it speaks for nothing, so p2 stays blank
+    # rather than being counted back to.
+    #
+    # p1 used to keep its "1972" here, on the grounds that where the plan attests
+    # nothing the page's own reading stands. It no longer does: a reading nothing
+    # else supports is not a numbering system (FitParams.min_attested), and over
+    # the corpus every label that rule removes was a misreading of this kind.
     pages = [_page(1, "1972"), _page(2), _page(3, "1"), _page(4, "2"),
              _page(5, "3"), _page(6, "4")]
     run_verdict(pages)
-    assert [p.label for p in pages] == ["1972", None, "1", "2", "3", "4"]
+    assert [p.label for p in pages] == [None, None, "1", "2", "3", "4"]
 
 
 def test_inside_the_span_the_plan_wins():

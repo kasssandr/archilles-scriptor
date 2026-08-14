@@ -89,10 +89,14 @@ def _write_pages(tmp_path, *page_texts):
 
 
 def test_reflow_emits_roman_marker_and_drops_the_label_line(tmp_path):
+    # Two pages per run: a single reading no longer establishes a numbering
+    # system on its own (FitParams.min_attested).
     src = _write_pages(
         tmp_path,
         "Das Vorwort erklaert die Absicht des Verfassers ausfuehrlich.\nxiv\n",
+        "Das Vorwort setzt seinen Gedankengang auf dieser Seite fort.\nxv\n",
         "Der Haupttext beginnt und nennt eine Quelle im Satz weiter.\n312\n",
+        "Der Haupttext fuehrt den Gedanken auf der Folgeseite weiter.\n313\n",
     )
     out = tmp_path / "book.md"
     reflow_main(str(src), str(out), "md")

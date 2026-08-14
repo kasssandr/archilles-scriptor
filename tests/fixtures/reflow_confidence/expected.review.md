@@ -3,7 +3,7 @@ format_version: 0.3.0
 chunking_strategy: basic
 ---
 
-[p. 1] Erstens [^1] dann das Werk&[?FN:6|&] und hinten [^2][^3] als Schluss folgt es hier.
+[p. 1] Erstens [^1] dann das Werk&[?FN:6|&] und hinten [^2][^3] als Schluss folgt es hier. [p. 2] Die zweite Seite traegt nur Text und ihre eigene Seitenzahl.
 
 [^1]: Fuenfte Note.
 

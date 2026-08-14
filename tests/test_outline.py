@@ -189,6 +189,10 @@ def test_a_verified_chapter_start_becomes_a_heading(tmp_path):
         _frag("2", 30.0, size=16.0),
         _frag("Die Uebergabe von Narbonne", 50.0, size=15.0),
         *[_frag(t, 70.0 + i * 12) for i, t in enumerate(prose)],
+        # The chapter opening prints its folio at the foot, as many volumes do.
+        # Two readings rather than one, because a lone one no longer establishes
+        # a numbering system (FitParams.min_attested).
+        _frag("36", 380.0),
     ])
     next_page = SourcePage(index=2, width=300.0, height=400.0, source="pymupdf",
                            label="37", lines=[

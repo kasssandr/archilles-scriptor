@@ -173,6 +173,14 @@ def test_small_type_footnotes_leave_the_running_text(tmp_path):
         _frag("4.  Die kleine Fussnote unten auf der Seite.", 30, 380.0, size=7.5),
     ])
     (pages_dir / "00000001.json").write_text(dumps(page), encoding="utf-8")
+    # A second numbered page. One printed reading no longer establishes a
+    # numbering system (FitParams.min_attested), and a page without a label
+    # reads as front matter, where footnotes are not rendered at all.
+    second = SourcePage(index=2, width=300.0, height=400.0, source="pymupdf", lines=[
+        _frag("2", 30, 20.0),
+        _frag("Die zweite Seite fuehrt den Text ohne Anmerkung weiter.", 30, 50.0),
+    ])
+    (pages_dir / "00000002.json").write_text(dumps(second), encoding="utf-8")
 
     out = tmp_path / "book.txt"
     main(str(pages_dir), str(out))
