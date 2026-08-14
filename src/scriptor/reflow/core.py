@@ -75,13 +75,22 @@ class Page:
     # bibliography. None until assign_regions has run.
     region: str | None = None
     label: str | None = None              # the page's label, verbatim ("xiv", "312")
-    # Where ``label`` comes from. "printed" was read off the page, "catalogue"
-    # comes from the PDF's own PageLabels, "computed" was derived from the
-    # pagination sequence for a page that prints no folio. The distinction is
-    # not bookkeeping: a computed label is an inference, and a rule that draws
-    # structural conclusions from a label must not draw them from an inference
-    # — assign_modes reads the printed "1" as the start of the body, and the
-    # title page of a volume counted from 1 would otherwise claim it.
+    # Where ``label`` comes from — the strongest witness that confirmed it here:
+    #
+    #   "printed"    read off the page itself
+    #   "catalogue"  the PDF's own PageLabels
+    #   "toc"        the volume's table of contents names this page in print
+    #   "computed"   derived from the pagination sequence, nobody observed it
+    #
+    # The distinction is not bookkeeping: a computed label is an inference, and
+    # a rule that draws structural conclusions from a label must not draw them
+    # from an inference — assign_modes reads the printed "1" as the start of the
+    # body, and the title page of a volume counted from 1 would otherwise claim
+    # it. For the same reason "toc" is its own value rather than being folded
+    # into "catalogue": Masones carries no PDF catalogue at all and six of its
+    # pages are named by its contents, and a consumer weighing a citation has to
+    # be able to tell those apart. Contract with archilles — a new value here is
+    # to be carried over there.
     label_source: str | None = None
     index: int = -1                       # physical page, 1-based file ordinal
     label_top: str | None = None          # label candidate at top of the page

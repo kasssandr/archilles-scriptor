@@ -139,7 +139,14 @@ def run_verdict(pages, params: FitParams | None = None,
         if printed:
             p.label, p.label_source = printed[0].label, "printed"
         elif group:
-            p.label, p.label_source = group[0].label, "catalogue"
+            # Which source, not merely "not printed". Masones has no PDF
+            # catalogue whatsoever and six of its pages were recorded as
+            # "catalogue" -- their labels come from its table of contents. The
+            # field travels to archilles, which reads it to know how far a
+            # citation can be trusted, so it has to name the witness it had.
+            best = min(group, key=lambda o: 0 if o.source == "catalogue" else 1)
+            p.label = best.label
+            p.label_source = "catalogue" if best.source == "catalogue" else best.source
         else:
             span = spans.get(seg.start_pos)
             if span is None:
