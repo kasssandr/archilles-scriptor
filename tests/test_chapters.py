@@ -126,3 +126,56 @@ def test_a_tie_goes_to_the_coarser_level():
 
 def test_without_starts_there_is_no_principal_rank():
     assert principal_rank([]) is None
+
+
+# --- what the titles themselves say about their level -------------------------
+
+def test_a_level_of_subsections_is_ruled_out_however_many_it_has():
+    """The numbering in the title says what the entry is.
+
+    "II.1" is a subsection of "II" and no count can make it a chapter. Asclepios
+    numbers its subsections that way (10 on level 3, 3 more on level 4), Libros
+    and A comemoração likewise -- and a volume can easily carry more subsections
+    than chapters, which is exactly where counting alone would fail.
+    """
+    starts = ([ChapterStart(p, f"{p} Hoofdstuk", 2, "outline")
+               for p in (10, 20, 30)]
+              + [ChapterStart(p, f"{p//10}.{p%10} Onderdeel", 3, "outline")
+                 for p in (11, 12, 13, 21, 22, 23, 31, 32)])
+    assert principal_rank(starts) == 2
+
+
+def test_a_level_that_is_only_packaging_is_ruled_out():
+    # What the binder wrapped around the book, not how the book is divided.
+    # Measured on level 1: "Cover" and "Half Title" (Oxford Handbook),
+    # "Cubierta"/"Portada" (Libros), the bare ISBN twice (mehr-themistios).
+    starts = ([ChapterStart(1, "Cover", 1, "outline"),
+               ChapterStart(2, "Half Title", 1, "outline"),
+               ChapterStart(3, "9783111013244", 1, "outline")]
+              + [ChapterStart(p, f"{p} Chapter", 2, "outline")
+                 for p in (10, 20)])
+    assert principal_rank(starts) == 2
+
+
+def test_where_the_titles_say_nothing_the_count_decides():
+    """Asclepios is the case the titles cannot settle.
+
+    Its level 1 holds "Inhoudsopgave" and "Verantwoording van de afbeeldingen" --
+    parts of a book, not packaging, and not numbered either. What separates them
+    from level 2 is that level 2 divides the whole volume and level 1 divides it
+    into three parcels, which is a fact about counts, not about titles. So the
+    count still decides here, and the comment says so rather than pretending the
+    rule is stronger than it is.
+    """
+    starts = ([ChapterStart(1, "Inhoudsopgave", 1, "outline"),
+               ChapterStart(2, "Verantwoording van de afbeeldingen", 1, "outline")]
+              + [ChapterStart(p, f"Hoofdstuk {p}", 2, "outline")
+                 for p in range(10, 29)])
+    assert principal_rank(starts) == 2
+
+
+def test_ruling_every_level_out_leaves_the_count_in_charge():
+    # A volume of nothing but subsections still has to answer the question.
+    starts = [ChapterStart(p, f"1.{p} Onderdeel", 3, "outline")
+              for p in (10, 11, 12)]
+    assert principal_rank(starts) == 3
