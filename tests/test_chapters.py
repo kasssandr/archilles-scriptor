@@ -275,13 +275,13 @@ def test_a_growing_offset_is_not_a_contradiction():
     assert [(c.pos, c.printed) for c in got] == [(9, "9"), (12, "13"), (21, "23")]
 
 
-def test_a_register_at_the_back_is_not_a_table_of_contents():
-    """A name register looks exactly like a contents list: lines ending in page
-    numbers. De eerste minister's runs two columns of them at the back, and
-    reading it as contents offers hundreds of "chapter titles" that are
-    surnames. What tells them apart is where they stand, which is why
-    assign_modes only asks is_toc_page in the front of a volume -- and why the
-    chapter search has to ask the same way.
+def test_a_contents_at_the_back_of_the_volume_is_found():
+    """Four of the eighteen corpus volumes carry their contents only at the end.
+
+    L'Empire and Les apologistes set a table des matières at 97-98 % of the book,
+    as romance typography has always done, and both russian volumes do the same.
+    An earlier version bounded the search to the front, the way assign_modes
+    does, and would have thrown all four away.
     """
     from scriptor.reflow.core import Page
     from scriptor.reflow.chapters import contents_pages
@@ -289,13 +289,24 @@ def test_a_register_at_the_back_is_not_a_table_of_contents():
     def _p(index, lines):
         return Page(num=-1, body_lines=lines, index=index)
 
-    front = ["Woord vooraf 7", "Hoofdstuk 1 11", "Hoofdstuk 2 26",
-             "Hoofdstuk 3 60", "Conclusie 244"]
-    back = ["Buckingham, George 215, 216", "Buys, Paulus 29, 46",
-            "Caron, Noël de 77, 81", "Coligny, Louise 93",
-            "Cromwell, Oliver 51, 52"]
-    pages = ([_p(i, ["Tekst."]) for i in range(1, 5)]
-             + [_p(5, front)]
-             + [_p(i, ["Tekst."]) for i in range(6, 100)]
-             + [_p(100, back)])
-    assert [p.index for p in contents_pages(pages)] == [5]
+    contents = ["Avant-propos 7", "Chapitre 1 11", "Chapitre 2 26",
+                "Chapitre 3 60", "Conclusion 244"]
+    pages = [_p(i, ["Texte."]) for i in range(1, 96)] + [_p(96, contents)]
+    assert [p.index for p in contents_pages(pages)] == [96]
+
+
+def test_a_register_offers_no_title_any_chapter_page_spells_out():
+    """A name register reads as a contents -- lines ending in page numbers -- and
+    no threshold separates the two: parse_toc scores the real contents of Making
+    Martyrs at 0.45 and Themistios' register at 0.53. What separates them is that
+    a register's entries are surnames, and no page opens by spelling one out.
+    That guard needs no assumption about where anything stands.
+    """
+    from scriptor.reflow.chapters import from_toc
+
+    register = [_toc("Buckingham, George Villiers", 215),
+                _toc("Caron, Noël de", 77),
+                _toc("Coligny, Louise", 93)]
+    pages = {1: ["Register"], 77: ["Gewone tekst zonder titel."],
+             93: ["Nog meer tekst."], 215: ["En hier ook."]}
+    assert from_toc(register, pages, toc_positions={1}) == []

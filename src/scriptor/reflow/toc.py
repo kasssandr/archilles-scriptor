@@ -53,6 +53,47 @@ class TocRender:
     anchor_targets: set[str] = field(default_factory=set)
 
 
+# A heading printed over a table of contents, in the two shapes a printer gives
+# it. The words themselves are already known (regions.region_of_heading covers
+# Sumário, TABLE DES MATIÈRES, Inhoudsopgave, Содержание and the rest); what
+# needs undoing is the typography.
+#
+# This is how a contents list is told from a name register, and it is the only
+# test that works: position does not (four of the eighteen corpus volumes carry
+# their contents at the back — L'Empire and Les apologistes set a table des
+# matières at 97–98 % of the book, as romance typography has always done), and
+# confidence does not either (parse_toc scores the real contents of Making
+# Martyrs at 0.45 and Themistios' register at 0.53). What holds is what the
+# volume writes over it. No contents page in this corpus carries the book's
+# title; every one carries "Índice" or its equivalent.
+_SPACED_OUT = re.compile(r"^(?:\S\s+){3,}\S\s*$")
+
+
+def _unspace(line: str) -> str:
+    """Undo letterspacing: 'S u m á r i o' -> 'Sumário'.
+
+    Only where the line is *nothing but* single characters and spaces. A line
+    that merely starts with one ("I. Die Antike") keeps its spaces, or every
+    numbered heading in the corpus would collapse into a word.
+    """
+    return re.sub(r"\s+", "", line) if _SPACED_OUT.match(line.strip()) else line
+
+
+def is_contents_heading(line: str) -> bool:
+    """True if this line is the heading a volume prints over its contents."""
+    from scriptor.reflow.regions import region_of_heading
+    from scriptor.reflow.running_elements import _normalize_header_line
+
+    s = line.strip()
+    if not s:
+        return False
+    for candidate in (s, _normalize_header_line(s), _unspace(s),
+                      _unspace(_normalize_header_line(s))):
+        if candidate and region_of_heading(candidate) == "contents":
+            return True
+    return False
+
+
 def is_toc_page(
     page: Page,
     *,

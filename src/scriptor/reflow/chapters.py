@@ -118,28 +118,79 @@ def from_outline(
     return [best[p] for p in sorted(best)]
 
 
-# How far into a volume a table of contents may still begin. The same bound
-# assign_modes uses, and for the same reason: a name register is lines ending in
-# page numbers, exactly like a contents list, and De eerste minister sets two
-# columns of them at the back. Nothing in the text tells the two apart -- where
-# they stand does.
-CONTENTS_FRACTION = 0.15
+# A contents list is not found by where it stands. Four of the eighteen corpus
+# volumes carry one only at the back -- L'Empire and Les apologistes set a table
+# des matières at 97-98 % of the book, as romance typography has always done,
+# and both russian volumes do the same. An earlier version of this bounded the
+# search to the front, the way assign_modes does, and would have thrown all four
+# away.
+#
+# Confidence does not settle it either. parse_toc scores the real contents of
+# Making Martyrs at 0.45-0.51 and of Militarizing Men at 0.50, while Themistios'
+# name register scores 0.53 and the Oxford Handbook's bibliography 0.44: the
+# ranges overlap, so any threshold cuts through the middle of both groups.
+#
+# What does hold is content, and it is already in place: a find has to spell its
+# title out on the page it claims (match_prefix_lines), and the finds together
+# have to rise in reading order (_in_reading_order). A register offers surnames,
+# which no chapter page spells out; a bibliography offers years. Those two
+# guards caught the volume-title trap at De eerste minister, and they do not
+# care where a page sits.
+
+
+FALLBACK_CONFIDENCE = 0.6
 
 
 def contents_pages(pages) -> list:
-    """The pages that are a table of contents, asked only where one can be.
+    """The pages of the volume's table of contents, wherever they stand.
 
-    Position is part of the question. Asked over the whole volume, the register
-    of De eerste minister answers yes, and so do the bibliography pages of the
-    Oxford Handbook -- 24 "contents pages" with 1174 lines, against a real
-    contents of a few.
+    The heading decides. A page that reads like a contents list may be a name
+    register (Themistios, De eerste minister) or a bibliography (the Oxford
+    Handbook, Artificial Humanities); what no register carries is "Índice" or
+    its equivalent written over it. The pages after it are taken as long as
+    they go on listing.
+
+    The heading has to be looked for in two places. Where the outline names the
+    contents and the page confirms it, ``chapter_headings`` has already lifted
+    the title out of the body and into ``Page.heading`` -- Asclepios' and
+    Artificial Humanities' "Inhoudsopgave" / "Contents" are gone from the text
+    by the time anyone gets here.
     """
-    from scriptor.reflow.toc import is_toc_page
+    from scriptor.reflow.toc import is_contents_heading, is_toc_page
 
-    if not pages:
+    def heads_a_contents(page) -> bool:
+        if page.heading and is_contents_heading(page.heading):
+            return True
+        return any(is_contents_heading(ln) for ln in page.body_lines[:4])
+
+    out: list = []
+    taking = False
+    for page in pages:
+        if heads_a_contents(page):
+            taking = True
+            out.append(page)
+            continue
+        if taking:
+            # The list runs on until a page stops listing.
+            if is_toc_page(page):
+                out.append(page)
+            else:
+                taking = False
+    if out:
+        return out
+    # A volume that prints no such heading falls back on the shape of its pages,
+    # and there a confidence bound is finally usable. It was not before: the real
+    # contents of Making Martyrs scores 0.45 and Themistios' name register 0.53,
+    # so any threshold cut through the middle of both groups. Those volumes are
+    # now found by their heading ("Оглавление") and never reach this line. What
+    # is left here is bauer-aneignung's ten-page contents at 0.76 and the Oxford
+    # Handbook's bibliography at 0.44 -- a website print-out that heads nothing.
+    from scriptor.reflow.toc import parse_toc
+
+    shaped = [p for p in pages if is_toc_page(p)]
+    if not shaped:
         return []
-    limit = max(1, int(len(pages) * CONTENTS_FRACTION))
-    return [p for i, p in enumerate(pages) if i < limit and is_toc_page(p)]
+    return shaped if parse_toc(shaped).confidence >= FALLBACK_CONFIDENCE else []
 
 
 def from_toc(
