@@ -211,3 +211,72 @@ def test_a_block_without_the_footer_is_left_alone():
     cleaned, rescued = remove_running_footers_from_blocks(blocks, [_DIE_FOOTER])
     assert cleaned[0] == blocks[0]
     assert rescued[0] is None
+
+
+# --- speed: the cheap bounds must not change a single answer ------------------
+
+def test_the_cheap_bounds_never_change_an_answer():
+    """``real_quick_ratio`` and ``quick_ratio`` are upper bounds on ``ratio``.
+
+    Skipping the expensive comparison where a bound already falls below the
+    threshold is therefore free of consequence -- but only if that is actually
+    true of every pair, including the shortcut cases the function handles before
+    it ever reaches SequenceMatcher. Checked against the plain definition over
+    pairs built to sit on both sides of the threshold and on it.
+    """
+    from difflib import SequenceMatcher
+
+    base = [
+        "The Oxford Handbook of the Hellenistic and Roman Near East",
+        "Rubina Raja (ed.)",
+        "Bibliography",
+        "Google Scholar Google Preview WorldCat COPAC",
+        "146 WILHELM HEIL",
+        "Deutsches Institut fuer Entwicklungspolitik",
+        "Bonn: Deutsches Institut fuer Entwicklungspolitik (Discussion Paper).",
+        "some ordinary line of body text that begins a page mid-sentence",
+        "some ordinary line of body text that begins a page mid-sentenc",
+        "",
+        "a",
+    ]
+    pairs = [(a, b) for a in base for b in base]
+    for a, b in pairs:
+        plain = bool(a) and bool(b) and (
+            a == b
+            or (b in a and len(b) >= 0.85 * len(a))
+            or SequenceMatcher(None, a.lower(), b.lower()).ratio() >= 0.85
+        )
+        assert _strings_are_similar(a, b) is plain, (a, b)
+
+
+def test_grouping_a_volume_that_has_no_running_head_stays_fast():
+    """A volume whose pages start mid-sentence puts every first line in a group
+    of its own, so the grouping loop grows quadratically -- and each comparison
+    used to run a full SequenceMatcher. The Oxford Handbook (911 pages) spent
+    98.5 % of an 18-minute run in here.
+
+    The bound is generous: the point is to catch the return of an O(n^2) run of
+    full comparisons, not to pin a machine's speed.
+    """
+    import random
+    import time
+
+    # The lines have to differ in their *word material*, not just in a number:
+    # near-identical lines all land in one group and never exercise the loop.
+    random.seed(7)
+    words = (
+        "Antiochus Seleucid tetradrachm Phoenician autonomy coinage Ptolemaic "
+        "inscription sanctuary excavation Hellenistic Palmyra Nabataean temple "
+        "amphora necropolis basalt limestone epigraphy chronology stratigraphy"
+    ).split()
+    pages = [" ".join(random.choice(words) for _ in range(random.randint(7, 11)))
+             for _ in range(400)]
+
+    t0 = time.perf_counter()
+    assert detect_running_headers(pages) == []
+    elapsed = time.perf_counter() - t0
+    # Measured on this input: 16.2s before the cheap bounds went in front of the
+    # full comparison, 3.3s after. The bound sits between the two rather than
+    # close to the new value -- the point is to catch the return of an O(n^2)
+    # run of full comparisons, not to pin a machine's speed.
+    assert elapsed < 8.0, f"grouping took {elapsed:.1f}s"

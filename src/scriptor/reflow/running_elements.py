@@ -30,7 +30,26 @@ def _strings_are_similar(a: str, b: str, threshold: float = 0.85) -> bool:
     # 7/2006)." vs. the footer "Deutsches Institut für Entwicklungspolitik").
     if b in a and len(b) >= threshold * len(a):
         return True
-    return SequenceMatcher(None, a.lower(), b.lower()).ratio() >= threshold
+    # ``ratio`` walks the two strings looking for matching blocks and is by far
+    # the most expensive thing this module does. ``real_quick_ratio`` (lengths
+    # alone) and ``quick_ratio`` (a multiset count of the characters) are exact
+    # upper bounds on it, so a pair either bound already rules out cannot become
+    # similar by looking closer -- skipping the walk there changes no answer,
+    # only the bill. This is difflib's own idiom (``get_close_matches``).
+    #
+    # It matters where the grouping loop grows: a volume whose pages begin
+    # mid-sentence puts nearly every first line in a group of its own, and each
+    # new line is then compared against all of them. The Oxford Handbook (911
+    # pages, no repeating head over most of the volume) spent 98.5 % of an
+    # 18-minute run in here. Measured on 400 unrelated lines: 16.2s -> 3.3s.
+    # The gain is larger on real prose than on this synthetic case, where every
+    # line draws from one small word pool and ``quick_ratio`` (which counts
+    # characters, not order) therefore clears the threshold more often than it
+    # would on text.
+    matcher = SequenceMatcher(None, a.lower(), b.lower())
+    return (matcher.real_quick_ratio() >= threshold
+            and matcher.quick_ratio() >= threshold
+            and matcher.ratio() >= threshold)
 
 
 def _normalize_header_line(line: str) -> str:
