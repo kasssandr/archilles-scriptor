@@ -838,8 +838,16 @@ def reconstruct_body(
         # during this page). The renderer appends them as a hanging
         # reference — so they are not lost.
         unclaimed = sorted(set(p.footnotes) - seen_this_page)
-        if unclaimed and p.label is not None:
-            audit[p.label] = unclaimed
+        if unclaimed:
+            # The rescue is not conditional on the page having a label. It used
+            # to be, because this same branch files the page in the audit under
+            # its label -- so a page nobody could name lost its notes outright.
+            # Two of the sixteen corpus volumes yield no page label at all, and
+            # every unclaimed note in them went the same way, silently. Where
+            # there is no label the audit falls back to the physical position:
+            # less useful to a reader than a printed number, and the only handle
+            # a page like that has.
+            audit[p.label if p.label is not None else f"phys. {p.index}"] = unclaimed
             if cur_chunks:
                 target = cur_fn
             elif len(paragraphs) > paragraphs_before_page:
