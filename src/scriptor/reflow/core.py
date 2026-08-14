@@ -1382,6 +1382,36 @@ def main(
     if cut:
         print(f"Footnote blocks cut by type size: {cut} pages", file=sys.stderr)
     page_lines = [s.body if s else r.lines for s, r in zip(splits, reconstructions)]
+
+    # Characters the reader never sees, resolved before anything reads the text:
+    # a soft hyphen says where a word was broken, a zero-width mark says nothing
+    # at all, and a control character is a font that lost its ToUnicode table.
+    # Left as they are, they split words for everyone downstream -- Artificial
+    # Humanities came out with 1140 words in halves ("unprece- dented") because
+    # the de-hyphenation only ever looked for U+002D.
+    #
+    # Body and apparatus are learnt together and rewritten with the same
+    # reading: they are set in the same font, and the apparatus alone is far too
+    # little text to learn from.
+    from scriptor.reflow.characters import (
+        describe as describe_characters,
+        learn_broken_glyphs,
+        resolve_characters,
+    )
+    glyphs = learn_broken_glyphs(page_lines + [b for b in fn_blocks if b])
+    page_lines, char_report = resolve_characters(page_lines, glyphs)
+    if any(fn_blocks):
+        resolved_blocks, block_report = resolve_characters(
+            [b or [] for b in fn_blocks], glyphs
+        )
+        fn_blocks = [r if b else None for r, b in zip(resolved_blocks, fn_blocks)]
+        char_report.soft_hyphens += block_report.soft_hyphens
+        char_report.zero_width += block_report.zero_width
+        char_report.dropped += block_report.dropped
+    said = describe_characters(char_report)
+    if said:
+        print(f"Invisible characters: {said}", file=sys.stderr)
+
     # Left edges, kept parallel to page_lines: the peeled label tail behind a
     # footnote cut carries none.
     page_indents = [
