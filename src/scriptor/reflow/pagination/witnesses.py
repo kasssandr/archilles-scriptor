@@ -90,6 +90,32 @@ def catalogue_observations(pages, weight: float,
     ]
 
 
+# What a table of contents is worth when it names a page. Less than the page's
+# own printing, because it has been through two steps the printed label has not:
+# a parser that read the contents line, and a search that found the title on a
+# page. Either can go wrong where a printed folio cannot. More than nothing,
+# because it speaks precisely where the printed edge falls silent -- a chapter
+# opening is the page a volume most often sets without a folio.
+TOC_WEIGHT = 0.6
+
+
+def toc_observations(chapters, pos_of=None) -> list[Observation]:
+    """What the contents says the chapter openings are called in print.
+
+    Only openings that carry a printed page (``ChapterStart.printed``); an
+    outline entry has no such thing and says nothing here.
+    """
+    out: list[Observation] = []
+    for c in chapters:
+        if not getattr(c, "printed", None) or decode_label(c.printed) is None:
+            continue
+        out.append(Observation(
+            pos=c.pos, label=c.printed, source="toc", weight=TOC_WEIGHT,
+            why=f"table of contents lists {c.title!r} at printed page {c.printed}",
+        ))
+    return out
+
+
 def _decoded(sequence: list[tuple[int, str]]) -> list[tuple[int, int, str]]:
     """(pos, ordinal, style) for the entries that are labels at all."""
     out = []
@@ -130,13 +156,23 @@ def _consistent_steps(sequence: list[tuple[int, str]]) -> int:
     return steps
 
 
-def boundary_candidates(pages, observations, pos_of=_index) -> list[int]:
+def boundary_candidates(pages, observations, pos_of=_index,
+                        chapters=()) -> list[int]:
     """Positions at which a segment may begin. Position 1 always may.
 
     Deliberately short. Every candidate multiplies the work of the fit and --
     worse -- gives a misreading one more place to hide a segment of its own.
     """
     candidates = {1}
+
+    # Where a chapter opens is where a printed count jumps: the printer
+    # suppresses the blank facing the opening, or starts a new sheet, and the
+    # offset between physical and printed page moves. Carlomagno's PDF drops
+    # that blank before every opening, so its offset grows by one each time --
+    # and the fit could only explain that with a boundary nobody offered it.
+    # Confirmed openings only (``chapters.from_outline``), so this stays the
+    # short list it has to be.
+    candidates |= {c.pos for c in chapters if c.pos >= 1}
 
     # Breaks are proposed by whichever edge reads as the more coherent run. Both
     # edges are witnesses, but they are not both boundary *proposers*: a running

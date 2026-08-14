@@ -96,3 +96,53 @@ def test_a_running_head_at_the_wrong_edge_does_not_propose_boundaries():
     pages = [_page(i, bottom=str(i), top="12") for i in range(1, 8)]
     obs = printed_observations(pages)
     assert boundary_candidates(pages, obs) == [1]
+
+
+# --- chapter starts as boundary candidates ------------------------------------
+
+def test_a_chapter_start_may_begin_a_segment():
+    """Where a chapter opens is where a printed count jumps.
+
+    The printer suppresses a blank or starts a new sheet there, so the offset
+    between physical and printed page changes at chapter openings and nowhere
+    else (Carlomagno: its PDF drops the blank before every opening, and the
+    offset grows by one each time). Without the opening among the candidates the
+    fit has to explain the jump with a boundary it was never offered.
+    """
+    from scriptor.reflow.chapters import ChapterStart
+
+    pages = [_page(i, None) for i in range(1, 8)]
+    starts = [ChapterStart(pos=4, title="Zweites Kapitel", rank=1,
+                           source="outline")]
+    assert 4 in boundary_candidates(pages, [], chapters=starts)
+
+
+def test_without_chapter_starts_the_candidates_are_what_they_were():
+    pages = [_page(i, None) for i in range(1, 8)]
+    assert (boundary_candidates(pages, [], chapters=[])
+            == boundary_candidates(pages, []))
+
+
+def test_the_contents_speaks_for_a_page_that_prints_no_folio():
+    """A chapter opening is where a volume most often suppresses its folio, and
+    it is the one page a table of contents names by its printed number. The
+    cross-reference is worth less than the page's own printing -- it survives a
+    parser and a page search -- so it carries less weight and loses wherever the
+    page speaks for itself.
+    """
+    from scriptor.reflow.chapters import ChapterStart
+    from scriptor.reflow.pagination.witnesses import toc_observations
+
+    starts = [ChapterStart(pos=58, title="Rey de los Francos", rank=1,
+                           source="toc", printed="61")]
+    obs = toc_observations(starts)
+    assert [(o.pos, o.label, o.source) for o in obs] == [(58, "61", "toc")]
+    assert obs[0].weight < 1.0
+
+
+def test_a_chapter_start_without_a_printed_page_says_nothing_about_labels():
+    from scriptor.reflow.chapters import ChapterStart
+    from scriptor.reflow.pagination.witnesses import toc_observations
+
+    starts = [ChapterStart(pos=5, title="Anexos", rank=1, source="outline")]
+    assert toc_observations(starts) == []

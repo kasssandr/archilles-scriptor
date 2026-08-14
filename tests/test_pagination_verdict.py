@@ -238,3 +238,35 @@ def test_inside_the_span_the_plan_wins():
     pages = [_page(1, "45"), _page(2, "46"), _page(3, "2"), _page(4, "48")]
     run_verdict(pages)
     assert pages[2].label == "47"
+
+
+def test_a_label_from_the_contents_says_so():
+    """``label_source`` names the strongest witness that confirmed this page, and
+    the contents is not the catalogue.
+
+    Masones has no PDF catalogue at all and six of its pages were nonetheless
+    recorded as "catalogue" -- their labels come from its table of contents. The
+    field travels to archilles, which reads it to know how far to trust a
+    citation, so it has to say what it means.
+    """
+    from scriptor.reflow.chapters import ChapterStart
+
+    pages = [_page(i) for i in range(1, 8)]
+    pages[3].body_lines = ["Rey de los Francos", "Text."]
+    starts = [ChapterStart(pos=4, title="Rey de los Francos", rank=1,
+                           source="toc", printed="4"),
+              ChapterStart(pos=6, title="Anexos", rank=1,
+                           source="toc", printed="6")]
+    run_verdict(pages, chapters=starts)
+    assert pages[3].label == "4"
+    assert pages[3].label_source == "toc"
+
+
+def test_the_printed_page_still_outranks_the_contents():
+    from scriptor.reflow.chapters import ChapterStart
+
+    pages = [_page(i, str(i)) for i in range(1, 6)]
+    starts = [ChapterStart(pos=3, title="Kapitel", rank=1, source="toc",
+                           printed="3")]
+    run_verdict(pages, chapters=starts)
+    assert pages[2].label_source == "printed"

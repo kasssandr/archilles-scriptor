@@ -75,13 +75,22 @@ class Page:
     # bibliography. None until assign_regions has run.
     region: str | None = None
     label: str | None = None              # the page's label, verbatim ("xiv", "312")
-    # Where ``label`` comes from. "printed" was read off the page, "catalogue"
-    # comes from the PDF's own PageLabels, "computed" was derived from the
-    # pagination sequence for a page that prints no folio. The distinction is
-    # not bookkeeping: a computed label is an inference, and a rule that draws
-    # structural conclusions from a label must not draw them from an inference
-    # — assign_modes reads the printed "1" as the start of the body, and the
-    # title page of a volume counted from 1 would otherwise claim it.
+    # Where ``label`` comes from — the strongest witness that confirmed it here:
+    #
+    #   "printed"    read off the page itself
+    #   "catalogue"  the PDF's own PageLabels
+    #   "toc"        the volume's table of contents names this page in print
+    #   "computed"   derived from the pagination sequence, nobody observed it
+    #
+    # The distinction is not bookkeeping: a computed label is an inference, and
+    # a rule that draws structural conclusions from a label must not draw them
+    # from an inference — assign_modes reads the printed "1" as the start of the
+    # body, and the title page of a volume counted from 1 would otherwise claim
+    # it. For the same reason "toc" is its own value rather than being folded
+    # into "catalogue": Masones carries no PDF catalogue at all and six of its
+    # pages are named by its contents, and a consumer weighing a citation has to
+    # be able to tell those apart. Contract with archilles — a new value here is
+    # to be carried over there.
     label_source: str | None = None
     index: int = -1                       # physical page, 1-based file ordinal
     label_top: str | None = None          # label candidate at top of the page
@@ -298,17 +307,20 @@ def append_rescued_folio(text: str, folio: str | None) -> str:
     return f"{text}\n{folio}"
 
 
-def reconcile_page_numbers(pages: list[Page]) -> str:
+def reconcile_page_numbers(pages: list[Page], chapters=()) -> str:
     """Set every page's label from the source consensus; say what won.
 
     Kept under its old name because the call site and the tests speak it. The
     work now happens in ``reflow/pagination``: witnesses state what each page is
     called, and the plan that explains the most of them decides
     (docs/internal/2026-08-13-quellen-verbund-design.md).
+
+    ``chapters`` are confirmed chapter openings; they contribute boundary
+    candidates, never a label.
     """
     from scriptor.reflow.pagination.verdict import run_verdict
 
-    return run_verdict(pages).description
+    return run_verdict(pages, chapters=chapters).description
 
 
 def restore_rejected_folios(pages: list[Page]) -> int:
@@ -1496,7 +1508,30 @@ def main(
     entries = outline_mod.load_outline(src)
     pos_by_phys = {sp.index: pos for pos, sp in enumerate(source_pages)}
     headings_by_pos: dict[int, str] = {}
+    chapter_starts: list = []
     if entries and outline_mod.credible(entries):
+        # Every level, for the structure. Where a chapter opens is where the
+        # printed count may jump, and publishers put "Cover" or the ISBN on
+        # level 1 and the chapters below it: over the corpus, asking level 1
+        # alone confirms 31 openings and asking every level confirms 112.
+        # Headings are a different question and stay on level 1 below -- writing
+        # a title into the author's text carries a risk that reading a position
+        # does not.
+        from scriptor.reflow.chapters import from_outline
+        all_positional = [
+            outline_mod.OutlineEntry(e.level, e.title, pos_by_phys[e.page] + 1)
+            for e in entries
+            if e.page in pos_by_phys
+        ]
+        chapter_starts = from_outline(all_positional, page_lines)
+        if chapter_starts:
+            from scriptor.reflow.chapters import principal_rank
+            print(
+                f"Chapter openings confirmed: {len(chapter_starts)} "
+                f"(chapters sit on outline level {principal_rank(chapter_starts)})",
+                file=sys.stderr,
+            )
+
         level1 = [e for e in entries if e.level == 1]
         positional = [
             outline_mod.OutlineEntry(e.level, e.title, pos_by_phys[e.page] + 1)
@@ -1589,7 +1624,40 @@ def main(
             file=sys.stderr,
         )
 
-    page_col = reconcile_page_numbers(pages)
+    # The contents, as a second source of chapter openings — and the only one
+    # that knows what those pages are *called* in print. Nine of the eighteen
+    # corpus volumes carry no outline at all, and a chapter opening is the page
+    # a volume most often sets without a folio, so this is where the printed
+    # edge is silent and something else has to speak.
+    #
+    # Entries are placed by their title, never by their number: the number is a
+    # printed page, and turning it into a position would need the very plan this
+    # informs.
+    from scriptor.reflow.chapters import contents_pages, from_toc
+    from scriptor.reflow.toc import parse_toc
+
+    toc_pages = contents_pages(pages)
+    if toc_pages:
+        parsed = parse_toc(toc_pages)
+        if parsed.entries:
+            found = from_toc(
+                parsed.entries,
+                {p.index: p.body_lines for p in pages},
+                {p.index for p in toc_pages},
+            )
+            known = {c.pos for c in chapter_starts}
+            fresh = [c for c in found if c.pos not in known]
+            if fresh:
+                chapter_starts = sorted(chapter_starts + fresh,
+                                        key=lambda c: c.pos)
+                named = sum(1 for c in fresh if c.printed)
+                print(
+                    f"Contents: {len(fresh)} further chapter openings "
+                    f"({named} of them naming their printed page)",
+                    file=sys.stderr,
+                )
+
+    page_col = reconcile_page_numbers(pages, chapter_starts)
     restored = restore_rejected_folios(pages)
     print(f"Page label position: {page_col}", file=sys.stderr)
     if restored:

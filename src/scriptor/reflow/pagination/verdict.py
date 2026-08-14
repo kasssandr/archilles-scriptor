@@ -28,6 +28,7 @@ from scriptor.reflow.pagination.witnesses import (
     catalogue_observations,
     catalogue_weight,
     printed_observations,
+    toc_observations,
 )
 
 # A page in a segment carried by forty printed labels is better attested than
@@ -62,8 +63,14 @@ def _agrees(obs: Observation, plan: PaginationPlan) -> bool:
             and decode_label(obs.label) == plan.value_at(obs.pos))
 
 
-def run_verdict(pages, params: FitParams | None = None) -> Verdict:
-    """Set every page's label, its source and its confidence. Say what won."""
+def run_verdict(pages, params: FitParams | None = None,
+                chapters=()) -> Verdict:
+    """Set every page's label, its source and its confidence. Say what won.
+
+    ``chapters`` are the confirmed chapter openings (``reflow.chapters``). They
+    say nothing about what a page is called -- they say where the volume is
+    entitled to change its mind, which is what a boundary candidate is.
+    """
     params = params or FitParams()
     for p in pages:
         p.num, p.label, p.label_source, p.label_confidence = -1, None, None, None
@@ -86,10 +93,11 @@ def run_verdict(pages, params: FitParams | None = None) -> Verdict:
 
     cat_weight = catalogue_weight(pages, pos_of)
     observations = (printed_observations(pages, pos_of)
-                    + catalogue_observations(pages, cat_weight, pos_of))
+                    + catalogue_observations(pages, cat_weight, pos_of)
+                    + toc_observations(chapters))
     last_pos = max(pos_of(p) for p in pages)
     plan = fit(observations,
-               boundary_candidates(pages, observations, pos_of),
+               boundary_candidates(pages, observations, pos_of, chapters),
                last_pos, params)
 
     at: dict[int, list[Observation]] = {}
@@ -131,7 +139,14 @@ def run_verdict(pages, params: FitParams | None = None) -> Verdict:
         if printed:
             p.label, p.label_source = printed[0].label, "printed"
         elif group:
-            p.label, p.label_source = group[0].label, "catalogue"
+            # Which source, not merely "not printed". Masones has no PDF
+            # catalogue whatsoever and six of its pages were recorded as
+            # "catalogue" -- their labels come from its table of contents. The
+            # field travels to archilles, which reads it to know how far a
+            # citation can be trusted, so it has to name the witness it had.
+            best = min(group, key=lambda o: 0 if o.source == "catalogue" else 1)
+            p.label = best.label
+            p.label_source = "catalogue" if best.source == "catalogue" else best.source
         else:
             span = spans.get(seg.start_pos)
             if span is None:
