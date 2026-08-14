@@ -171,8 +171,14 @@ def contents_pages(pages) -> list:
             out.append(page)
             continue
         if taking:
-            # The list runs on until a page stops listing.
-            if is_toc_page(page):
+            # The list runs on until a page stops listing -- and a continuation
+            # page is judged more leniently than a first one. Where a contents
+            # wraps its titles, the second half of each entry carries no page
+            # number and drags the ratio under the bar meant to keep prose out:
+            # Masones' contents was cut after two pages that way, losing every
+            # chapter past page 100. Once a heading has been seen the doubt is
+            # already settled, so the bar only has to tell listing from prose.
+            if is_toc_page(page, min_entry_lines=3, page_end_fraction=0.3):
                 out.append(page)
             else:
                 taking = False

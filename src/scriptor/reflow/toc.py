@@ -109,6 +109,14 @@ def is_toc_page(
     return ending >= min_entry_lines and ending / len(lines) >= page_end_fraction
 
 
+# A bullet in a contents list is a rank, not decoration. Carlomagno separates
+# its levels by nothing else: seven chapters set in capitals with a roman
+# number, fifty-one sections each opened by "•". Dropping the bullet before
+# asking what an entry is -- which the chapter search did -- throws away the
+# only thing that says so, and six sections came out as chapters.
+_BULLET_PREFIX = re.compile(r"^\s*[•▪◦‣*]\s*(?P<rest>\S.*)$")
+
+
 def _split_numbering(title: str, *, roman_present: bool) -> tuple[int, str]:
     """(level, title_without_number). Unnumbered -> (1, title).
 
@@ -116,6 +124,13 @@ def _split_numbering(title: str, *, roman_present: bool) -> tuple[int, str]:
     numbers form the top level and arabic numbering shifts one level deeper.
     Without roman numbers, arabic numbering stays 1-based as before.
     """
+    bullet = _BULLET_PREFIX.match(title)
+    if bullet:
+        # One level below whatever the volume calls its top -- and the bullet
+        # itself is not part of the title, which is set without it on the page.
+        inner_level, inner = _split_numbering(bullet.group("rest"),
+                                              roman_present=roman_present)
+        return max(inner_level, 1) + 1, inner
     if roman_present:
         rm = _ROMAN_PREFIX.match(title)
         if rm:
@@ -127,21 +142,87 @@ def _split_numbering(title: str, *, roman_present: bool) -> tuple[int, str]:
     return 1, title
 
 
+# A line without a page number that is a thing in its own right, not the first
+# half of an entry that wrapped. Two kinds occur in this corpus:
+#
+#   the heading over the list        "ÍNDICE", "S u m á r i o"
+#   a chapter mark between entries   "CAPÍTULO VI", "PRIMERA PARTE"
+#
+# The second matters as much as the first: Masones prints 'CAPÍTULO VI' between
+# the last section of chapter V (page 90) and the first of chapter VI (page 93),
+# and joining it downward would merge a boundary into an entry.
+_CHAPTER_MARK = re.compile(
+    r"(?i)^\s*(?:cap[íi]tulo|chapter|kapitel|hoofdstuk|capitolo|chapitre|"
+    r"parte|part|teil|deel|libro|book|buch|tomo|volume|band)"
+    r"[\s.:—–-]*[IVXLCDM\d]*\s*$"
+)
+
+
+# How long the first half of a wrapped title may be. A title that does not fit
+# on a line is still a title; what is longer than this is something else that
+# happens to carry no page number.
+_MAX_WRAP_HALF = 90
+
+
+def _stands_alone(line: str) -> bool:
+    """True if this numberless line is its own thing, not half an entry.
+
+    Three kinds occur: the heading over the list, a chapter mark between
+    entries, and a line the reflow has already turned into something else. The
+    last one is bauer-aneignung, part of whose contents is set as a table and
+    arrives as Markdown -- appending "| B. | Gang der Darstellung | | 23 || ---"
+    to the title above it produces exactly the monstrosity it looks like.
+    """
+    if "|" in line or line.lstrip().startswith(("#", ">", "-")):
+        return True
+    if len(line) > _MAX_WRAP_HALF:
+        return True
+    return bool(_CHAPTER_MARK.match(line)) or is_contents_heading(line)
+
+
 def parse_toc(pages: list[Page]) -> TocParse:
     raw: list[tuple[str, int]] = []   # (title_with_number, page)
     non_empty = 0
+    # The line above, when it carried no page number and could be the first
+    # half of an entry that wrapped. Between a quarter and a half of the lines
+    # in this corpus' contents lists have no number, and wrapped titles are the
+    # largest group among them: Masones loses nine of its fourteen chapters
+    # that way, leaving "Escocesa | 36" and "cia | 107" behind.
+    pending: str | None = None
     for p in pages:
         for ln in p.body_lines:
             s = ln.strip()
             if not s:
+                # A blank line does not end a wrapped title here. The indent
+                # that marks the continuation ("Escocesa" set at x=104 under
+                # its title at x=89) is exactly what mark_indent_breaks turns
+                # into a blank line further up the pipeline -- the very signal
+                # this needs arrives as its own destruction.
                 continue
             non_empty += 1
             m = _ENTRY_RE.match(s)
             if not m or not m.group("title").strip():
+                # No number: the first half of a wrapped entry, or a line that
+                # belongs to nobody. Only the line *directly* above an entry is
+                # ever joined -- a run of them is not one title, and joining
+                # would swallow whatever stands over it.
+                pending = None if _stands_alone(s) else s
                 continue
-            title = m.group("title").strip(" .")
+            # Leaders run from the title to its number, and not only as dots:
+            # Masones sets a pipe ("Nota preliminar | 10"), others a middle dot
+            # or an ellipsis. None of them is part of the title.
+            #
+            # A bullet is not among them. It stands *before* the title, where it
+            # states a rank (_BULLET_PREFIX), and stripping it here would throw
+            # that away before anyone asks -- which is how six of Carlomagno's
+            # sections came out as chapters.
+            title = m.group("title").strip(" .·|–—…\t")
+            if pending:
+                title = f"{pending} {title}".strip()
+                pending = None
             if title:
                 raw.append((title, int(m.group("page"))))
+        pending = None      # a wrap does not cross a page break
 
     # Only assume a roman-numeral scheme if >=2 entries start that way
     # (a lone "M." is more likely an initial than a chapter number).
