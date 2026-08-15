@@ -52,6 +52,18 @@ def test_the_profile_says_the_edge_and_the_share():
     assert "bottom" in line and "75%" in line
 
 
+def test_a_linked_label_counts_as_attested():
+    # One definition of "attested", shared with the confidence: the page printed
+    # the number, or a contents line printed it and a reference the file
+    # resolves put it here. Josephus and Jesus reads 4 % off its own pages and
+    # 32 more from its contents links; calling that volume 4 % attested would
+    # understate what is actually known about it.
+    pages = [_page(1, "11"), _page(2, "12"), _page(3), _page(4, "14")]
+    run_verdict(pages, links={1: [(3, "Kapitel 1 ....... 13")]})
+    assert pages[2].label_source == "link"
+    assert attested_share(pages) == 1.0
+
+
 def test_the_profile_of_a_volume_without_pagination_says_so():
     pages = [_page(1), _page(2)]
     verdict = run_verdict(pages)

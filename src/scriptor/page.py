@@ -58,6 +58,25 @@ class Glyph:
     confidence: float | None = None
 
 
+@dataclass(frozen=True)
+class Link:
+    """A link that points somewhere inside this document.
+
+    A measured fact, like a box: the file itself resolves the destination to a
+    page, and ``target`` is that page's 1-based physical index. Links pointing
+    out of the document (a URI) are not kept -- they say nothing about this
+    volume.
+
+    What it is *for* is decided later, as with everything a backend reports. On
+    a contents page it is the producer stating where an entry goes, which is the
+    question ``reflow/pagination`` otherwise answers by searching the text for a
+    title.
+    """
+
+    box: Box
+    target: int
+
+
 @dataclass
 class Line:
     spans: list[Span]
@@ -101,6 +120,9 @@ class SourcePage:
     # PageLabels: "xiv", "36"). A measured fact like a box, not a judgement —
     # whether to *believe* it against the printed pages is reflow's decision.
     label: str | None = None
+    # Links from this page into the document. Empty where none were measured —
+    # which includes every page model written before this field existed.
+    links: list[Link] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -180,6 +202,14 @@ def _line_in(raw: dict) -> Line:
     )
 
 
+def _link_out(link: Link) -> dict:
+    return {"box": _box_out(link.box), "target": link.target}
+
+
+def _link_in(raw: dict) -> Link:
+    return Link(box=_box_in(raw["box"]), target=raw["target"])
+
+
 def to_dict(page: SourcePage) -> dict:
     out: dict = {"version": SCHEMA_VERSION, "index": page.index}
     if page.source:
@@ -190,6 +220,8 @@ def to_dict(page: SourcePage) -> dict:
         out["height"] = page.height
     if page.label is not None:
         out["label"] = page.label
+    if page.links:
+        out["links"] = [_link_out(link) for link in page.links]
     out["lines"] = [_line_out(line) for line in page.lines]
     return out
 
@@ -205,6 +237,7 @@ def from_dict(payload: dict) -> SourcePage:
         height=payload.get("height"),
         source=payload.get("source", ""),
         label=payload.get("label"),
+        links=[_link_in(raw) for raw in payload.get("links", [])],
     )
 
 

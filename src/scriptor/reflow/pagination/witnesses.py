@@ -12,6 +12,7 @@ shifts every citation in the book.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from scriptor.reflow.pagelabel import ordinal_of, read_label_relaxed, style_of
@@ -260,6 +261,62 @@ def rescued_observations(rescued_by_pos) -> list[Observation]:
         for pos, label in sorted(rescued_by_pos.items())
         if label is not None and ordinal_of(label) is not None and pos >= 1
     ]
+
+
+# What a contents link is worth. More than a contents entry the search placed
+# (TOC_WEIGHT), because the link removes the step that can fail: the file itself
+# resolves the destination, so nothing has to be found in the body. Less than
+# the page printing its own number, because the printed reference still has to
+# be read off the contents line, and a contents line can be set with a number
+# that is not a page reference at all.
+LINK_WEIGHT = 0.9
+
+# What the rightmost link of a contents line covers. Two shapes, because
+# publishers link entries in two ways:
+#
+#   "13"                       the reference has a rectangle of its own
+#                              (Josephus and Jesus: number, title and page are
+#                              three links pointing at the same page)
+#   "El corpus ....... 21"     one rectangle over the whole entry (Libros)
+#
+# Arabic only, as in ``reflow/toc.py``: roman letters are ordinary letters, and
+# "La storia degli studi" ends in "di", a well-formed roman 501. In the second
+# shape the number has to stand behind a leader or a gap, or a title whose last
+# word is a number ("Kapitel 1") would read as a page reference.
+_BARE_REFERENCE = re.compile(r"^(\d{1,4})$")
+_TRAILING_REFERENCE = re.compile(r".*?\S[\s.]{2,}(\d{1,4})$")
+
+
+def link_observations(linked_by_pos) -> list[Observation]:
+    """What a contents line says, placed where its link points.
+
+    ``linked_by_pos`` maps the position of a contents page to the
+    ``(target, text)`` pairs measured on it (``textlines.linked_lines``).
+
+    Rare: of the eighteen corpus volumes exactly one carries contents links
+    (Libros, whose entries resolve to page objects). Where it happens it is the
+    most direct evidence about a page reference a PDF can hold -- the producer
+    saying where the entry goes, rather than Scriptor searching for its title.
+    """
+    out: list[Observation] = []
+    for pos in sorted(linked_by_pos):
+        for target, text in linked_by_pos[pos]:
+            if target == pos or target < 1:
+                # A contents entry pointing at the contents itself says nothing
+                # about another page, and neither does a mis-resolved link.
+                continue
+            stripped = text.strip()
+            m = (_BARE_REFERENCE.match(stripped)
+                 or _TRAILING_REFERENCE.match(stripped))
+            if m is None or ordinal_of(m.group(1)) is None:
+                continue
+            out.append(Observation(
+                pos=target, label=m.group(1), source="link",
+                weight=LINK_WEIGHT,
+                why=f"the contents on physical page {pos} links {text.strip()[:40]!r} "
+                    f"here and prints {m.group(1)!r}",
+            ))
+    return out
 
 
 def _decoded(sequence: list[tuple[int, str]]) -> list[tuple[int, int, str]]:

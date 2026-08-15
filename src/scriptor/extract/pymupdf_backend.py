@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pymupdf
 
-from scriptor.page import Box, Glyph, Line, SourcePage, Span, dumps
+from scriptor.page import Box, Glyph, Line, Link, SourcePage, Span, dumps
 
 _BOLD = 16      # span["flags"] bit 4
 _ITALIC = 2     # span["flags"] bit 1
@@ -58,6 +58,35 @@ def _glyphs(raw_line: dict) -> list[Glyph]:
         for span in raw_line["spans"]
         for c in span.get("chars", ())
     ]
+
+
+def _links(page: pymupdf.Page) -> list[Link]:
+    """The links that point somewhere inside this document.
+
+    A URI is dropped: it says nothing about this volume's pagination. What
+    remains has to name a page, and pymupdf reports that in ``page`` -- as an
+    int for a plain GoTo, and as a string for a named destination it resolved
+    (Libros' contents links come through that way). A name it could *not*
+    resolve arrives as a string that is not a number, and is dropped: an
+    unresolved name is not a page reference.
+
+    Reported 1-based, like ``SourcePage.index``, because everything downstream
+    counts pages that way. pymupdf counts from zero.
+    """
+    out: list[Link] = []
+    for raw in page.get_links():
+        if raw.get("kind") not in (pymupdf.LINK_GOTO, pymupdf.LINK_NAMED):
+            continue
+        target = raw.get("page")
+        if isinstance(target, str):
+            target = int(target) - 1 if target.strip().isdigit() else None
+        if target is None or target < 0:
+            continue
+        rect = raw.get("from")
+        if rect is None:
+            continue
+        out.append(Link(box=_box(rect), target=target + 1))
+    return out
 
 
 def read_page(page: pymupdf.Page, index: int, *, glyphs: bool = False) -> SourcePage:
@@ -93,6 +122,7 @@ def read_page(page: pymupdf.Page, index: int, *, glyphs: bool = False) -> Source
         height=round(page.rect.height, 2),
         source="pymupdf",
         label=label or None,
+        links=_links(page),
     )
 
 

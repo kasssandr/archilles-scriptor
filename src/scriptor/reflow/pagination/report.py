@@ -29,19 +29,26 @@ SIDECAR_VERSION = 1
 SAMPLE_CHARS = 60
 
 
+# The sources that *corroborate* a label rather than merely assert one. Kept in
+# step with ``verdict._attests``, so the band-wide figure and the per-position
+# confidence mean the same thing by "attested": the page printed the number, or
+# a contents line printed it and a reference the file resolves put it here.
+ATTESTING_SOURCES = ("printed", "link")
+
+
 def attested_share(pages) -> float:
-    """The share of positions whose label the page itself stated.
+    """The share of positions whose label something corroborates.
 
     This is the number archilles asks when it wants to know whether the page
     references of this volume can be trusted (design §7.2). Not the share of
     labelled pages: a volume can be labelled throughout by counting from a
-    single reading, and that is a different thing from a volume that prints its
-    folios.
+    single reading, or by believing a catalogue, and that is a different thing
+    from a volume whose numbers are witnessed.
     """
     if not pages:
         return 0.0
-    printed = sum(1 for p in pages if p.label_source == "printed")
-    return printed / len(pages)
+    attested = sum(1 for p in pages if p.label_source in ATTESTING_SOURCES)
+    return attested / len(pages)
 
 
 def profile_line(pages, verdict) -> str:
@@ -54,7 +61,7 @@ def profile_line(pages, verdict) -> str:
     if edge is None and verdict.band is not None:
         edge = verdict.band.edge
     where = f"{edge} edge" if edge else "no printed pagination"
-    return f"{where}, {share:.0%} of pages attested in print"
+    return f"{where}, {share:.0%} of pages attested"
 
 
 def _sample(page) -> str:
@@ -111,12 +118,12 @@ def render_report(pages, verdict, out_path: str) -> str:
     overruled to get there."""
     rejections, by_pos = _rejections(pages, verdict)
     labelled = sum(1 for p in pages if p.label is not None)
-    printed = sum(1 for p in pages if p.label_source == "printed")
+    attested = sum(1 for p in pages if p.label_source in ATTESTING_SOURCES)
 
     lines = [
         f"# Pagination of {out_path}",
-        f"# {len(pages)} pages, {labelled} labelled, {printed} of them read off "
-        f"the page itself ({attested_share(pages):.0%}).",
+        f"# {len(pages)} pages, {labelled} labelled, {attested} of them "
+        f"witnessed ({attested_share(pages):.0%}).",
         f"# Profile: {profile_line(pages, verdict)}.",
     ]
     if verdict.band is not None:
@@ -125,9 +132,10 @@ def render_report(pages, verdict, out_path: str) -> str:
             f"page height; {verdict.geometric_count} were read there in a second pass."
         )
     lines += [
-        "# Sources: printed = the page states it, catalogue = the PDF's own",
-        "# PageLabels, toc = the table of contents names it, computed = it",
-        "# follows from the sequence and nobody observed it.",
+        "# Sources: printed = the page states it, link = a contents entry the",
+        "# producer linked here states it, toc = the contents names it and its",
+        "# title was found here, catalogue = the PDF's own PageLabels, computed",
+        "# = it follows from the sequence and nobody observed it.",
         "# An overruled reading is not necessarily a wrong one: where the plan",
         "# cannot model what the volume does — a stretch one page long, a sheet",
         "# carrying two book pages — the reading is sound and the plan is what",
