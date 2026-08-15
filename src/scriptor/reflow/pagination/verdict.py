@@ -30,6 +30,7 @@ from scriptor.reflow.pagination.witnesses import (
     folio_band,
     geometric_observations,
     printed_observations,
+    rescued_observations,
     toc_observations,
 )
 
@@ -101,7 +102,7 @@ def _sightings(confirming, edges):
 
 
 def run_verdict(pages, params: FitParams | None = None,
-                chapters=(), edges=None) -> Verdict:
+                chapters=(), edges=None, rescued=None) -> Verdict:
     """Set every page's label, its source and its confidence. Say what won.
 
     ``chapters`` are the confirmed chapter openings (``reflow.chapters``). They
@@ -139,7 +140,8 @@ def run_verdict(pages, params: FitParams | None = None,
     cat_weight = catalogue_weight(pages, pos_of)
     observations = (printed_observations(pages, pos_of)
                     + catalogue_observations(pages, cat_weight, pos_of)
-                    + toc_observations(chapters))
+                    + toc_observations(chapters)
+                    + rescued_observations(rescued or {}))
     last_pos = max(pos_of(p) for p in pages)
     plan = fit(observations,
                boundary_candidates(pages, observations, pos_of, chapters),

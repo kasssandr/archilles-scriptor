@@ -284,29 +284,6 @@ def attach_continuations(pages: list[Page]) -> int:
     return attached
 
 
-def append_rescued_folio(text: str, folio: str | None) -> str:
-    """Put a folio rescued from a running footer back into the page body.
-
-    Where the geometry cut the apparatus, a running footer sits inside the
-    footnote block, and the page number embedded in it is rescued there. It
-    belongs to the body, which no longer has it -- unless the page prints its
-    folio below the apparatus, and then the body has it already.
-
-    Carlomagno (Javaloys) is why the second case has to be checked. Its notes
-    read "N Obra citada. Página NN." page after page, so a note is similar
-    enough to its neighbours to pass as a running footer, and the number
-    rescued from it is the note's own. Appended, it landed behind the printed
-    folio at the very foot of the page -- and the last line is what parse_page
-    reads. Physical page 39 prints "41" and came out labelled "17".
-    """
-    if folio is None:
-        return text
-    lines = text.rstrip().splitlines()
-    if lines and detect_page_label(lines[-1]) is not None:
-        return text
-    return f"{text}\n{folio}"
-
-
 def reconcile_page_numbers(pages: list[Page], chapters=(), edges=None) -> str:
     """Set every page's label from the source consensus; say what won.
 
@@ -1614,11 +1591,16 @@ def main(
         strip_running_elements,
     )
     cleaned, headers, footers = strip_running_elements(raw_texts, foot_blocks=fn_blocks)
+    # The rescued folios are not put back into the text. They travel to the
+    # consensus as a witness of their own (``printed-footer``), so that a
+    # conflict between the page's own folio and a number rescued out of its
+    # apparatus is settled by the sequence rather than by a guard.
     fn_blocks, rescued_folios = remove_running_footers_from_blocks(fn_blocks, footers)
-    cleaned = [
-        append_rescued_folio(text, folio)
-        for text, folio in zip(cleaned, rescued_folios)
-    ]
+    rescued_by_ordinal = {
+        ordinal: folio
+        for ordinal, folio in enumerate(rescued_folios, start=1)
+        if folio is not None
+    }
     if headers:
         print(f"Running headers removed ({len(headers)}): {headers[:3]}", file=sys.stderr)
     if footers:
@@ -1700,7 +1682,8 @@ def main(
         ordinal: edge_lines(sp)
         for ordinal, sp in enumerate(source_pages, start=1)
     }
-    verdict = run_verdict(pages, chapters=chapter_starts, edges=edges)
+    verdict = run_verdict(pages, chapters=chapter_starts, edges=edges,
+                          rescued=rescued_by_ordinal)
     page_col = verdict.description
     restored = restore_rejected_folios(pages)
     print(f"Page label position: {page_col}", file=sys.stderr)

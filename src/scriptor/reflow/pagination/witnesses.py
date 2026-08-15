@@ -234,6 +234,34 @@ def geometric_observations(edges_by_pos, band: Band | None,
     return out
 
 
+# What a folio rescued from a running footer is worth. Half, because it has been
+# through a step the printed reading has not: a similarity match decided the line
+# was furniture, and the number was taken out of what that match removed. Where
+# an apparatus reads "N Obra citada. Página NN." on page after page (Carlomagno),
+# the notes themselves pass as a running footer and what is rescued is the note's
+# own number.
+FOOTER_WEIGHT = 0.5
+
+
+def rescued_observations(rescued_by_pos) -> list[Observation]:
+    """What a running footer said before it was stripped.
+
+    Called ``printed-footer`` and not ``footer-rescue`` as the design had it, so
+    that it sorts with the other readings the page itself carries: the verdict
+    reads the ``printed-`` prefix to decide that a page stated its own number,
+    and ``label_source`` travels to archilles with exactly that meaning. The
+    page did print this -- inside furniture, but in its own ink.
+    """
+    return [
+        Observation(pos=pos, label=label, source="printed-footer",
+                    weight=FOOTER_WEIGHT,
+                    why=f"{label!r} rescued from the running footer of "
+                        f"physical page {pos}")
+        for pos, label in sorted(rescued_by_pos.items())
+        if label is not None and ordinal_of(label) is not None and pos >= 1
+    ]
+
+
 def _decoded(sequence: list[tuple[int, str]]) -> list[tuple[int, int, str]]:
     """(pos, ordinal, style) for the entries that are labels at all."""
     out = []
