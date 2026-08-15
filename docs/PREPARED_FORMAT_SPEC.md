@@ -85,6 +85,7 @@ text:
 ---
 format_version: 0.3.0
 chunking_strategy: basic
+pagination: bottom edge, 95% of pages attested
 ---
 ```
 
@@ -92,6 +93,14 @@ chunking_strategy: basic
 |---|---|
 | `format_version` | The version of *this* specification the producer targeted. |
 | `chunking_strategy` | How a retrieval consumer should cut the text: `basic` cuts semantically and may drop the apparatus; `scientific` keeps a footnote marker and its definition in one chunk. |
+| `pagination` | How far the page markers of this document can be trusted: which edge the volume paginates at, and the share of pages whose label something corroborated rather than merely asserted. Free text, meant to be read; the machine-readable form is the sidecar of §6.3. |
+
+`pagination` exists because a marker cannot carry its own provenance. `[p. 47]`
+looks the same whether the page printed the number or the converter counted it
+out of the sequence, and a consumer weighing a citation cannot tell them apart
+from the text. The share is not the share of *labelled* pages: a volume can be
+labelled throughout by counting on from a single reading, which is a different
+thing from a volume whose numbers are witnessed.
 
 The block is optional, and every field in it is optional. Consumers MUST
 tolerate its absence, MUST ignore fields they do not know, and MUST NOT
@@ -322,7 +331,51 @@ proceeds. Marking two candidates for one footnote MUST be refused, not
 resolved by picking one. An empty box loses nothing: the footnote stays a
 hanging reference.
 
-### 6.3 Determinism and replay
+### 6.3 Pagination sidecar (`*.md.pagination.json` and `*.md.pagination.txt`)
+
+Where the audit sidecar justifies the footnotes, this pair justifies the page
+markers. Both are written from one verdict, so they cannot disagree with each
+other or with the document.
+
+The **JSON** is the machine channel:
+
+```json
+{
+  "version": 1,
+  "profile": {"edge": "bottom", "attested": 0.95, "band": [0.944, 0.968]},
+  "segments": [{"start_pos": 13, "start_label": "XI", "style": "roman-upper",
+                "kind": "counted"}],
+  "pages": [{"pos": 13, "label": "XI", "source": "printed", "confidence": 1.0}],
+  "rejected": [{"pos": 12, "label": "177", "source": "printed-bottom",
+                "verdict": "contents-page", "predicted": "X", "sample": "Pág."}]
+}
+```
+
+`source` is the strongest witness that confirmed the label:
+
+| Value | Meaning |
+|---|---|
+| `printed` | the page states the number itself |
+| `link` | a contents entry the producer linked to this page states it |
+| `toc` | the contents names the page and the entry's title was found here |
+| `catalogue` | the PDF's own PageLabels |
+| `computed` | nobody observed it; it follows from the numbering alone |
+
+The first two **corroborate**, the rest **assert**; only those two count towards
+`attested` (§4.1). Consumers SHOULD carry `source` into whatever they build on
+the marker — a citation resting on a computed label is usable but weaker — and
+MUST tolerate values they do not know, treating them as asserted. The list has
+grown twice and will grow again.
+
+`rejected` records readings the numbering overruled, with what they were instead.
+An overruled reading is not necessarily a wrong one: where the model cannot
+represent what the volume does — a stretch one page long, a sheet carrying two
+book pages — the reading is sound and the model is what cannot follow it.
+
+The **text** file is the same verdict for a reader, ordered by position in the
+document, every entry quoting a line that can be searched for.
+
+### 6.4 Determinism and replay
 
 The decision loop presupposes a deterministic producer: the same input pages
 and the same decisions MUST reproduce the same output, certain choices
@@ -498,6 +551,13 @@ running text by rule. Removing or redefining a name is breaking.
 preface matter as well. Additive by that rule: a consumer that does not know
 the name treats it as running text, which is what a preface should get anyway.
 
+0.3.0 also adds the `pagination` field (§4.1) and the pagination sidecar
+(§6.3). Additive on the same terms: the field is optional and the sidecar is a
+separate file, so a consumer that knows neither reads the document exactly as
+before. The `source` vocabulary of §6.3 grows the way the region names do — it
+has gained two values since it was introduced, and a consumer meeting an
+unknown one MUST treat it as asserted rather than fail.
+
 Producers SHOULD state the spec version they target, in the document's
 `format_version` field (§4.1) and in tool `--version` output. Until version
 0.2.0 the document carried no version of its own and the specification
@@ -518,7 +578,9 @@ What each family tool may rely on, stated once:
   consumer; no flags, no layout artefacts in the deliverable. A search hit can
   therefore always cite the printed page. What the producer does *not* mark is
   running text — the guarantee is that a region marker is never a guess, not
-  that every apparatus carries one.
+  that every apparatus carries one. Where the provenance of a page label
+  matters, it is in the sidecar of §6.3 rather than in the marker: the marker
+  is the same string whoever produced it.
 - **Translation (archillator).** `<dnt>` protection per §7; structural markers
   carried over by briefing contract; strip rules that restore a clean target
   document. A citation address therefore survives translation.
