@@ -108,7 +108,11 @@ def test_a_chapter_number_standing_where_a_folio_would():
                 _obs(107, "3", source="printed-top"),
                 _obs(155, "4", source="printed-top"),
                 _obs(198, "5", source="printed-top")]
-    pages = _pages(*(_page(p) for p in (67, 107, 155, 198)))
+    # A chapter opening carries notes, and they start at 1 -- which is next door
+    # to the chapter number. The apparatus must not claim a reading it never
+    # produced: only a number rescued out of a running footer comes from there.
+    pages = _pages(*(_page(p, footnotes={1: "Una nota.", 2: "Un'altra."})
+                     for p in (67, 107, 155, 198)))
     assert _verdicts(rejected, pages) == ["chapter-number"] * 4
 
 
