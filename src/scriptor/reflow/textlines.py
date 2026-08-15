@@ -292,6 +292,43 @@ def edge_lines(page: SourcePage, *, tolerance: float = BASELINE_TOLERANCE
     return [edge_of(clusters[0], "top"), edge_of(clusters[-1], "bottom")]
 
 
+def linked_lines(page: SourcePage) -> list[tuple[int, str]]:
+    """``(target, text)`` for every internal link, paired with the line it covers.
+
+    A link rectangle is drawn around the words it makes clickable, so the line
+    it belongs to is the one it overlaps most -- generously drawn rectangles
+    reach into the neighbouring line, and taking the first overlap would follow
+    them there.
+
+    Assembled like the body, because a contents entry arrives in fragments: the
+    title, the leader dots and the printed number are three spans, and the
+    number is the whole point.
+    """
+    if not page.links:
+        return []
+    measured = [ln for ln in page.lines
+                if ln.baseline is not None and ln.box is not None]
+    if not measured:
+        return []
+
+    printed = [
+        (min(ln.box.y0 for ln in cluster), max(ln.box.y1 for ln in cluster),
+         " ".join(ln.text for ln in sorted(cluster, key=lambda ln: ln.box.x0)).strip())
+        for cluster in _cluster(measured, BASELINE_TOLERANCE)
+    ]
+
+    out: list[tuple[int, str]] = []
+    for link in page.links:
+        best, overlap = None, 0.0
+        for y0, y1, text in printed:
+            shared = min(link.box.y1, y1) - max(link.box.y0, y0)
+            if shared > overlap:
+                best, overlap = text, shared
+        if best:
+            out.append((link.target, best))
+    return out
+
+
 # A first-line paragraph indent, relative to the page's stable left edge. The
 # edge itself scatters by ~0.3pt (OCR boxes), so the band starts well above
 # that; a centred heading or a deep quotation sits far beyond it and is not a

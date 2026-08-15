@@ -1684,8 +1684,27 @@ def main(
         ordinal: edge_lines(sp)
         for ordinal, sp in enumerate(source_pages, start=1)
     }
+    # What the contents links to, where the producer put links in. Asked only of
+    # the pages that *are* a contents: an index links every page number it
+    # prints, and an index line carries several, so the pairing of a line with
+    # one reference no longer holds there.
+    from scriptor.reflow.textlines import linked_lines
+
+    contents_positions = {p.index for p in toc_pages}
+    links = {
+        sp.index: pairs
+        for sp in source_pages
+        if sp.index in contents_positions and (pairs := linked_lines(sp))
+    }
+    if links:
+        print(
+            f"Contents links: {sum(len(v) for v in links.values())} on "
+            f"{plural(len(links), 'contents page')}",
+            file=sys.stderr,
+        )
+
     verdict = run_verdict(pages, chapters=chapter_starts, edges=edges,
-                          rescued=rescued_by_ordinal)
+                          rescued=rescued_by_ordinal, links=links)
     page_col = verdict.description
     restored = restore_rejected_folios(pages)
     print(f"Page label position: {page_col}", file=sys.stderr)
