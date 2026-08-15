@@ -126,7 +126,25 @@ class FitParams:
 
     mu: float = 2.0      # weight of a contradiction
     lam: float = 2.0     # price of one additional segment; > (1+mu)/2 = 1.5
-    rho: float = 0.0     # recto bonus; measured per volume, unused for now
+    # What it costs to begin a counted segment on a verso.
+    #
+    # A section begins on the right. The blank that puts it there is dropped
+    # when the volume is made into a PDF, which is *why* the offset between
+    # physical and printed page jumps at a section opening -- so a segment head
+    # on an even printed page is a boundary placed one page too late, on the
+    # first page that speaks rather than on the silent one that opens the
+    # section.
+    #
+    # Measured over the corpus: 22 of 26 counted segment heads are odd, and all
+    # four exceptions belong to Gli Actus -- the four boundaries a hand analysis
+    # of that volume showed to be one page late. No counter-example anywhere.
+    #
+    # Half a confirmation: enough to settle a choice nothing observed (the
+    # silent page and the page after it explain exactly the same readings), far
+    # too little to overrule a page that states its own number, and below the
+    # cost of a contradiction so that a volume which does not follow recto is
+    # never renumbered to fit the rule.
+    rho: float = 0.5
 
     # How many *positions* have to agree before a stretch may be called counted.
     #
@@ -277,6 +295,9 @@ class _Tally:
             if self.hits[(style, offset)] < self.params.min_attested:
                 continue
             score = self.base + self.gain[(style, offset)]
+            # A section begins on the right; see FitParams.rho.
+            if start_value % 2 == 0:
+                score -= self.params.rho
             if score > best_score:
                 best_seg = Segment(start_pos=start_pos,
                                    start_label=str(start_value), style=style)
