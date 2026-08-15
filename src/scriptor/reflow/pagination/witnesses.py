@@ -410,6 +410,20 @@ def boundary_candidates(pages, observations, pos_of=_index,
            if pos_of(p) >= 1 and p.backend_label is not None]
     candidates |= _breaks(sorted(cat))
 
+    # The silent page in front of a break. A section opens on a page that prints
+    # no folio -- the running head is suppressed there -- so the first page that
+    # *speaks* with the new offset is the section's second page, and the break
+    # is proposed one page late. Gli Actus opens BIBLIOGRAFIA on a silent page
+    # and prints 312 on the page after it; the section really begins on the
+    # silent one.
+    #
+    # Only where the page says nothing at all. Where it carries a reading, the
+    # break it makes is already on the ballot, and a second candidate there
+    # would only give a misreading another place to hide a segment of its own.
+    speaking = {o.pos for o in observations}
+    candidates |= {b - 1 for b in set(candidates) | _breaks(edges[best_edge])
+                   if b - 1 >= 1 and b - 1 not in speaking}
+
     # Where the volume would have started counting from 1, given what a page
     # prints. Bauer prints "7" on its seventh physical page and counts its title
     # pages, so counting starts at position 1; Themistios prints "2" on physical
