@@ -44,6 +44,17 @@ YEAR_MIN, YEAR_MAX = 1400, 2100
 # fifty chapters, and beyond that the reading competes with real folios.
 MAX_CHAPTER_NUMBER = 50
 
+# How far a rescued number may sit from the note numbers around it and still be
+# one of them. Not zero, and measured: the running footer sits at the foot of
+# the apparatus, so the number taken out of it is as often the note the page
+# *ends* on as one it carries. Militarizing Men rescues "17" from a page whose
+# own notes start at 18, "28" from a page carrying 25 to 27, "41" from a page
+# carrying 43 and 44. Two covers all of them, and a window this narrow cannot
+# swallow a folio: a page numbered within two of its own note numbers is a page
+# whose notes number in the hundreds, and there the apparatus and the pagination
+# have long since parted company.
+NOTE_NEIGHBOURHOOD = 2
+
 
 @dataclass(frozen=True)
 class Rejection:
@@ -128,13 +139,31 @@ def classify(rejected, pages_by_pos, plan) -> list[Rejection]:
     for o in sorted(rejected, key=lambda o: (o.pos, o.source, o.label)):
         page = pages_by_pos.get(o.pos)
         predicted = _predicted(plan, o.pos)
-        out.append(Rejection(o, _verdict_for(o, page, predicted, in_a_run, extent),
-                             predicted))
+        notes = _notes_around(pages_by_pos, o.pos)
+        out.append(
+            Rejection(o, _verdict_for(o, page, predicted, in_a_run, extent, notes),
+                      predicted)
+        )
     return out
 
 
+def _notes_around(pages_by_pos, pos: int) -> set[int]:
+    """The note numbers this page and its neighbours carry.
+
+    The neighbours are asked because a note runs over the page break and the
+    running footer sits below the apparatus: the number rescued from it belongs
+    to the page's apparatus without necessarily being one of its own
+    definitions.
+    """
+    numbers: set[int] = set()
+    for p in (pages_by_pos.get(pos - 1), pages_by_pos.get(pos),
+              pages_by_pos.get(pos + 1)):
+        numbers |= set(getattr(p, "footnotes", {}) or {})
+    return numbers
+
+
 def _verdict_for(o, page, predicted: str | None, in_a_run: set[int],
-                 extent: int) -> str:
+                 extent: int, notes: set[int]) -> str:
     """The category, first matching rule wins.
 
     Ordered by how much each explains: a contents page explains every reading on
@@ -150,7 +179,9 @@ def _verdict_for(o, page, predicted: str | None, in_a_run: set[int],
         return "year"
     if _is_truncation(o.label, predicted):
         return "truncated-numeral"
-    if page is not None and ordinal_of(o.label) in getattr(page, "footnotes", {}):
+    value = ordinal_of(o.label)
+    if value is not None and any(abs(value - n) <= NOTE_NEIGHBOURHOOD
+                                 for n in notes):
         return "footnote-number"
     if o.pos in in_a_run:
         return "chapter-number"

@@ -138,8 +138,34 @@ def test_a_footnote_number_at_the_foot_of_the_page():
     # Carlomagno's notes read "N Obra citada. Página NN." and the rescued folio
     # can be the note's own number. Once the rescue is a witness rather than an
     # appended line, this is what a rejected one looks like.
-    got = _verdicts([_obs(39, "17", source="footer-rescue", weight=0.5)],
+    got = _verdicts([_obs(39, "17", source="printed-footer", weight=0.5)],
                     _pages(_page(39, footnotes={17: "Obra citada."})))
+    assert got == ["footnote-number"]
+
+
+def test_a_number_from_the_edge_of_the_apparatus_counts_too():
+    # The running footer sits below the apparatus, so the number taken out of it
+    # is as often the note the page ends on as one it carries. Militarizing Men
+    # rescues "17" from a page whose own notes begin at 18, and "41" from a page
+    # carrying 43 and 44.
+    got = _verdicts([_obs(110, "17", source="printed-footer", weight=0.5)],
+                    _pages(_page(110, footnotes={18: "Ein Beleg."})))
+    assert got == ["footnote-number"]
+    got = _verdicts([_obs(120, "41", source="printed-footer", weight=0.5)],
+                    _pages(_page(120, footnotes={43: "a", 44: "b"})))
+    assert got == ["footnote-number"]
+
+
+def test_a_note_further_away_does_not_claim_the_reading():
+    got = _verdicts([_obs(120, "41", source="printed-footer", weight=0.5)],
+                    _pages(_page(120, footnotes={60: "a"})))
+    assert got == ["unknown"]
+
+
+def test_the_neighbours_apparatus_counts_but_not_the_whole_volume():
+    # A note that ran over the page break is defined on the next page.
+    pages = _pages(_page(110), _page(111, footnotes={18: "Fortsetzung."}))
+    got = _verdicts([_obs(110, "17", source="printed-footer", weight=0.5)], pages)
     assert got == ["footnote-number"]
 
 
