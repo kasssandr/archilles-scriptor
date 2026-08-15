@@ -37,7 +37,15 @@ def test_the_witness_outweighs_a_searched_contents_entry():
     assert LINK_WEIGHT > TOC_WEIGHT
 
 
-def test_a_line_without_a_printed_number_states_nothing():
+def test_a_reference_with_a_rectangle_of_its_own_is_read_bare():
+    # Josephus and Jesus links the printed page separately, at the right margin.
+    obs = link_observations({10: [(30, "13")]})
+    assert [(o.pos, o.label) for o in obs] == [(30, "13")]
+
+
+def test_a_title_whose_last_word_is_a_number_states_nothing():
+    # "Kapitel 1" is a title, not an entry with a page reference. A contents
+    # line that means a page sets it apart -- that is what a leader is for.
     assert link_observations({9: [(51, "Kapitel 1")]}) == []
 
 
@@ -91,3 +99,42 @@ def test_without_links_the_verdict_is_unchanged():
     pages = [_page(1, "27"), _page(2, "28"), _page(3), _page(4, "30")]
     run_verdict(pages)
     assert [p.label for p in pages] == ["27", "28", "29", "30"]
+
+
+def _volume_with_a_catalogue(links=None):
+    """Ten pages carried by a catalogue that has only partly earned its hearing.
+
+    Three pages print a folio; the catalogue matches two of them, so it weighs
+    0.67 -- below a link, above nothing. That is Josephus and Jesus in
+    miniature, where the catalogue is right about the volume and agrees with 4 %
+    of what the pages themselves were read as printing.
+    """
+    pages = []
+    for i in range(1, 11):
+        printed = {1: "21", 2: "22", 3: "99"}.get(i)
+        p = _page(i, printed)
+        p.backend_label = str(20 + i)
+        pages.append(p)
+    run_verdict(pages, links=links or {})
+    return pages
+
+
+def test_the_source_names_the_link_and_not_a_weaker_witness():
+    # Josephus and Jesus: the catalogue and the contents links agree on 321
+    # pages, and every label was credited to the catalogue. The field is
+    # supposed to name the *strongest* witness that confirmed the label, and a
+    # link the producer resolved outweighs a catalogue that agrees with 4 % of
+    # what the volume prints.
+    pages = _volume_with_a_catalogue({1: [(7, "Kapitel 1 ....... 27")]})
+    assert pages[6].label == "27"
+    assert pages[6].label_source == "link"
+    assert pages[7].label_source == "catalogue"
+
+
+def test_a_linked_page_is_better_attested_than_an_unlinked_one():
+    # Confidence measures corroboration. A link is a printed cross-reference --
+    # the number was read off a contents line the volume printed -- so it
+    # corroborates, where a catalogue only asserts.
+    linked = _volume_with_a_catalogue({1: [(7, "Kapitel 1 ....... 27")]})
+    bare = _volume_with_a_catalogue()
+    assert linked[6].label_confidence > bare[6].label_confidence

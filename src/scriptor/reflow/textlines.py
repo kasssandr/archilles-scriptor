@@ -292,17 +292,38 @@ def edge_lines(page: SourcePage, *, tolerance: float = BASELINE_TOLERANCE
     return [edge_of(clusters[0], "top"), edge_of(clusters[-1], "bottom")]
 
 
+def _text_under(page: SourcePage, box: Box) -> str:
+    """The text whose spans sit inside ``box``, in reading order.
+
+    By the middle of each span, not by overlap: a link rectangle is drawn snugly
+    around what it makes clickable, and a span that merely grazes its edge
+    belongs to the neighbour.
+    """
+    parts: list[tuple[float, str]] = []
+    for line in page.lines:
+        for span in line.spans:
+            if span.box is None:
+                continue
+            cx = (span.box.x0 + span.box.x1) / 2
+            cy = (span.box.y0 + span.box.y1) / 2
+            if box.x0 <= cx <= box.x1 and box.y0 <= cy <= box.y1:
+                parts.append((span.box.x0, span.text))
+    return " ".join(text for _x, text in sorted(parts)).strip()
+
+
 def linked_lines(page: SourcePage) -> list[tuple[int, str]]:
-    """``(target, text)`` for every internal link, paired with the line it covers.
+    """``(target, reference)`` for the page reference of each linked line.
 
-    A link rectangle is drawn around the words it makes clickable, so the line
-    it belongs to is the one it overlaps most -- generously drawn rectangles
-    reach into the neighbouring line, and taking the first overlap would follow
-    them there.
+    A contents entry is linked in pieces. Josephus and Jesus makes each entry
+    three links pointing at the same page -- the chapter number at the left
+    margin, the title beside it, the printed page at the right (x = 367 of a
+    442pt page). Libros makes the whole entry one link, number included. Both
+    are answered by the same rule: **per printed line, the rightmost link is the
+    page reference**, and what its own rectangle covers is what it says.
 
-    Assembled like the body, because a contents entry arrives in fragments: the
-    title, the leader dots and the printed number are three spans, and the
-    number is the whole point.
+    That rule is what keeps the chapter number out. "1." is a link too, points
+    at the same page, and reads as a bare numeral -- taking it would have every
+    chapter opening claim to be page 1. It is never the rightmost.
     """
     if not page.links:
         return []
@@ -311,21 +332,31 @@ def linked_lines(page: SourcePage) -> list[tuple[int, str]]:
     if not measured:
         return []
 
-    printed = [
-        (min(ln.box.y0 for ln in cluster), max(ln.box.y1 for ln in cluster),
-         " ".join(ln.text for ln in sorted(cluster, key=lambda ln: ln.box.x0)).strip())
-        for cluster in _cluster(measured, BASELINE_TOLERANCE)
-    ]
+    # The baseline is the anchor, not the box -- the same rule the assembly
+    # above follows, and here it is what keeps a single tall box from swallowing
+    # the page. Josephus and Jesus has a cluster whose box union runs from y=185
+    # to y=478 of a 660pt page; matching links by box overlap gave that one row
+    # 28 of the page's 55 links and lost every contents entry behind it.
+    baselines = [cluster[0].baseline
+                 for cluster in _cluster(measured, BASELINE_TOLERANCE)]
+
+    # A link rectangle is drawn around the text it makes clickable, so that
+    # text's baseline lies inside it. Where several do -- a generous rectangle
+    # reaching into the neighbouring line -- the nearest to the middle wins.
+    per_row: dict[int, list] = {}
+    for link in page.links:
+        middle = (link.box.y0 + link.box.y1) / 2
+        inside = [(abs(b - middle), i) for i, b in enumerate(baselines)
+                  if link.box.y0 <= b <= link.box.y1]
+        if inside:
+            per_row.setdefault(min(inside)[1], []).append(link)
 
     out: list[tuple[int, str]] = []
-    for link in page.links:
-        best, overlap = None, 0.0
-        for y0, y1, text in printed:
-            shared = min(link.box.y1, y1) - max(link.box.y0, y0)
-            if shared > overlap:
-                best, overlap = text, shared
-        if best:
-            out.append((link.target, best))
+    for i in sorted(per_row):
+        rightmost = max(per_row[i], key=lambda l: (l.box.x1, l.box.x0))
+        text = _text_under(page, rightmost.box)
+        if text:
+            out.append((rightmost.target, text))
     return out
 
 

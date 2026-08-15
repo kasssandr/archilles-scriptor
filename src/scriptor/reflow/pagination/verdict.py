@@ -64,6 +64,18 @@ class Verdict:
     geometric_count: int = 0
 
 
+def _attests(obs: Observation) -> bool:
+    """Does this witness *corroborate* a label, or merely assert one?
+
+    A page printing its own folio corroborates. So does a contents link: the
+    number was read off a line the volume printed, and the position came from a
+    reference the file itself resolves -- two printed facts, neither of them the
+    catalogue's word. The catalogue asserts; it cannot attest itself, and a
+    volume whose catalogue is its only source has no anchor at all.
+    """
+    return obs.source.startswith("printed") or obs.source == "link"
+
+
 def _agrees(obs: Observation, plan: PaginationPlan) -> bool:
     seg = plan.segment_at(obs.pos)
     if seg is None or seg.kind == "uncounted":
@@ -183,7 +195,7 @@ def run_verdict(pages, params: FitParams | None = None,
             continue
         lo, hi = spans.get(seg.start_pos, (pos, pos))
         spans[seg.start_pos] = (min(lo, pos), max(hi, pos))
-        if any(o.source.startswith("printed") for o in group):
+        if any(_attests(o) for o in group):
             attested.setdefault(seg.start_pos, []).append(pos)
 
     verdict = Verdict(plan=plan, description="none", band=band)
@@ -198,14 +210,17 @@ def run_verdict(pages, params: FitParams | None = None,
         if printed:
             p.label, p.label_source = printed[0].label, "printed"
         elif group:
-            # Which source, not merely "not printed". Masones has no PDF
-            # catalogue whatsoever and six of its pages were recorded as
-            # "catalogue" -- their labels come from its table of contents. The
-            # field travels to archilles, which reads it to know how far a
-            # citation can be trusted, so it has to name the witness it had.
-            best = min(group, key=lambda o: 0 if o.source == "catalogue" else 1)
-            p.label = best.label
-            p.label_source = "catalogue" if best.source == "catalogue" else best.source
+            # The *strongest* witness that confirmed the label, which is what
+            # the field promises. Masones has no PDF catalogue whatsoever and
+            # six of its pages were once recorded as "catalogue" -- their labels
+            # come from its table of contents; Josephus and Jesus had every one
+            # of its 321 catalogue labels credited to the catalogue although
+            # contents links confirmed them too, and a link the producer
+            # resolved outweighs a catalogue agreeing with 4 % of what the
+            # volume prints. Heaviest wins, ties by source name so the answer
+            # never depends on the order the witnesses were gathered in.
+            best = max(group, key=lambda o: (o.weight, o.source))
+            p.label, p.label_source = best.label, best.source
         else:
             span = spans.get(seg.start_pos)
             if span is None:

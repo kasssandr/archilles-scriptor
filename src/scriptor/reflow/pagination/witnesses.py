@@ -271,18 +271,20 @@ def rescued_observations(rescued_by_pos) -> list[Observation]:
 # that is not a page reference at all.
 LINK_WEIGHT = 0.9
 
-# The page reference at the end of a contents line: "Kapitel 1 ....... 31".
-# Close to what ``reflow/toc.py`` reads entries with, and for its reasons:
-# anchored at the end, because a number at the *front* is the chapter's own
-# ("1. La storia degli studi"), and arabic, because roman letters are ordinary
-# letters -- "La storia degli studi" ends in "di", a well-formed roman 501.
+# What the rightmost link of a contents line covers. Two shapes, because
+# publishers link entries in two ways:
 #
-# Stricter in one respect: the number has to stand *apart*, behind a leader or a
-# gap of at least two characters. "Kapitel 1" is a title whose last word is a
-# number, and at this witness's weight reading it as a page reference is the
-# expensive kind of mistake. A contents line that means a page sets one --
-# that is what a leader is for.
-_CONTENTS_REFERENCE = re.compile(r".*?\S[\s.]{2,}(\d{1,4})$")
+#   "13"                       the reference has a rectangle of its own
+#                              (Josephus and Jesus: number, title and page are
+#                              three links pointing at the same page)
+#   "El corpus ....... 21"     one rectangle over the whole entry (Libros)
+#
+# Arabic only, as in ``reflow/toc.py``: roman letters are ordinary letters, and
+# "La storia degli studi" ends in "di", a well-formed roman 501. In the second
+# shape the number has to stand behind a leader or a gap, or a title whose last
+# word is a number ("Kapitel 1") would read as a page reference.
+_BARE_REFERENCE = re.compile(r"^(\d{1,4})$")
+_TRAILING_REFERENCE = re.compile(r".*?\S[\s.]{2,}(\d{1,4})$")
 
 
 def link_observations(linked_by_pos) -> list[Observation]:
@@ -303,7 +305,9 @@ def link_observations(linked_by_pos) -> list[Observation]:
                 # A contents entry pointing at the contents itself says nothing
                 # about another page, and neither does a mis-resolved link.
                 continue
-            m = _CONTENTS_REFERENCE.match(text.strip())
+            stripped = text.strip()
+            m = (_BARE_REFERENCE.match(stripped)
+                 or _TRAILING_REFERENCE.match(stripped))
             if m is None or ordinal_of(m.group(1)) is None:
                 continue
             out.append(Observation(
