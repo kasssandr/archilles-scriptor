@@ -731,19 +731,30 @@ def marker(name: str) -> str:
     return REGION_MARKER.format(name=name)
 
 
-def render_metadata_block(chunking_strategy: str = "basic") -> str:
+def render_metadata_block(chunking_strategy: str = "basic",
+                          pagination: str | None = None) -> str:
     """The YAML metadata block of §4.1, as its own block.
 
     Declaration only: it says which conventions the file follows and how a
     retrieval consumer should cut it. Nothing here is content, and a consumer
     that drops the block loses no word of the document.
+
+    ``pagination`` states how far the page markers of this document can be
+    trusted -- which edge the volume paginates at, and how much of it stated its
+    own numbers rather than being counted. A consumer weighing a citation needs
+    that and cannot derive it from the markers, since a computed label looks
+    exactly like a printed one. Omitted where no verdict was taken, so a caller
+    that only wants the text is unaffected.
     """
-    return (
-        "---\n"
-        f"format_version: {FORMAT_VERSION}\n"
-        f"chunking_strategy: {chunking_strategy}\n"
-        "---"
-    )
+    lines = [
+        "---",
+        f"format_version: {FORMAT_VERSION}",
+        f"chunking_strategy: {chunking_strategy}",
+    ]
+    if pagination is not None:
+        lines.append(f"pagination: {pagination}")
+    lines.append("---")
+    return "\n".join(lines)
 
 
 _METADATA_BLOCK = re.compile(r"\A---\n.*?\n---\n+", re.DOTALL)

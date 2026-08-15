@@ -39,14 +39,20 @@ def _verdicts(rejected, pages, plan=PaginationPlan()):
 
 def test_a_year_on_the_imprint_page():
     # A comemoração prints 2020 on its title page, L'Empire 1972 in its
-    # imprint, Les apologistes 2005. Three volumes, the same trap.
+    # imprint, Les apologistes 2005. Three volumes, the same trap -- and the
+    # third of them sits on a page the mode assignment calls "main", which is
+    # why the design's "before the main part" is not the test used here.
     got = _verdicts([_obs(1, "2020")], _pages(_page(1, mode="frontmatter")))
+    assert got == ["year"]
+    got = _verdicts([_obs(3, "2005")], _pages(_page(3, mode="main")))
     assert got == ["year"]
 
 
-def test_a_number_that_is_a_page_of_the_book_is_not_a_year():
-    got = _verdicts([_obs(1, "1200")], _pages(_page(1)))
-    assert got == ["unknown"]
+def test_a_number_a_volume_this_long_could_really_print_is_not_a_year():
+    # The test is the volume's own extent: a book of 1300 pages has a page
+    # 1200, so calling that a year would be an invention.
+    pages = _pages(*(_page(i) for i in range(1, 1301)))
+    assert _verdicts([_obs(1200, "1200")], pages) == ["unknown"]
 
 
 def test_a_line_of_the_table_of_contents():

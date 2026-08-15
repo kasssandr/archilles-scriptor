@@ -1224,6 +1224,7 @@ def render_book(
     decisions=None,
     evidence=None,
     chunking_strategy: str | None = None,
+    pagination: str | None = None,
 ) -> tuple[str, dict[str, list[int]]]:
     """Group pages by mode in source order and render each group accordingly.
 
@@ -1308,7 +1309,8 @@ def render_book(
     # want the bare text (golden comparisons, the TXT profile) pass nothing.
     if fmt == "md" and chunking_strategy is not None:
         from scriptor.reflow.regions import render_metadata_block
-        result = render_metadata_block(chunking_strategy) + "\n\n" + result
+        result = (render_metadata_block(chunking_strategy, pagination)
+                  + "\n\n" + result)
     return result + "\n", audit
 
 
@@ -1739,10 +1741,17 @@ def main(
         source = " (profile)" if evidence.from_profile(digit) else ""
         print(f"Glyph evidence for footnote {digit}{source}: {shown}", file=sys.stderr)
 
+    from scriptor.reflow.pagination.report import (
+        profile_line,
+        render_report as render_pagination_report,
+        render_sidecar,
+    )
+    pagination = profile_line(pages, verdict)
+
     decisions.reset_report()
     clean_output, _ = render_book(
         pages, threshold, fmt, decisions=decisions, evidence=evidence,
-        chunking_strategy=chunking_strategy,
+        chunking_strategy=chunking_strategy, pagination=pagination,
     )
     Path(out_path).write_text(clean_output, encoding="utf-8")
     print(f"Written: {out_path}", file=sys.stderr)
@@ -1766,6 +1775,7 @@ def main(
     review_output, _ = render_book(
         pages, threshold, fmt, annotator=annotator, decisions=decisions,
         evidence=evidence, chunking_strategy=chunking_strategy,
+        pagination=pagination,
     )
     op = Path(out_path)
     review_path = op.with_name(f"{op.stem}.review{op.suffix}")
@@ -1786,6 +1796,21 @@ def main(
     audit_path.write_text(audit_text, encoding="utf-8")
     print(
         f"Audit: {plural(len(annotator.annotations), 'uncertain footnote')} -> {audit_path}",
+        file=sys.stderr,
+    )
+
+    # Pagination sidecars: the machine channel for archilles, and the report a
+    # reader checks the verdict with. Both are written from the same verdict, so
+    # they can never disagree with each other or with the master.
+    pagination_json = op.with_suffix(op.suffix + ".pagination.json")
+    pagination_json.write_text(render_sidecar(pages, verdict), encoding="utf-8")
+    pagination_txt = op.with_suffix(op.suffix + ".pagination.txt")
+    pagination_txt.write_text(
+        render_pagination_report(pages, verdict, out_path), encoding="utf-8"
+    )
+    print(
+        f"Pagination: {pagination}; "
+        f"{plural(len(verdict.rejected), 'reading')} overruled -> {pagination_txt}",
         file=sys.stderr,
     )
 

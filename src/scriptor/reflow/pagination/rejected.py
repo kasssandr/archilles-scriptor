@@ -32,10 +32,11 @@ from dataclasses import dataclass
 
 from scriptor.reflow.pagelabel import encode_label, ordinal_of
 
-# A year in an imprint, not a folio. The range is the one the design named; the
-# length matters as much as the value, because a volume may well have a page
-# 1972 -- Le trasformazioni has 504 pages and Gli Actus 371, so four digits at
-# the edge of a *front matter* page is the signal, not four digits as such.
+# A year in an imprint, not a folio. Two conditions, and the second is the one
+# that carries: the number has to lie beyond the volume's own extent. A book of
+# 504 pages has no page 1972, so the reading cannot be a folio whatever the page
+# it sits on -- while the design's "before the main part" does not hold, because
+# Les apologistes prints its 2005 on a page the mode assignment calls main.
 YEAR_MIN, YEAR_MAX = 1400, 2100
 
 # How large a number may be and still read as a chapter number rather than a
@@ -62,12 +63,12 @@ def _predicted(plan, pos: int) -> str | None:
     return encode_label(value, seg.style)
 
 
-def _is_year(label: str, page) -> bool:
+def _is_year(label: str, extent: int) -> bool:
     return (
         len(label) == 4
         and label.isdigit()
         and YEAR_MIN <= int(label) <= YEAR_MAX
-        and getattr(page, "mode", None) in ("frontmatter", "raw", None)
+        and int(label) > extent
     )
 
 
@@ -121,17 +122,19 @@ def classify(rejected, pages_by_pos, plan) -> list[Rejection]:
     index is invisible in a text editor.
     """
     in_a_run = _chapter_run(rejected)
+    extent = max(pages_by_pos, default=0)
     out: list[Rejection] = []
 
     for o in sorted(rejected, key=lambda o: (o.pos, o.source, o.label)):
         page = pages_by_pos.get(o.pos)
         predicted = _predicted(plan, o.pos)
-        out.append(Rejection(o, _verdict_for(o, page, predicted, in_a_run),
+        out.append(Rejection(o, _verdict_for(o, page, predicted, in_a_run, extent),
                              predicted))
     return out
 
 
-def _verdict_for(o, page, predicted: str | None, in_a_run: set[int]) -> str:
+def _verdict_for(o, page, predicted: str | None, in_a_run: set[int],
+                 extent: int) -> str:
     """The category, first matching rule wins.
 
     Ordered by how much each explains: a contents page explains every reading on
@@ -143,7 +146,7 @@ def _verdict_for(o, page, predicted: str | None, in_a_run: set[int]) -> str:
         return "contents-cross-reference"
     if o.source == "catalogue":
         return "catalogue"
-    if _is_year(o.label, page):
+    if _is_year(o.label, extent):
         return "year"
     if _is_truncation(o.label, predicted):
         return "truncated-numeral"

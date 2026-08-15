@@ -1,6 +1,7 @@
 ---
 format_version: 0.3.0
 chunking_strategy: basic
+pagination: bottom edge, 100% of pages attested in print
 ---
 
 [p. 1] Der erste Absatz nennt eine Quelle [^1] und laeuft mit einem getrennten Wort weiter bis zum Satzende.
