@@ -154,7 +154,17 @@ def render_report(pages, verdict, out_path: str) -> str:
     low = [p for p in sorted(pages, key=lambda p: p.index)
            if p.label is not None and p.label_confidence is not None
            and p.label_confidence < 0.5]
-    lines += ["", f"## Labels the consensus is least sure of: {len(low)}"]
+    lines += [
+        "",
+        f"## Labels the consensus is least sure of: {len(low)}",
+        "# Confidence measures corroboration, not legibility: a page that prints"
+        " its",
+        "# own folio still scores low where its stretch is short, because there"
+        " is",
+        "# little for it to agree with. A volume with no printed folio anywhere"
+        " scores",
+        "# zero throughout — that is the honest answer, not a fault of the page.",
+    ]
     if not low:
         lines.append("  none below 0.5")
     for p in low[:40]:
