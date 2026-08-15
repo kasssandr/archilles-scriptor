@@ -172,7 +172,14 @@ def _verdict_for(o, page, predicted: str | None, in_a_run: set[int],
     if getattr(page, "mode", None) == "toc":
         return "contents-page"
     if o.source == "toc":
-        return "contents-cross-reference"
+        # Named for the disagreement, not for a culprit. Measured against a
+        # hand analysis of Gli Actus (2026-08-15), the contents was the one that
+        # was right: it states INDICI on printed page 335, the plan states 336,
+        # and the volume prints 335. Five of the remaining seven cases are Les
+        # apologistes, whose two-book-pages-to-a-sheet scan the segment model
+        # cannot represent at all -- so there, too, the reading is sound and the
+        # plan is what cannot follow it.
+        return "contents-disagrees"
     if o.source == "catalogue":
         return "catalogue"
     if _is_year(o.label, extent):

@@ -128,6 +128,10 @@ def render_report(pages, verdict, out_path: str) -> str:
         "# Sources: printed = the page states it, catalogue = the PDF's own",
         "# PageLabels, toc = the table of contents names it, computed = it",
         "# follows from the sequence and nobody observed it.",
+        "# An overruled reading is not necessarily a wrong one: where the plan",
+        "# cannot model what the volume does — a stretch one page long, a sheet",
+        "# carrying two book pages — the reading is sound and the plan is what",
+        "# cannot follow it. Check those against the book before believing them.",
         "",
         "## Segments",
     ]

@@ -64,13 +64,17 @@ def test_a_line_of_the_table_of_contents():
     assert got == ["contents-page"]
 
 
-def test_a_cross_reference_the_contents_placed_wrongly():
-    # The ToC witness says "this title is printed on page 335". Where the plan
-    # disagrees, the title was found at the wrong position -- a failure of the
-    # search, not of the volume.
+def test_the_contents_and_the_plan_disagreeing_is_recorded_as_that():
+    # Named for the disagreement and not for a culprit, because the contents is
+    # often the one that is right. Gli Actus is the measured case: its contents
+    # states INDICI on printed page 335, the plan states 336, and the volume
+    # prints 335 there (hand analysis, 2026-08-15). The volume drops a blank
+    # verso before that section, so the true stretch is one page long -- and a
+    # one-page stretch cannot be attested twice, which is what min_attested
+    # requires.
     got = _verdicts([_obs(352, "335", source="toc", weight=0.6)],
                     _pages(_page(352)))
-    assert got == ["contents-cross-reference"]
+    assert got == ["contents-disagrees"]
 
 
 def test_a_numeral_the_scan_cut_short():
