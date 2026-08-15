@@ -1,0 +1,154 @@
+"""What a rejected observation actually was.
+
+An observation the winning plan contradicts is a line of the book that looks
+like a page number and is not one. Naming what it is instead costs nothing --
+the observations fall out of the fit either way -- and it is the difference
+between a report a reader can check and a list of positions.
+
+**Nothing downstream acts on this.** The line stays in the body in every case
+(``restore_rejected_folios``); the classification is written into the report and
+the sidecar so a reader can confirm the verdict without opening the PDF.
+
+The categories are measured, not designed. Over the eighteen corpus volumes the
+fit rejects 40 observations, and these are the shapes they take. Two of them
+correct the design's own proposal (docs/internal/2026-08-13-quellen-verbund-
+design.md §6.3):
+
+*A chapter number is not found through the contents.* The design suggested
+matching against a ToC entry whose title is confirmed on the page. On Gli Actus,
+the volume it was written for, none of the four positions is a confirmed chapter
+opening, so the rule never fires. What identifies them is that they form a run
+of their own -- 2, 3, 4, 5 across 130 pages, while the pages count in the
+forties.
+
+*The commonest kind was not in the design at all.* Seven of the forty are roman
+numerals the extraction cut short: the plan says XXII, the page reads "XXI". A
+prefix of the truth is a misreading, not a different page.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from scriptor.reflow.pagelabel import encode_label, ordinal_of
+
+# A year in an imprint, not a folio. The range is the one the design named; the
+# length matters as much as the value, because a volume may well have a page
+# 1972 -- Le trasformazioni has 504 pages and Gli Actus 371, so four digits at
+# the edge of a *front matter* page is the signal, not four digits as such.
+YEAR_MIN, YEAR_MAX = 1400, 2100
+
+# How large a number may be and still read as a chapter number rather than a
+# page. Gli Actus counts to 5, Libros to 2; no corpus volume has more than
+# fifty chapters, and beyond that the reading competes with real folios.
+MAX_CHAPTER_NUMBER = 50
+
+
+@dataclass(frozen=True)
+class Rejection:
+    """One contradicted observation, with what the plan said instead."""
+
+    observation: object          # the Observation the plan contradicts
+    verdict: str                 # category slug, see the module docstring
+    predicted: str | None        # what the plan states for that position
+
+
+def _predicted(plan, pos: int) -> str | None:
+    """What the plan states at ``pos``, written in that segment's own system."""
+    seg = plan.segment_at(pos)
+    value = plan.value_at(pos)
+    if seg is None or value is None:
+        return None
+    return encode_label(value, seg.style)
+
+
+def _is_year(label: str, page) -> bool:
+    return (
+        len(label) == 4
+        and label.isdigit()
+        and YEAR_MIN <= int(label) <= YEAR_MAX
+        and getattr(page, "mode", None) in ("frontmatter", "raw", None)
+    )
+
+
+def _is_truncation(label: str, predicted: str | None) -> bool:
+    """Did the extraction cut the volume's own numeral short?
+
+    A proper prefix, and shorter -- "XXI" of "XXII". Compared case-insensitively
+    because the two readings come from different rounds and one of them may have
+    normalised; what matters is the glyphs that are missing.
+    """
+    if predicted is None or not label:
+        return False
+    a, b = label.strip().lower(), predicted.strip().lower()
+    return len(a) < len(b) and b.startswith(a)
+
+
+def _chapter_run(rejected) -> set[int]:
+    """Positions whose label belongs to a numbering of the volume's own.
+
+    Singly a bare "2" at the head of a page is unreadable -- it could be a
+    folio, a chapter number, a plate number. Together with a "3" a hundred pages
+    later and a "4" after that, it is a numbering: it counts far too slowly to
+    be pages, and it counts.
+
+    Two are enough (Libros numbers two appendices), but they have to *count*:
+    Les apologistes reads "li" twice, ninety-six pages apart, and two of the
+    same value are not a series.
+    """
+    small = [
+        o for o in rejected
+        if (v := ordinal_of(o.label)) is not None and 1 <= v <= MAX_CHAPTER_NUMBER
+    ]
+    small.sort(key=lambda o: o.pos)
+    run: list = []
+    best: list = []
+    for o in small:
+        value = ordinal_of(o.label)
+        if run and value == ordinal_of(run[-1].label) + 1:
+            run.append(o)
+        else:
+            run = [o]
+        if len(run) > len(best):
+            best = list(run)
+    return {o.pos for o in best} if len(best) >= 2 else set()
+
+
+def classify(rejected, pages_by_pos, plan) -> list[Rejection]:
+    """Name what each contradicted observation was, in reading order.
+
+    Reading order because the report is read beside the book, and an internal
+    index is invisible in a text editor.
+    """
+    in_a_run = _chapter_run(rejected)
+    out: list[Rejection] = []
+
+    for o in sorted(rejected, key=lambda o: (o.pos, o.source, o.label)):
+        page = pages_by_pos.get(o.pos)
+        predicted = _predicted(plan, o.pos)
+        out.append(Rejection(o, _verdict_for(o, page, predicted, in_a_run),
+                             predicted))
+    return out
+
+
+def _verdict_for(o, page, predicted: str | None, in_a_run: set[int]) -> str:
+    """The category, first matching rule wins.
+
+    Ordered by how much each explains: a contents page explains every reading on
+    it, whoever made it, while "unknown" explains nothing and comes last.
+    """
+    if getattr(page, "mode", None) == "toc":
+        return "contents-page"
+    if o.source == "toc":
+        return "contents-cross-reference"
+    if o.source == "catalogue":
+        return "catalogue"
+    if _is_year(o.label, page):
+        return "year"
+    if _is_truncation(o.label, predicted):
+        return "truncated-numeral"
+    if page is not None and ordinal_of(o.label) in getattr(page, "footnotes", {}):
+        return "footnote-number"
+    if o.pos in in_a_run:
+        return "chapter-number"
+    return "unknown"
