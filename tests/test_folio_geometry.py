@@ -138,6 +138,28 @@ def test_the_witness_asks_only_the_edge_the_volume_paginates_at():
     assert obs == []
 
 
+def test_a_reading_that_repeats_across_the_volume_is_not_a_folio():
+    # Militarizing Men heads its pages "Глава 1" and the relaxed reading takes
+    # the chapter number for a folio -- 95 times over the volume, 16 to 22 times
+    # per value. A folio is the part of the line that *changes*: pages are
+    # numbered differently, so a label read at many positions cannot be one.
+    # Measured before this rule, those 95 were 95 of the corpus's 151 rejected
+    # observations, and they pushed the volume's derived labels from 0.90
+    # confidence down to 0.53.
+    band = folio_band([("bottom", 0.95)] * 6)
+    edges = {p: [_edge("bottom", "Глава 1", 0.95)] for p in range(10, 20)}
+    assert geometric_observations(edges, band) == []
+
+
+def test_a_label_read_twice_still_counts():
+    # Two is not a habit: a volume may restart its count, and a sheet carrying
+    # two book pages prints two folios. Only a value that keeps coming back is
+    # furniture.
+    band = folio_band([("bottom", 0.95)] * 6)
+    edges = {7: [_edge("bottom", "12", 0.95)], 9: [_edge("bottom", "12", 0.95)]}
+    assert len(geometric_observations(edges, band)) == 2
+
+
 def test_the_witness_is_silent_where_the_page_already_spoke():
     # A page that printed a folio the narrow reading could read has said its
     # piece. Asking again could only produce a second, weaker voice arguing

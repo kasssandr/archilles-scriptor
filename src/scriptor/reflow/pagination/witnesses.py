@@ -140,6 +140,18 @@ BAND_TOLERANCE = 0.015
 # that do not show it at all.
 MIN_SIGHTINGS = 5
 
+# How often the same reading may come back before it is furniture rather than a
+# folio. A folio is the part of the line that *changes*: pages are numbered
+# differently, so a value read at many positions cannot be one.
+#
+# Measured: Militarizing Men heads its pages "Глава 1" and the relaxed reading
+# took the chapter number for a folio on 95 pages, 16 to 22 times per value --
+# 95 of the corpus's 151 rejected observations came from that one volume, and
+# they pushed its derived labels from 0.90 confidence down to 0.53. Two is
+# allowed because two is not a habit: a volume may restart its count, and a
+# sheet carrying two book pages prints two folios.
+MAX_REPEATS = 2
+
 
 @dataclass(frozen=True)
 class Band:
@@ -189,28 +201,65 @@ def geometric_observations(edges_by_pos, band: Band | None,
     that follows; here the place carries the burden the vocabulary used to.
 
     Silent where the page already stated a label the first round could read --
-    a second, weaker voice could only argue with the first.
+    a second, weaker voice could only argue with the first. Silent, too, where a
+    reading keeps coming back: see MAX_REPEATS.
     """
     if band is None:
         return []
+
+    readings = [
+        (pos, line, read_label_relaxed(line.text))
+        for pos in sorted(edges_by_pos)
+        if pos >= 1 and pos not in spoken_for
+        for line in edges_by_pos[pos]
+        if band.holds(line)
+    ]
+    seen: dict[str, int] = {}
+    for _pos, _line, label in readings:
+        if label is not None:
+            seen[label] = seen.get(label, 0) + 1
+    furniture = {label for label, n in seen.items() if n > MAX_REPEATS}
+
     out: list[Observation] = []
-    for pos in sorted(edges_by_pos):
-        if pos in spoken_for or pos < 1:
+    for pos, line, label in readings:
+        if label is None or label in furniture:
             continue
-        for line in edges_by_pos[pos]:
-            if not band.holds(line):
-                continue
-            label = read_label_relaxed(line.text)
-            if label is None:
-                continue
-            where = "head" if line.edge == "top" else "foot"
-            out.append(Observation(
-                pos=pos, label=label, source="printed-geometric",
-                weight=GEOMETRIC_WEIGHT,
-                why=f"{label!r} at the {where} of physical page {pos}, "
-                    f"where this volume prints its folios",
-            ))
+        where = "head" if line.edge == "top" else "foot"
+        out.append(Observation(
+            pos=pos, label=label, source="printed-geometric",
+            weight=GEOMETRIC_WEIGHT,
+            why=f"{label!r} at the {where} of physical page {pos}, "
+                f"where this volume prints its folios",
+        ))
     return out
+
+
+# What a folio rescued from a running footer is worth. Half, because it has been
+# through a step the printed reading has not: a similarity match decided the line
+# was furniture, and the number was taken out of what that match removed. Where
+# an apparatus reads "N Obra citada. Página NN." on page after page (Carlomagno),
+# the notes themselves pass as a running footer and what is rescued is the note's
+# own number.
+FOOTER_WEIGHT = 0.5
+
+
+def rescued_observations(rescued_by_pos) -> list[Observation]:
+    """What a running footer said before it was stripped.
+
+    Called ``printed-footer`` and not ``footer-rescue`` as the design had it, so
+    that it sorts with the other readings the page itself carries: the verdict
+    reads the ``printed-`` prefix to decide that a page stated its own number,
+    and ``label_source`` travels to archilles with exactly that meaning. The
+    page did print this -- inside furniture, but in its own ink.
+    """
+    return [
+        Observation(pos=pos, label=label, source="printed-footer",
+                    weight=FOOTER_WEIGHT,
+                    why=f"{label!r} rescued from the running footer of "
+                        f"physical page {pos}")
+        for pos, label in sorted(rescued_by_pos.items())
+        if label is not None and ordinal_of(label) is not None and pos >= 1
+    ]
 
 
 def _decoded(sequence: list[tuple[int, str]]) -> list[tuple[int, int, str]]:
