@@ -289,3 +289,69 @@ def test_the_fit_really_returns_the_best_scoring_plan():
     starts = [s.start_pos for s in plan.segments]
     assert total(starts) == best
     assert starts == bounds
+
+
+# --- A mutilated reading may contradict, but it may not found a segment -------
+#
+# Lewy, Chaldaean Oracles (2026-08-19): the scan's running head loses its
+# leading digit, so a whole stretch reads 1, 2, 3 where the volume prints 441,
+# 442, 443. Those readings agree with each other, which is what the older fit
+# could not survive -- min_attested sees plenty of witnesses and lam cannot
+# outbid six confirmations. What gives them away is not their number but their
+# shape: each is what is left of the value the running plan states there.
+
+
+def test_a_stretch_that_lost_its_leading_digit_does_not_found_a_segment():
+    # The plan runs at offset -26. Five pages read as if the count restarted,
+    # and each of those readings is the tail of what the plan says there.
+    obs = ([_obs(p, str(p - 26)) for p in range(30, 36)]
+           + [_obs(p, str(p - 466)) for p in (467, 468, 469, 470, 471)]
+           + [_obs(p, str(p - 26)) for p in range(472, 486)])
+    plan = fit(obs, boundaries=[30, 467, 472], last_pos=485, params=P)
+    assert len(plan.segments) == 1
+    assert plan.value_at(467) == 441
+
+
+def test_the_rule_needs_a_count_to_measure_against():
+    # Its limit, stated rather than discovered later. The fit settles the tail
+    # first, so a mutilated stretch is caught by the numbering that resumes
+    # after it. Where nothing resumes -- the damage runs to the last page of
+    # the volume -- there is no running count to compare with, and the readings
+    # stand. Lewy has 330 pages after the stretch this rule removes; a volume
+    # whose final pages lose their leading digit keeps the defect.
+    obs = ([_obs(p, str(p - 26)) for p in range(30, 36)]
+           + [_obs(p, str(p - 466)) for p in (467, 468, 469, 470, 471)])
+    plan = fit(obs, boundaries=[30, 467], last_pos=471, params=P)
+    assert plan.value_at(467) == 1
+
+
+def test_the_same_readings_do_found_a_segment_where_nothing_predicts_them():
+    # The identical stretch of 1, 2, 3, 4, 5 stands on its own where no
+    # surrounding count explains it away -- an appendix that really does start
+    # over is not a mutilation.
+    obs = ([_obs(p, str(p - 466)) for p in (467, 468, 469, 470, 471)]
+           + [_obs(p, str(p - 466)) for p in (472, 473, 474)])
+    plan = fit(obs, boundaries=[467, 472], last_pos=474, params=P)
+    assert plan.value_at(467) == 1
+
+
+def test_a_truncated_roman_numeral_does_not_found_a_segment_either():
+    # The other direction, and the commoner one in the corpus: the extraction
+    # cuts the numeral short, so the plan's XXII is read "xxi".
+    obs = ([_obs(p, "xx") for p in (20,)]
+           + [_obs(21, "xxi"), _obs(22, "xxi"), _obs(23, "xxi")]
+           + [_obs(24, "xxiv"), _obs(25, "xxv"), _obs(26, "xxvi")])
+    plan = fit(obs, boundaries=[20, 22, 24], last_pos=26, params=P)
+    assert len(plan.segments) == 1
+    assert plan.label_of(22) == "xxii"
+
+
+def test_the_rule_does_not_reach_across_a_change_of_numbering_system():
+    # Roman front matter running into an arabic body. "ix" is not a mutilation
+    # of "9" and must not be treated as one -- they are different systems, and
+    # the boundary between them is real.
+    obs = ([_obs(p, "ix") for p in (9,)] + [_obs(8, "viii"), _obs(7, "vii")]
+           + [_obs(p, str(p - 9)) for p in (10, 11, 12, 13)])
+    plan = fit(obs, boundaries=[7, 10], last_pos=13, params=P)
+    assert len(plan.segments) == 2
+    assert plan.value_at(10) == 1
