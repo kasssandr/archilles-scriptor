@@ -24,6 +24,13 @@ forties.
 *The commonest kind was not in the design at all.* Seven of the forty are roman
 numerals the extraction cut short: the plan says XXII, the page reads "XXI". A
 prefix of the truth is a misreading, not a different page.
+
+*And it turned out to be the dangerous kind.* Lewy's scan loses the other end of
+the numeral -- 441 reads "1" -- and what is left counts on correctly, so a whole
+stretch of mutilations forms a numbering with as many witnesses as the truth.
+That is why this one category no longer only names a rejection after the fact:
+``plan.is_mutilation`` refuses it a segment during the fit (2026-08-20). Both
+directions are the same category, and both are decided by the same function.
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from scriptor.reflow.pagelabel import encode_label, ordinal_of
+from scriptor.reflow.pagination.plan import is_mutilation
 
 # A year in an imprint, not a folio. Two conditions, and the second is the one
 # that carries: the number has to lie beyond the volume's own extent. A book of
@@ -86,14 +94,16 @@ def _is_year(label: str, extent: int) -> bool:
 def _is_truncation(label: str, predicted: str | None) -> bool:
     """Did the extraction cut the volume's own numeral short?
 
-    A proper prefix, and shorter -- "XXI" of "XXII". Compared case-insensitively
-    because the two readings come from different rounds and one of them may have
-    normalised; what matters is the glyphs that are missing.
+    One definition, and it lives in the fit (``plan.is_mutilation``): either end
+    may be lost, "xxi" of "XXII" as well as "1" of "441". The report has to
+    agree with the fit here, because since 2026-08-20 the fit acts on this --
+    a reading it recognises as mutilated may contradict a plan but may not found
+    a segment. A verdict that called those readings something else would explain
+    the rejection by a rule nobody applied.
     """
-    if predicted is None or not label:
+    if predicted is None:
         return False
-    a, b = label.strip().lower(), predicted.strip().lower()
-    return len(a) < len(b) and b.startswith(a)
+    return is_mutilation(label, predicted)
 
 
 def _chapter_run(rejected) -> set[int]:

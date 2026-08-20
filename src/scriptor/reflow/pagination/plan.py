@@ -173,6 +173,59 @@ class FitParams:
             )
 
 
+def is_mutilation(reading: str, predicted: str) -> bool:
+    """Is ``reading`` what the extraction left of ``predicted``?
+
+    Either end may be lost, and the two directions were found ten months apart.
+    The corpus knew only the first until 2026-08-19: the extraction cuts a
+    numeral short, so the plan's XXII is read "xxi" -- seven of forty rejected
+    observations, and ``rejected.py`` has named them ``truncated-numeral`` since
+    the report was built. Lewy's scan loses the other end, the leading digit of
+    the running head, so 441 reads "1".
+
+    That second direction is why this moved out of the report and into the fit.
+    A prefix that lost its tail rarely counts on: XXI stands alone. A suffix
+    that lost its head counts perfectly -- 441, 442, 443 becomes 1, 2, 3, a
+    sequence with exactly as many witnesses as the truth, and neither
+    ``min_attested`` nor ``lam`` can tell it apart from a numbering of its own.
+    Only its shape gives it away.
+
+    Compared as written labels, case-insensitively, and not as ordinals: what
+    the extraction lost is glyphs.
+    """
+    a, b = reading.strip().lower(), predicted.strip().lower()
+    if not a or not b or len(a) >= len(b):
+        return False
+    return b.startswith(a) or b.endswith(a)
+
+
+def running_count(tail_segments, pos: int) -> tuple[str, str] | None:
+    """What the segments after ``pos`` say the count is at ``pos``.
+
+    The fit works backwards, so when a segment beginning at ``pos`` is weighed
+    the plan for everything after it is already decided. That settled tail is
+    the running count this position is measured against -- extrapolated back
+    over the boundary, which is exactly what a numbering does when nothing
+    interrupts it.
+
+    Returns the style and the label the tail states there, or None where it
+    states nothing: an uncounted tail, a volume that ends here, or a count that
+    would have to reach back past its own first page.
+    """
+    if not tail_segments:
+        return None
+    seg = tail_segments[0]
+    if seg.kind != "counted":
+        return None
+    value = ordinal_of(seg.start_label)
+    if value is None:
+        return None
+    predicted = value - (seg.start_pos - pos)
+    if predicted < 1:
+        return None
+    return seg.style, encode_label(predicted, seg.style)
+
+
 def _by_position(observations) -> dict[int, list]:
     """Observations grouped by the page they speak about.
 
@@ -278,8 +331,15 @@ class _Tally:
             # dict, so a page whose two edges print the same number counts once.
             self.hits[key] = self.hits.get(key, 0) + 1
 
-    def best(self, start_pos: int) -> tuple[Segment | None, float]:
+    def best(self, start_pos: int,
+             running: tuple[str, str] | None = None) -> tuple[Segment | None, float]:
         """The best counted segment starting at ``start_pos``, and its score.
+
+        ``running`` is what the plan already settled for the pages after this
+        stretch says the count is here (``running_count``). A segment whose own
+        first label is a mutilation of that is refused outright rather than
+        priced: the readings behind it are not weak evidence for a second
+        numbering, they are the volume's own numbering with a piece missing.
 
         Ties go to the smaller offset, then to the alphabetically first style,
         so the result never depends on dict ordering.
@@ -293,6 +353,11 @@ class _Tally:
                 continue
             # Nor does one reading make a numbering system (FitParams.min_attested).
             if self.hits[(style, offset)] < self.params.min_attested:
+                continue
+            # Nor does a numbering the extraction damaged (``is_mutilation``).
+            # Same system only: "ix" is not a broken "9", it is another script.
+            if (running is not None and running[0] == style
+                    and is_mutilation(encode_label(start_value, style), running[1])):
                 continue
             score = self.base + self.gain[(style, offset)]
             # A section begins on the right; see FitParams.rho.
@@ -389,7 +454,8 @@ def fit(observations, boundaries, last_pos: int,
             options: list[tuple[Segment, float]] = [(
                 Segment(start, "1", "arabic", kind="uncounted"), tally.base,
             )]
-            counted, counted_score = tally.best(start)
+            counted, counted_score = tally.best(
+                start, running_count(tail_segs, start))
             if counted is not None:
                 options.append((counted, counted_score))
             for seg, seg_score in options:
