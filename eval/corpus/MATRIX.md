@@ -4,7 +4,7 @@ Volumes are chosen for the properties they carry, not for being at hand. Each
 row below is a documented weakness of the pipeline or a variant of the note
 apparatus that has to be measured. One volume may serve several rows.
 
-Rows 1–5 are everyday business and get two to three volumes each; rows 6–11
+Rows 1–5 are everyday business and get two to three volumes each; rows 6–12
 are single phenomena where one witness is enough to catch a regression.
 
 Selection method and per-page rationale live in each band's `selection.json`.
@@ -27,6 +27,14 @@ bytes can be fetched again.
 | 9 | Numbered lists in running text | the defect behind commit `0f76b3d`, fixed and currently unguarded | `bauer-aneignung` (p. 88 area) |
 | 10 | Running head carrying the page number | Braunfels | `bauer-aneignung` |
 | 11 | Non-Latin passages inside Latin typesetting | polytonic Greek, Old English þ ð æ ȝ, scribal abbreviation marks — harder on normalisation than anything in the corpus so far | `mehr-themistios` |
+| 12 | Scan OCR that mutilates the folio in the running head | the leading digit drops out (65 → `5`, 202 → `2`), so the misreadings form a coherent second counting sequence rather than isolated noise — the first volume ever to make the page-label metric report `wrong` above zero, 140 of 774 pages | — (protected only) |
+
+The witness for row 12 is Lewy, *Chaldaean Oracles and Theurgy* (Tardieu 2011,
+all rights reserved). Being `protected`, it lives entirely under
+`eval/golden-local/lewy-chaldaean/` — ground truth, selection and measurement
+included. Nothing about it beyond this row is committed. No freely licensed
+substitute is known; scan-derived OCR of this quality is common enough that one
+should be findable.
 
 ## Licence classes
 
