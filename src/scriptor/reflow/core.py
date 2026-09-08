@@ -1577,10 +1577,14 @@ def main(
     # Chapter running heads, removed with knowledge of the full title — the
     # generic stripper below would take the title's own year ("… in 759") for a
     # phantom folio.
-    rescued_heads: list[list[str]] = [[] for _ in page_lines]
+    # One channel for every number a stripper lifts out of a line it removes.
+    # Four stages add to it; nothing between them has to be kept in step, and
+    # the consensus reads it once at the end (reflow/rescued.py).
+    from scriptor.reflow.rescued import RescuedFolios
+    rescued = RescuedFolios(len(page_lines))
     if chapter_titles:
-        page_lines, rescued_heads, contested = outline_mod.strip_running_titles(
-            page_lines, chapter_titles)
+        page_lines, contested = outline_mod.strip_running_titles(
+            page_lines, chapter_titles, rescued)
         if contested:
             print(
                 f"Chapter running heads carrying a number at both edges: "
@@ -1600,9 +1604,6 @@ def main(
         remove_running_footers_from_blocks,
         strip_running_elements,
     )
-    cleaned, headers, footers, rescued_top, rescued_bottom = strip_running_elements(
-        raw_texts, foot_blocks=fn_blocks)
-    fn_blocks, rescued_blocks = remove_running_footers_from_blocks(fn_blocks, footers)
     # No rescued folio is put back into the text. Each travels to the consensus
     # as a witness of its own -- ``printed-head`` at the top edge,
     # ``printed-footer`` at the foot -- so that a conflict between the page's
@@ -1610,25 +1611,15 @@ def main(
     # sequence rather than by a guard, and so that the same rescue is worth the
     # same whether or not the geometry happened to cut the apparatus.
     #
-    # Four paths reach into a stripped line, one per edge and stripper, and all
-    # four are heard. A page can carry two lines of furniture and they do not
-    # say the same thing: Josephus and Jesus heads its pages with a download
-    # banner ending in the year and with the chapter's running head ending in
-    # the folio. Choosing between them here would be deciding on one source
-    # while a second exists; the fit is where that belongs. Repetitions are
-    # dropped, because the same number stated twice is one statement.
-    rescued_by_ordinal: dict[int, list[tuple[str, str]]] = {}
-    for ordinal, (heads, tops, block, bottoms) in enumerate(
-        zip(rescued_heads, rescued_top, rescued_blocks, rescued_bottom), start=1
-    ):
-        at_edge: list[tuple[str, str]] = []
-        for edge, folios in (("top", heads + tops),
-                             ("bottom", ([block] if block else []) + bottoms)):
-            for folio in folios:
-                if (edge, folio) not in at_edge:
-                    at_edge.append((edge, folio))
-        if at_edge:
-            rescued_by_ordinal[ordinal] = at_edge
+    # All four paths are heard. A page can carry two lines of furniture and they
+    # do not say the same thing: Josephus and Jesus heads its pages with a
+    # download banner ending in the year and with the chapter's running head
+    # ending in the folio. Choosing between them here would be deciding on one
+    # source while a second exists; the fit is where that belongs.
+    cleaned, headers, footers = strip_running_elements(
+        raw_texts, rescued, foot_blocks=fn_blocks)
+    fn_blocks = remove_running_footers_from_blocks(fn_blocks, footers, rescued)
+    rescued_by_ordinal = rescued.by_position()
     if headers:
         print(f"Running headers removed ({len(headers)}): {headers[:3]}", file=sys.stderr)
     if footers:

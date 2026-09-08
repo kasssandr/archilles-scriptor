@@ -10,6 +10,7 @@ strippers as a *rescued* number and states its case to the consensus like every
 other witness (reflow/pagination/witnesses.rescued_observations).
 """
 
+from scriptor.reflow.rescued import RescuedFolios
 from scriptor.reflow.running_elements import (
     strip_running_elements,
     detect_running_footers,
@@ -72,11 +73,12 @@ def _heil_pages(nums, *, trailing=False):
 
 def test_strip_rescues_a_leading_page_number():
     nums = (146, 148, 150, 152)
-    cleaned, headers, _, rescued_top, rescued_bottom = strip_running_elements(
-        _heil_pages(nums))
+    rescued = RescuedFolios(len(nums))
+    cleaned, headers, _ = strip_running_elements(_heil_pages(nums), rescued)
     assert headers, "wiederkehrender Kolumnentitel muss erkannt werden"
-    assert rescued_top == [[str(n)] for n in nums]
-    assert rescued_bottom == [[]] * len(nums)
+    assert rescued.by_position() == {
+        i: [("top", str(n))] for i, n in enumerate(nums, start=1)
+    }
     for page in cleaned:
         assert "WILHELM HEIL" not in page          # title gone
         assert not any(c.isdigit() for c in page)  # and the number with it
@@ -84,10 +86,13 @@ def test_strip_rescues_a_leading_page_number():
 
 def test_strip_rescues_a_trailing_page_number():
     nums = (147, 149, 151)
-    cleaned, headers, _, rescued_top, _ = strip_running_elements(
-        _heil_pages(nums, trailing=True))
+    rescued = RescuedFolios(len(nums))
+    cleaned, headers, _ = strip_running_elements(
+        _heil_pages(nums, trailing=True), rescued)
     assert headers
-    assert rescued_top == [[str(n)] for n in nums]
+    assert rescued.by_position() == {
+        i: [("top", str(n))] for i, n in enumerate(nums, start=1)
+    }
     for page in cleaned:
         assert "WILHELM HEIL" not in page
         assert not any(c.isdigit() for c in page)
@@ -102,9 +107,10 @@ def test_header_without_number_fully_removed():
         b1 = _DISTINCT[(2 * (i - 1)) % len(_DISTINCT)]
         b2 = _DISTINCT[(2 * (i - 1) + 1) % len(_DISTINCT)]
         pages.append(f"WILHELM HEIL\n{b1}\n{b2}")
-    cleaned, headers, _, rescued_top, _ = strip_running_elements(pages)
+    rescued = RescuedFolios(len(pages))
+    cleaned, headers, _ = strip_running_elements(pages, rescued)
     assert headers
-    assert rescued_top == [[]] * len(nums)
+    assert rescued.by_position() == {}
     for page in cleaned:
         assert "WILHELM HEIL" not in page
         assert not any(c.isdigit() for c in page)
@@ -122,9 +128,10 @@ def test_two_running_heads_on_one_page_are_two_statements():
     for i, n in enumerate(range(110, 118)):
         body = _DISTINCT[(2 * i) % len(_DISTINCT)]
         pages.append(f"{banner}\nAUTHENTICITY of the Testimonium  {n}\n{body}")
-    cleaned, headers, _, rescued_top, _ = strip_running_elements(pages)
+    rescued = RescuedFolios(len(pages))
+    cleaned, headers, _ = strip_running_elements(pages, rescued)
     assert len(headers) == 2, "beide Kopfzeilen sind wiederkehrende Elemente"
-    assert rescued_top[0] == ["2025", "110"]
+    assert rescued.by_position()[1] == [("top", "2025"), ("top", "110")]
     for page in cleaned:
         assert "Downloaded" not in page and "AUTHENTICITY" not in page
 
@@ -136,11 +143,12 @@ def test_the_rescued_number_never_reaches_parse_page_as_a_label():
     # page printed the number inside furniture. It reaches the consensus as a
     # rescue instead, with a weight that says so.
     nums = (146, 148, 150)
-    cleaned, _, _, rescued_top, _ = strip_running_elements(_heil_pages(nums))
+    rescued = RescuedFolios(len(nums))
+    cleaned, _, _ = strip_running_elements(_heil_pages(nums), rescued)
     pg = parse_page(cleaned[0])
     assert pg.label_top is None
     assert pg.label_bottom is None
-    assert rescued_top[0] == ["146"]
+    assert rescued.by_position()[1] == [("top", "146")]
 
 
 # --- Footer with an embedded page number (consistency) -------------------------
@@ -153,10 +161,12 @@ def test_strip_preserves_footer_number():
     for i, n in enumerate(nums):
         body = "\n".join(_DISTINCT[(2 * i + k) % len(_DISTINCT)] for k in range(4))
         pages.append(f"{body}\nQUELLENBAND ZWEI {n}")
-    cleaned, _, footers, _, rescued_bottom = strip_running_elements(
-        pages, footer_min=3)
+    rescued = RescuedFolios(len(pages))
+    cleaned, _, footers = strip_running_elements(pages, rescued, footer_min=3)
     assert footers, "wiederkehrender Fußtitel muss erkannt werden"
-    assert rescued_bottom == [[str(n)] for n in nums]
+    assert rescued.by_position() == {
+        i: [("bottom", str(n))] for i, n in enumerate(nums, start=1)
+    }
     for page in cleaned:
         assert "QUELLENBAND" not in page
         assert not any(c.isdigit() for c in page)
@@ -195,7 +205,7 @@ def test_footer_quoted_in_a_footnote_survives():
         body = "\n".join(_DISTINCT[(2 * i + k) % len(_DISTINCT)] for k in range(3))
         pages.append(f"{body}\n{_DIE_FOOTER}")
 
-    cleaned, _, footers, _, _ = strip_running_elements(pages, footer_min=3)
+    cleaned, _, footers = strip_running_elements(pages, footer_min=3)
     assert footers, "wiederkehrender Fußtitel muss erkannt werden"
     for page in cleaned[1:]:
         assert _DIE_FOOTER not in page  # the real running footer goes
@@ -228,25 +238,29 @@ def test_footer_hidden_in_the_apparatus_is_detected():
     assert not detect_running_footers(bodies, min_occurrences=3), (
         "ohne die Blöcke steht der Fußtitel auf keiner Seite am Fuß des Textes"
     )
-    _, _, footers, _, _ = strip_running_elements(
+    _, _, footers = strip_running_elements(
         bodies, footer_min=3, foot_blocks=blocks)
     assert any(_strings_are_similar(f, _DIE_FOOTER) for f in footers)
 
 
 def test_footer_leaves_the_apparatus_and_hands_back_its_folio():
     bodies, blocks = _split_pages()
-    _, _, footers, _, _ = strip_running_elements(
+    _, _, footers = strip_running_elements(
         bodies, footer_min=3, foot_blocks=blocks)
-    cleaned, rescued = remove_running_footers_from_blocks(blocks, footers)
+    rescued = RescuedFolios(len(blocks))
+    cleaned = remove_running_footers_from_blocks(blocks, footers, rescued)
     assert cleaned[0] == [f"1 {_DISTINCT[8]}"], "der Fußtitel gehört nicht zu Note 1"
-    assert rescued[0] == "10", "die Folio darf nicht mit dem Fußtitel verschwinden"
+    assert rescued.by_position()[1] == [("bottom", "10")], (
+        "die Folio darf nicht mit dem Fußtitel verschwinden"
+    )
 
 
 def test_a_block_without_the_footer_is_left_alone():
     blocks = [["1 Vgl. Beleg 1.", "und eine Fortsetzungszeile dazu."]]
-    cleaned, rescued = remove_running_footers_from_blocks(blocks, [_DIE_FOOTER])
+    rescued = RescuedFolios(len(blocks))
+    cleaned = remove_running_footers_from_blocks(blocks, [_DIE_FOOTER], rescued)
     assert cleaned[0] == blocks[0]
-    assert rescued[0] is None
+    assert rescued.by_position() == {}
 
 
 # --- speed: the cheap bounds must not change a single answer ------------------

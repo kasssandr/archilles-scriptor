@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from difflib import SequenceMatcher
 
+from scriptor.reflow.rescued import RescuedFolios
+
 
 def _strings_are_similar(a: str, b: str, threshold: float = 0.85) -> bool:
     if not a or not b:
@@ -154,24 +156,23 @@ def header_of_page(
 def remove_running_headers(
     pages_text: list[str],
     running_headers: list[str],
+    rescued: RescuedFolios,
     similarity_threshold: float = 0.85,
-) -> tuple[list[str], list[list[str]]]:
-    """Strip the running head, and hand back the folios that shared its lines.
+) -> list[str]:
+    """Strip the running head, adding the folios that shared its lines to
+    ``rescued``.
 
-    Returns the cleaned pages and, per page, every page number embedded in a
-    removed head -- a list, because a page can carry more than one line of
-    furniture and they do not say the same thing. Josephus and Jesus heads its
-    pages twice: a download banner ending in the year 2025, and the chapter's
-    running head ending in the folio. Keeping only the first threw the folio
-    away and left the year to speak for the page.
+    Every number is added, not just the first: a page can carry more than one
+    line of furniture and they do not say the same thing. Josephus and Jesus
+    heads its pages twice, with a download banner ending in the year 2025 and
+    with the chapter's running head ending in the folio; keeping only the first
+    threw the folio away and left the year to speak for the page.
     """
     cleaned_pages = []
-    rescued: list[list[str]] = []
-    for page_text in pages_text:
+    for index, page_text in enumerate(pages_text):
         lines = page_text.strip().split("\n")
         cleaned_lines: list[str] = []
         lines_checked = 0
-        folios: list[str] = []
         for line in lines:
             if not line.strip():
                 cleaned_lines.append(line)
@@ -189,12 +190,9 @@ def remove_running_headers(
             else:
                 # The title goes, and so does the number's place in the text;
                 # the number itself is handed on as a witness.
-                folio = _extract_edge_page_number(line)
-                if folio is not None and folio not in folios:
-                    folios.append(folio)
+                rescued.add(index, "top", _extract_edge_page_number(line))
         cleaned_pages.append("\n".join(cleaned_lines))
-        rescued.append(folios)
-    return cleaned_pages, rescued
+    return cleaned_pages
 
 
 def detect_running_footers(
@@ -240,15 +238,15 @@ def detect_running_footers(
 def remove_running_footers(
     pages_text: list[str],
     running_footers: list[str],
+    rescued: RescuedFolios,
     similarity_threshold: float = 0.85,
-) -> tuple[list[str], list[list[str]]]:
-    """Strip the running footer, and hand back the folios that shared its lines.
+) -> list[str]:
+    """Strip the running footer, adding the folios it carried to ``rescued``.
 
     Same contract as ``remove_running_headers``, at the other edge.
     """
     cleaned_pages = []
-    rescued: list[list[str]] = []
-    for page_text in pages_text:
+    for index, page_text in enumerate(pages_text):
         lines = page_text.strip().split("\n")
         footer_indices: set[int] = set()
         lines_checked = 0
@@ -265,25 +263,22 @@ def remove_running_footers(
                         footer_indices.add(idx)
                         break
         cleaned_lines: list[str] = []
-        folios: list[str] = []
         for idx, line in enumerate(lines):
             if idx in footer_indices:
                 # The footer goes; the number it carried is handed on.
-                folio = _extract_edge_page_number(line)
-                if folio is not None and folio not in folios:
-                    folios.append(folio)
+                rescued.add(index, "bottom", _extract_edge_page_number(line))
                 continue
             cleaned_lines.append(line)
         cleaned_pages.append("\n".join(cleaned_lines))
-        rescued.append(folios)
-    return cleaned_pages, rescued
+    return cleaned_pages
 
 
 def remove_running_footers_from_blocks(
     blocks: list[list[str] | None],
     running_footers: list[str],
+    rescued: RescuedFolios,
     similarity_threshold: float = 0.85,
-) -> tuple[list[list[str] | None], list[str | None]]:
+) -> list[list[str] | None]:
     """Take the running footer out of a cut footnote block.
 
     Where the page geometry cut an apparatus, the foot of the page went with
@@ -292,16 +287,14 @@ def remove_running_footers_from_blocks(
     footnote text -- on SSOAR 35056, 15 of 34 definitions ended in the
     publisher's name and three consisted of nothing else.
 
-    Returns the cleaned blocks and, per page, a page number that was embedded
-    in the removed line. That folio belongs to the body: it is the page's own
-    number, and dropping it with the footer would leave the page unlabelled.
+    A page number embedded in the removed line goes to ``rescued`` at the foot.
+    That folio belongs to the body: it is the page's own number, and dropping it
+    with the footer would leave the page unlabelled.
     """
     cleaned_blocks: list[list[str] | None] = []
-    rescued: list[str | None] = []
-    for block in blocks:
+    for index, block in enumerate(blocks):
         if not block or not running_footers:
             cleaned_blocks.append(block)
-            rescued.append(None)
             continue
         kept, folio = [], None
         for line in block:
@@ -310,21 +303,26 @@ def remove_running_footers_from_blocks(
                 _strings_are_similar(normalized, f, similarity_threshold)
                 for f in running_footers
             ):
+                # The first only. Where the head strippers hand on every number
+                # they find, this one is reaching into an apparatus: a second
+                # match inside a note block is another note's text, not another
+                # folio, and the numbers there are note numbers.
                 folio = folio or _extract_edge_page_number(line)
                 continue
             kept.append(line)
+        rescued.add(index, "bottom", folio)
         cleaned_blocks.append(kept)
-        rescued.append(folio)
-    return cleaned_blocks, rescued
+    return cleaned_blocks
 
 
 def strip_running_elements(
     pages_text: list[str],
+    rescued: RescuedFolios | None = None,
     header_min: int = 3,
     footer_min: int | None = None,
     similarity_threshold: float = 0.85,
     foot_blocks: list[list[str] | None] | None = None,
-) -> tuple[list[str], list[str], list[str], list[list[str]], list[list[str]]]:
+) -> tuple[list[str], list[str], list[str]]:
     """Convenience: detect + remove headers and footers in one call.
 
     ``foot_blocks`` are footnote blocks the page geometry has already cut off.
@@ -333,13 +331,17 @@ def strip_running_elements(
     the footers: a volume whose apparatus swallows the running footer on most
     of its pages would otherwise show it on too few to reach the threshold.
 
-    Returns (cleaned_pages, detected_headers, detected_footers, rescued_top,
-    rescued_bottom) -- the last two per page, the folio each removed running
-    element carried, for the consensus to weigh.
+    ``rescued`` collects the folio each removed running element carried, for the
+    consensus to weigh. A caller with no use for them may leave it out; the
+    numbers are then dropped with the lines they stood in.
+
+    Returns (cleaned_pages, detected_headers, detected_footers).
     """
+    if rescued is None:
+        rescued = RescuedFolios(len(pages_text))
     headers = detect_running_headers(pages_text, header_min, similarity_threshold)
-    cleaned, rescued_top = remove_running_headers(
-        pages_text, headers, similarity_threshold)
+    cleaned = remove_running_headers(
+        pages_text, headers, rescued, similarity_threshold)
     whole_pages = cleaned
     if foot_blocks is not None:
         whole_pages = [
@@ -347,6 +349,6 @@ def strip_running_elements(
             for text, block in zip(cleaned, foot_blocks)
         ]
     footers = detect_running_footers(whole_pages, footer_min, similarity_threshold)
-    cleaned, rescued_bottom = remove_running_footers(
-        cleaned, footers, similarity_threshold)
-    return cleaned, headers, footers, rescued_top, rescued_bottom
+    cleaned = remove_running_footers(
+        cleaned, footers, rescued, similarity_threshold)
+    return cleaned, headers, footers
