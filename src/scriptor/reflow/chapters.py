@@ -231,7 +231,7 @@ def from_toc(
             continue
         head = title.split()[0].lower()
         for pos, lines in sorted(lines_by_pos.items()):
-            if pos in toc_positions or pos in out:
+            if pos in toc_positions:
                 continue
             # A cheap gate before the expensive comparison: the page that
             # spells the title out prints its first word somewhere.
@@ -239,10 +239,21 @@ def from_toc(
                 continue
             if match_title_lines(lines, title) is None:
                 continue
-            out[pos] = ChapterStart(
-                pos=pos, title=title, rank=e.level, source="toc",
-                printed=str(e.page) if e.page >= 0 else None,
-            )
+            # The first page that spells the title out is the answer, taken or
+            # not. A chapter and its first section open on the same page often
+            # enough to matter, and the coarser entry is the true one there --
+            # from_outline settles it the same way. Walking on to the next free
+            # page instead is how a subsection ends up on its own running head:
+            # at L'Empire "Premières années de Gratien" opens physical 231
+            # under the chapter that claimed it, and the search placed it on
+            # 233, where the head repeats it. Seventeen entries, each then
+            # contradicting the folio its page prints.
+            found = out.get(pos)
+            if found is None or e.level < found.rank:
+                out[pos] = ChapterStart(
+                    pos=pos, title=title, rank=e.level, source="toc",
+                    printed=str(e.page) if e.page >= 0 else None,
+                )
             break
     return _in_reading_order([out[p] for p in sorted(out)])
 
