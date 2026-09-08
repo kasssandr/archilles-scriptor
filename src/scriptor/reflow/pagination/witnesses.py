@@ -396,10 +396,12 @@ def link_observations(linked_by_pos) -> list[Observation]:
     ``linked_by_pos`` maps the position of a contents page to the
     ``(target, text)`` pairs measured on it (``textlines.linked_lines``).
 
-    Rare: of the eighteen corpus volumes exactly one carries contents links
-    (Libros, whose entries resolve to page objects). Where it happens it is the
-    most direct evidence about a page reference a PDF can hold -- the producer
-    saying where the entry goes, rather than Scriptor searching for its title.
+    Uncommon but no longer rare: five of the twenty corpus volumes carry
+    contents links whose entries resolve to page objects -- Libros (86 links),
+    Josephus and Jesus (65), Le radici (33), Lewy (15) and its pdf24 rendering
+    (9). Where it happens it is the most direct evidence about a page reference
+    a PDF can hold -- the producer saying where the entry goes, rather than
+    Scriptor searching for its title.
     """
     out: list[Observation] = []
     for pos in sorted(linked_by_pos):
@@ -511,13 +513,16 @@ def boundary_candidates(pages, observations, pos_of=_index,
     # over the front matter and starts counting at physical page 12 resp. 67,
     # which is precisely where each volume's arabic count begins.
     #
-    # Expect little more than that. Of the sixteen corpus volumes six carry
-    # PageLabels at all, and all six are mechanical -- the label is the physical
-    # page plus a fixed offset (A comemoração -2, Asclepios -1, L'Empire -10,
-    # La masonería -66, Bauer -1, Making Martyrs 0). Not one of them knows a
-    # numbering change of the volume it describes; what they know is where their
-    # own run starts. Bauer in particular has no roman-to-arabic turn to know:
-    # it paginates straight through from its first page.
+    # Expect little more than that. Of the twenty corpus volumes eight carry
+    # PageLabels at all, and six of those are mechanical -- the label is the
+    # physical page plus a fixed offset (A comemoração -2, Asclepios -1,
+    # L'Empire -10, La masonería -66, Bauer -1, Making Martyrs 0). Those six
+    # know no numbering change of the volume they describe; what they know is
+    # where their own run starts. Bauer in particular has no roman-to-arabic
+    # turn to know: it paginates straight through from its first page. The
+    # remaining two do know one -- Artificial Humanities turns at -11/-1 and
+    # Josephus and Jesus at -17/-1 -- which is why this candidate is worth
+    # asking for and not merely tolerated.
     cat = [(pos_of(p), p.backend_label) for p in pages
            if pos_of(p) >= 1 and p.backend_label is not None]
     candidates |= _breaks(sorted(cat))
