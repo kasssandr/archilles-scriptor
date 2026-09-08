@@ -131,3 +131,41 @@ def test_the_opening_is_found_before_the_pages_that_head_the_title(tmp_path):
     assert [(c.pos, c.title, c.printed) for c in captured["found"]] == [
         (2, TITLE, "36")
     ]
+
+
+def test_a_section_is_found_where_it_opens_not_where_it_is_headed():
+    """A chapter opens at the top of a page; a section opens mid-page.
+
+    De eerste minister sets "De geschiedenis van de raadpensionaris" on line 7
+    of the page that opens it and on line 1 of the page after, as a running
+    head. Searching the head alone finds the furniture and misses the heading,
+    which is exactly the wrong way round: the find lands one page late and its
+    printed page then contradicts the folio the page carries.
+    """
+    from scriptor.reflow.chapters import from_toc
+    from scriptor.reflow.toc import TocEntry
+
+    section = "De geschiedenis van de raadpensionaris"
+    opening = [
+        "Hoofdstuk 2 - De Hollandse raadpensionaris",   # running head
+        "Dit hoofdstuk gaat over de geschiedenis van het ambt",
+        "en het bestaat uit drie delen. We beginnen met een",
+        "overzicht van de raadpensionaris in de Nederlanden,",
+        "waarbij de nadruk ligt op de zeventiende eeuw.",
+        "Vervolgens staan we stil bij de vier functies.",
+        section,                                        # the heading, line 7
+        "De raadpensionaris was aanvankelijk landsadvocaat,",
+        "28",
+    ]
+    following = [
+        section,                                        # now furniture
+        "een politieke en representatieve taak. Hij was niet",
+        "meer alleen verantwoordelijk voor het bijeenroepen",
+        "29",
+    ]
+    found = from_toc(
+        [TocEntry(title=section, page=28, level=1)],
+        {5: opening, 6: following},
+        toc_positions=set(),
+    )
+    assert [(c.pos, c.printed) for c in found] == [(5, "28")]
