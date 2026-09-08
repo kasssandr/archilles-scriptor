@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 
+from scriptor.reflow.rescued import RescuedFolios
+
 OUTLINE_FILENAME = "outline.json"
 
 # Scanner artifacts posing as outline titles (Archilles `_JUNK_TOC_RE`).
@@ -185,8 +187,8 @@ def _strip_edges(s: str) -> tuple[str | None, str, str | None]:
 
 
 def strip_running_titles(
-    pages_lines: list[list[str]], titles: list[str]
-) -> tuple[list[list[str]], list[list[str]], int]:
+    pages_lines: list[list[str]], titles: list[str], rescued: RescuedFolios
+) -> tuple[list[list[str]], int]:
     """Remove chapter running heads from the head region of every page.
 
     Unlike the generic stripper this one knows the full title, so an edge
@@ -195,8 +197,8 @@ def strip_running_titles(
     for a folio, while a genuine folio sharing the line ("44 The Surrender …")
     is handed on for the consensus to weigh.
 
-    Returns (cleaned_pages, rescued, contested) -- ``rescued`` the folios per
-    page, ``contested`` how many *lines* offered two. One line can carry a
+    Returns (cleaned_pages, contested); the folios go to ``rescued`` at the top
+    edge, and ``contested`` counts how many *lines* offered two. One line can carry a
     number at both edges and only one of them can be the folio; there the
     leading one wins, because that is the edge a volume printing its folio in
     the running head uses when the title also ends in a number. Across lines
@@ -211,14 +213,12 @@ def strip_running_titles(
         if _norm(core):
             wants.append((lead, _norm(core), trail))
     if not wants:
-        return pages_lines, [[] for _ in pages_lines], 0
+        return pages_lines, 0
 
     out: list[list[str]] = []
-    rescued: list[list[str]] = []
     contested = 0
-    for lines in pages_lines:
+    for index, lines in enumerate(pages_lines):
         kept: list[str] = []
-        folios: list[str] = []
         for i, line in enumerate(lines):
             if i >= HEAD_REGION:
                 kept.extend(lines[i:])
@@ -235,8 +235,7 @@ def strip_running_titles(
                           if n is not None and n != own]
             if len(candidates) > 1:
                 contested += 1
-            if candidates and candidates[0] not in folios:
-                folios.append(candidates[0])
+            if candidates:
+                rescued.add(index, "top", candidates[0])
         out.append(kept)
-        rescued.append(folios)
-    return out, rescued, contested
+    return out, contested
