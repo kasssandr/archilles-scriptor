@@ -7,6 +7,10 @@ business -- that is settled by the plan which explains the most of them
 
 ``why`` is carried through to the audit unchanged. A verdict nobody can read
 back is a guess with better manners.
+
+The rule this is one instance of -- a stage states, it does not decide -- is
+written out once in ``scriptor.reflow`` (module docstring), and the names
+``source``/``weight``/``why`` are the convention any further axis follows.
 """
 
 from __future__ import annotations
