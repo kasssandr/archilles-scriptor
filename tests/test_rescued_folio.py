@@ -57,20 +57,21 @@ def test_nothing_is_stated_without_a_rescue():
 
 def test_the_edge_decides_which_witness_a_rescue_makes():
     obs = rescued_observations({7: [("top", "146")], 9: [("bottom", "148")]})
-    assert [(o.pos, o.source, o.weight) for o in obs] == [
-        (7, "printed-head", 0.8),
-        (9, "printed-footer", 0.5),
+    assert [(o.pos, o.source) for o in obs] == [
+        (7, "printed-head"), (9, "printed-footer"),
     ]
 
 
 def test_a_head_rescue_outweighs_a_footer_rescue():
-    # One fallible step, not two: the head is the head, while the footer rescue
-    # reaches into a cut note block by construction.
+    # The footer rescue reaches into a cut note block by construction and pays
+    # for it; the head rescue does not, and the corpus says so -- discounting
+    # it lets Lewy's eaten leading digits found a segment of their own
+    # (witnesses.HEAD_WEIGHT).
     from scriptor.reflow.pagination.witnesses import (
-        FOOTER_WEIGHT, GEOMETRIC_WEIGHT, HEAD_WEIGHT, PRINTED_WEIGHT,
+        FOOTER_WEIGHT, HEAD_WEIGHT, PRINTED_WEIGHT,
     )
-    assert FOOTER_WEIGHT < HEAD_WEIGHT < PRINTED_WEIGHT
-    assert HEAD_WEIGHT == GEOMETRIC_WEIGHT
+    assert FOOTER_WEIGHT < HEAD_WEIGHT
+    assert HEAD_WEIGHT == PRINTED_WEIGHT
 
 
 def test_both_edges_of_one_page_may_speak():

@@ -281,19 +281,32 @@ def geometric_observations(edges_by_pos, band: Band | None,
 # own number.
 FOOTER_WEIGHT = 0.5
 
-# What a folio rescued from a running head is worth. One step below the printed
-# reading, like the footer rescue, because a similarity match decided the line
-# was furniture -- but only one, where the footer rescue has two: the head is
-# the head, and nothing an apparatus prints can be mistaken for it. The footer
-# rescue reaches into a cut note block by construction, and that is what its
-# half is paying for.
+# What a folio rescued from a running head is worth. As much as one the narrow
+# reading takes off the page, and the corpus is what says so.
 #
-# Level with GEOMETRIC_WEIGHT, which is the same kind of statement: the page
-# printing about itself, read at a place the volume's own habit vouches for.
-# Above the catalogue, below the narrow reading. Whether 0.8 holds is a
-# question for the corpus, not for this comment -- it was measured over the 22
-# volumes when the rescues stopped being written back into the text.
-HEAD_WEIGHT = 0.8
+# The design proposed 0.8 -- one step down, for the similarity match that
+# decided the line was furniture. Swept over the volumes that carry such a
+# rescue at all (0.5 to 1.0, every tenth): Gli Actus, Josephus and Jesus and
+# Themistios do not move by a single label anywhere in that range, and Lewy
+# moves only at the top of it. At 1.0 Lewy is identical to what it was before
+# the rescues became witnesses; at 0.8 it gains three labels and *changes nine*
+# -- a segment founded at physical 497 counting 1, 2, 3 where the volume prints
+# 481, 482, 483. That is Lewy's own defect, an OCR that eats the leading digit
+# of the running head (`lewy-haertetest`), and a discount on the rescue is what
+# lets those readings out-argue the ones that are whole. More labels is the
+# wrong direction there, exactly as with `lam` in FitParams.
+#
+# The reading behind this witness is also not a step *further* from the page
+# than the narrow one. The narrow reading has to guess that "146 WILHELM HEIL"
+# is a folio beside a title (`pagelabel.is_running_head_like`); the stripper
+# knows, because it found the same line on page after page. What E1 corrected
+# was the *inconsistency* -- the same rescue counting 1.0 or 0.5 depending on
+# whether the geometry happened to cut an apparatus -- not the level.
+#
+# Kept as a constant of its own rather than folded into PRINTED_WEIGHT: it is
+# a different source, measured separately, and free to move when a volume
+# arrives that argues with it.
+HEAD_WEIGHT = PRINTED_WEIGHT
 
 # Which witness a rescue makes, by the edge it was taken from.
 _RESCUE = {
