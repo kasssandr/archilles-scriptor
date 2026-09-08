@@ -364,3 +364,37 @@ def test_a_rescued_footer_teaches_no_habit():
                    for pos, ((_edge, label),) in rescued.items()}
     verdict = run_verdict(pages, edges=edges, rescued=at_the_foot)
     assert verdict.band is None
+
+
+# --- the second round stands down for the page, not for the contents ----------
+
+def test_a_contents_entry_does_not_stand_the_second_round_down():
+    """``spoken_for`` used to ask only *whether* something had confirmed a
+    position, not *who*. A contents entry then silenced the wider reading --
+    but a contents entry is not the page speaking about itself. It says what a
+    page is called, not that the page printed anything, so trading a
+    ``printed-geometric`` reading for it costs the page its attestation at the
+    same value.
+
+    Measured on Themistios: physical 247 prints 232 in its running head, the
+    second round read it, and after E2 the contents found the same position
+    first. Source went from ``printed`` to ``toc``; the volume's attested share
+    fell from 0.9163 to 0.9125.
+    """
+    pages = [Page(num=-1, body_lines=["Text."], index=i) for i in range(1, 11)]
+    for p, label in zip(pages, [str(100 + i) for i in range(1, 11)]):
+        p.label_bottom = label
+    # One page keeps its folio out of the narrow reading's reach, and the
+    # contents names it.
+    pages[6].label_bottom = None
+    edges = {i: [_edge("bottom", str(100 + i), 0.95)] for i in range(1, 11)}
+
+    class _Chapter:
+        def __init__(self, pos, printed):
+            self.pos, self.printed, self.title = pos, printed, "Kapitel"
+
+    run_verdict(pages, edges=edges, chapters=[_Chapter(7, "107")])
+    assert pages[6].label == "107"
+    assert pages[6].label_source == "printed", (
+        "die Seite druckt ihre Folio; das Verzeichnis darf sie nicht verdraengen"
+    )

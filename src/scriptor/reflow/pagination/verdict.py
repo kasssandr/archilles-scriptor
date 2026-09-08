@@ -177,9 +177,20 @@ def run_verdict(pages, params: FitParams | None = None,
     # why this can only ever add labels to a volume that already had some.
     band = folio_band(_sightings(confirming, edges)) if edges else None
     if band is not None:
+        # Silent only where the *page* spoke. The second round exists because
+        # the narrow reading refuses things a printer does, and it stands down
+        # where the page already stated its own number -- a second, weaker voice
+        # could only argue with the first. A contents entry, a link or a
+        # catalogue is not the page speaking about itself: it says what a page
+        # is called, not that the page printed anything. Letting one of those
+        # stand the second round down trades a printed reading for a derived
+        # one at the same value, and the page loses its attestation with it
+        # (Themistios physical 247: the contents found it, and a confirmed
+        # ``printed-geometric`` 232 went unread).
         second = geometric_observations(
-            edges, band, spoken_for={pos for pos, group in confirming.items()
-                                     if group},
+            edges, band,
+            spoken_for={pos for pos, group in confirming.items()
+                        if any(o.source.startswith("printed") for o in group)},
         )
         if second:
             observations = observations + second
