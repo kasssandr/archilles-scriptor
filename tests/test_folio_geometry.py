@@ -398,3 +398,32 @@ def test_a_contents_entry_does_not_stand_the_second_round_down():
     assert pages[6].label_source == "printed", (
         "die Seite druckt ihre Folio; das Verzeichnis darf sie nicht verdraengen"
     )
+
+
+def test_a_reading_the_narrow_round_already_took_is_not_read_twice():
+    """The wider reading looks at the same outermost line the narrow one did.
+
+    Where the narrow reading took something, the wide one adds no evidence --
+    only a second voice with the same cause, which is what the fourth check
+    question in ``reflow/__init__`` forbids. It has to stand down there even
+    when the plan *disagreed* with what the page printed: La masonería physical
+    79 prints 15 where its catalogue says 13, and reading that line twice would
+    let one printed line count as two dissenters.
+    """
+    pages = [Page(num=-1, body_lines=["Text."], index=i) for i in range(1, 11)]
+    for i, p in enumerate(pages, start=1):
+        p.label_bottom = str(100 + i)
+        p.backend_label = str(100 + i)
+    # One page prints a folio the plan will refuse: its neighbours run through
+    # 106, the page prints 15. Nothing confirms it, so both readings of that
+    # line show up in ``rejected`` -- which is what makes the double countable.
+    pages[5].label_bottom = "15"
+    pages[5].backend_label = None
+    edges = {i: [_edge("bottom", str(100 + i), 0.95)] for i in range(1, 11)}
+    edges[6] = [_edge("bottom", "15", 0.95)]
+
+    verdict = run_verdict(pages, edges=edges)
+    at_six = [o for o in verdict.rejected if o.pos == 6]
+    assert [o.source for o in at_six] == ["printed-bottom"], (
+        "eine gedruckte Zeile, einmal gelesen -- nicht einmal eng und einmal weit"
+    )
