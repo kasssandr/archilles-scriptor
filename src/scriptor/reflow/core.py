@@ -1646,6 +1646,15 @@ def main(
         zip(cleaned, raw_texts, fn_blocks, source_pages, reconstructions), start=1
     ):
         pg = parse_page(text, fn_block=fn_block, geometry_verified=rec.measured)
+        if pg is None and rescued_by_ordinal.get(ordinal):
+            # The page was not empty: everything it carried was furniture, and
+            # the strippers took it. That is not the same as a blank leaf, and
+            # dropping it would take the label with it -- Josephus and Jesus
+            # sets fourteen part-titles and chapter openings with nothing on
+            # them but the download banner, and each is a page the volume
+            # numbers. It survives as itself: no body, one witness, a place in
+            # the sequence.
+            pg = Page(num=-1, body_lines=[])
         if pg is not None:
             page_headers.append(header_of_page(raw, headers))
             pg.backend_label = sp.label

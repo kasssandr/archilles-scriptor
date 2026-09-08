@@ -26,6 +26,8 @@ looks like a label". Now the rescue states its case like every other witness and
 the fit decides, which is where a conflict between two readings belongs.
 """
 
+import json
+
 from scriptor.reflow.core import Page
 from scriptor.reflow.pagination.verdict import run_verdict
 from scriptor.reflow.pagination.witnesses import rescued_observations
@@ -115,3 +117,82 @@ def test_without_a_rescue_the_verdict_is_unchanged():
     pages = [_page(1, "39"), _page(2, "40"), _page(3), _page(4, "42")]
     run_verdict(pages)
     assert [p.label for p in pages] == ["39", "40", "41", "42"]
+
+
+# --- a page whose whole content was furniture is still a page -----------------
+
+def test_a_page_that_carried_nothing_but_furniture_keeps_its_place(tmp_path):
+    """Josephus and Jesus sets fourteen openings with nothing on them but the
+    download banner. While the rescue wrote its number back into the text, that
+    number was the page: parse_page saw one line, and the page survived. With
+    the number travelling as a witness instead, the page came out empty and was
+    dropped -- label, position and all -- so the volume lost fourteen pages it
+    numbers.
+
+    Not a blank leaf. The strippers took what was there, and what they took is
+    still a statement about the page.
+    """
+    from scriptor.page import Box, Line, Span, SourcePage, dumps
+    from scriptor.reflow.core import main
+
+    def _frag(text, baseline, size=9.0):
+        box = Box(30, baseline - 7.0, 30 + 4.5 * len(text), baseline + 2.0)
+        return Line(spans=[Span(text, box=box, size=size)], box=box,
+                    baseline=baseline)
+
+    # Every line differs from every other: prose repeated verbatim across the
+    # volume is itself detected as a running element.
+    prose = [
+        "Der lange Satz des Brottextes zieht sich weit ueber die Zeile",
+        "hin und noch weiter, denn die Seite soll wie gewoehnliche Prosa",
+        "aussehen, Zeile um Zeile gleich lang, damit die Modus-Erkennung",
+        "sie als Haupttext einordnet und nicht als Vorspann behandelt.",
+        "Josephus berichtet vom Aufstand und von den Kaempfen darum.",
+        "Die Handschriften der Antiquitates gehen weit auseinander.",
+        "Eusebius zitiert die Stelle in seiner Kirchengeschichte auch.",
+        "Origenes kannte den Wortlaut offenbar in anderer Fassung noch.",
+        "Hieronymus uebersetzt ihn spaeter fuer das lateinische Publikum.",
+        "Die Ueberlieferung der Zeugnisse ist im Mittelalter verzweigt.",
+        "Photios verzeichnet den Text in seiner Bibliotheke ebenfalls.",
+        "Slavische Fassungen weichen an vielen Stellen erheblich ab.",
+        "Der Streit um die Echtheit begleitet die Forschung seit langem.",
+        "Neuere Arbeiten pruefen den Wortschatz gegen andere Buecher.",
+        "Statistische Verfahren geben darauf nur vorlaeufige Antworten.",
+        "Ein Urteil verlangt die Zeugen und nicht bloss die Rechnung.",
+        "Die Ausgabe von Niese bleibt fuer den Text massgeblich bis heute.",
+        "Auch die Randnotizen der Codices sind mehrfach untersucht worden.",
+        "Der vorliegende Band sammelt die Belege in einem Anhang neu.",
+        "Damit endet der Abschnitt und der naechste beginnt danach.",
+        "Ein weiterer Satz schliesst die Seite ordentlich ab hier.",
+        "Und noch ein Satz, damit die Seite genug Zeilen bekommt.",
+        "Die letzte Zeile dieser Seite sagt nichts Besonderes mehr.",
+        "Ein Nachsatz rundet den Gedanken fuer diese Seite endlich ab.",
+        "Zum Schluss folgt eine Bemerkung ueber die weitere Anlage.",
+        "Der Verfasser dankt den Kollegen fuer manchen Hinweis dazu.",
+        "Die Bibliographie verzeichnet die benutzten Ausgaben alle.",
+        "Ein Register erschliesst die antiken Quellen nach Buechern.",
+    ]
+    pages_dir = tmp_path / "pages"
+    pages_dir.mkdir()
+    for i in range(1, 9):
+        head = _frag(f"{100 + i}  JOSEPHUS UND DIE ANTIKE HISTORIOGRAPHIE", 20.0)
+        # Physical page 4 carries the running head and nothing else.
+        body = [] if i == 4 else [
+            _frag(prose[(4 * i + k) % len(prose)], 50.0 + k * 12)
+            for k in range(4)
+        ]
+        page = SourcePage(index=i, width=300.0, height=400.0, source="pymupdf",
+                          lines=[head, *body])
+        (pages_dir / f"{i:08d}.json").write_text(dumps(page), encoding="utf-8")
+
+    out = tmp_path / "buch.md"
+    main(str(pages_dir), str(out))
+
+    sidecar = json.loads(
+        (tmp_path / "buch.md.pagination.json").read_text(encoding="utf-8"))
+    labelled = {p["pos"]: p["label"] for p in sidecar["pages"]}
+    assert labelled == {i: str(100 + i) for i in range(1, 9)}
+    assert sidecar["pages"][3]["source"] == "printed"
+
+    # The head itself goes, on that page as on every other.
+    assert "JOSEPHUS UND DIE ANTIKE" not in out.read_text(encoding="utf-8")

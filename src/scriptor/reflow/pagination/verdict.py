@@ -305,11 +305,15 @@ def _describe(pages, confirming, cat_weight) -> str:
     """
     if not any(p.label for p in pages):
         return "none"
-    counts: dict[str, int] = {}
+    edges = {"bottom": 0, "top": 0}
     for group in confirming.values():
         for o in group:
-            counts[o.source] = counts.get(o.source, 0) + 1
-    edges = {e: counts.get(f"printed-{e}", 0) for e in ("bottom", "top")}
+            # By the edge the witness read, not by the name it goes under: a
+            # volume printing its folio inside the running head paginates at
+            # the top, and used to be described as paginating nowhere.
+            edge = WITNESS_EDGE.get(o.source)
+            if edge is not None:
+                edges[edge] += 1
     edge = max(("bottom", "top"), key=lambda e: edges[e]) if any(
         edges.values()) else "none"
     settled = sum(1 for p in pages if p.label_source == "catalogue")
