@@ -24,6 +24,7 @@ from scriptor.reflow.pagelabel import ordinal_of, style_of
 from scriptor.reflow.pagination.observation import Observation
 from scriptor.reflow.pagination.plan import FitParams, PaginationPlan, fit
 from scriptor.reflow.pagination.witnesses import (
+    WITNESS_EDGE,
     boundary_candidates,
     catalogue_observations,
     catalogue_weight,
@@ -99,15 +100,18 @@ def _sightings(confirming, edges):
     The edge comes from the witness that was confirmed, not from a search
     through the text: the first round asked each edge by name, so a confirmed
     ``printed-bottom`` says the folio was at the foot, and the geometry only has
-    to supply the height it was at.
+    to supply the height it was at. Which witness names which edge is
+    ``witnesses.WITNESS_EDGE``, and a rescued running head names the top: the
+    head *is* the topmost line, so the height the geometry supplies is the
+    folio's own.
     """
     out = []
     for pos, group in confirming.items():
         lines = edges.get(pos) or []
         for o in group:
-            if not o.source.startswith("printed-"):
+            edge = WITNESS_EDGE.get(o.source)
+            if edge is None:
                 continue
-            edge = o.source.split("-")[-1]
             for line in lines:
                 if line.edge == edge:
                     out.append((edge, line.height))
@@ -143,18 +147,22 @@ def run_verdict(pages, params: FitParams | None = None,
     # *distance* is not sound, because nothing says the list is complete, so
     # such a document gets only labels somebody observed. Nothing is enclosed
     # where the distance between two pages is unknown.
-    stated = {id(p): p.index for p in pages if p.index >= 1}
-    if stated:
+    indexed = {id(p): p.index for p in pages if p.index >= 1}
+    if indexed:
         pos_of, may_compute = (lambda p: p.index), True
     else:
         fallback = {id(p): i for i, p in enumerate(pages, start=1)}
         pos_of, may_compute = (lambda p: fallback[id(p)]), False
 
-    cat_weight = catalogue_weight(pages, pos_of)
-    observations = (printed_observations(pages, pos_of)
+    # The printed readings first, because the catalogue is weighed against
+    # them: a source's reliability is measured on the volume, and the measure
+    # is what the volume itself states, wherever on the page it stated it.
+    stated = (printed_observations(pages, pos_of)
+              + rescued_observations(rescued or {}))
+    cat_weight = catalogue_weight(pages, stated, pos_of)
+    observations = (stated
                     + catalogue_observations(pages, cat_weight, pos_of)
                     + toc_observations(chapters)
-                    + rescued_observations(rescued or {})
                     + link_observations(links or {}))
     last_pos = max(pos_of(p) for p in pages)
     plan = fit(observations,
@@ -297,11 +305,15 @@ def _describe(pages, confirming, cat_weight) -> str:
     """
     if not any(p.label for p in pages):
         return "none"
-    counts: dict[str, int] = {}
+    edges = {"bottom": 0, "top": 0}
     for group in confirming.values():
         for o in group:
-            counts[o.source] = counts.get(o.source, 0) + 1
-    edges = {e: counts.get(f"printed-{e}", 0) for e in ("bottom", "top")}
+            # By the edge the witness read, not by the name it goes under: a
+            # volume printing its folio inside the running head paginates at
+            # the top, and used to be described as paginating nowhere.
+            edge = WITNESS_EDGE.get(o.source)
+            if edge is not None:
+                edges[edge] += 1
     edge = max(("bottom", "top"), key=lambda e: edges[e]) if any(
         edges.values()) else "none"
     settled = sum(1 for p in pages if p.label_source == "catalogue")

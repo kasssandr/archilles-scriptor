@@ -60,18 +60,52 @@ def printed_observations(pages, pos_of=_index) -> list[Observation]:
     return out
 
 
-def catalogue_weight(pages, pos_of=_index) -> float:
+def catalogue_weight(pages, stated, pos_of=_index) -> float:
     """How much this volume's PDF catalogue has earned, from 0 to 1.
 
     The rate at which it agrees with the printed pages, over the pages where
     both exist. Below MIN_CATALOGUE_OVERLAP there is nothing to judge and the
     answer is zero -- silence, not doubt.
+
+    ``stated`` are the first-round printed observations, and it is required
+    rather than defaulted: an empty one silently makes every catalogue worth
+    nothing. The rate is measured
+    against *those*, not against the page's text fields, because a folio the
+    page printed inside furniture is a printed folio: it is simply not in the
+    body any more once the running element was stripped. Measuring against the
+    text made the catalogue's earned weight depend on which stage had already
+    edited the page -- Josephus and Jesus prints its folio in the running head
+    on 330 pages, and reading only the body left the catalogue with nothing to
+    be judged against and therefore no voice at all.
+
+    Furniture is kept out of the measure by the same rule the wider reading
+    uses (MAX_REPEATS): a folio is the part of the line that *changes*, so a
+    string standing on more than two pages is not one, and a catalogue must not
+    be judged against it. Josephus and Jesus heads 330 of its pages with the
+    year 2025; measured against that the catalogue scored 0.04 while agreeing
+    with 14 of the 14 folios the volume actually prints. The narrow reading
+    never had this filter and the wide one always did -- the same reading was
+    furniture to one and evidence to the other.
+
+    Order within a position follows the order the witnesses were gathered in:
+    bottom, then top, then the rescues. The narrow reading of the page's own
+    edge answers first where there is one.
     """
+    at: dict[int, list[str]] = {}
+    for o in stated:
+        at.setdefault(o.pos, []).append(o.label)
+    seen: dict[str, int] = {}
+    for labels in at.values():
+        for label in dict.fromkeys(labels):   # one page, one vote
+            seen[label] = seen.get(label, 0) + 1
+    furniture = {label for label, n in seen.items() if n > MAX_REPEATS}
+    read = {pos: next((l for l in labels if l not in furniture), None)
+            for pos, labels in at.items()}
     both = [
-        (p.backend_label, p.label_bottom or p.label_top)
+        (p.backend_label, read[pos_of(p)])
         for p in pages
         if pos_of(p) >= 1 and p.backend_label is not None
-        and (p.label_bottom or p.label_top) is not None
+        and read.get(pos_of(p)) is not None
     ]
     if len(both) < MIN_CATALOGUE_OVERLAP:
         return 0.0
@@ -151,6 +185,10 @@ MIN_SIGHTINGS = 5
 # they pushed its derived labels from 0.90 confidence down to 0.53. Two is
 # allowed because two is not a habit: a volume may restart its count, and a
 # sheet carrying two book pages prints two folios.
+#
+# Used twice: here, to keep furniture out of the wider reading, and in
+# ``catalogue_weight`` above, to keep it out of the measure a catalogue is
+# judged by. One definition, because it is one question.
 MAX_REPEATS = 2
 
 
@@ -243,24 +281,89 @@ def geometric_observations(edges_by_pos, band: Band | None,
 # own number.
 FOOTER_WEIGHT = 0.5
 
+# What a folio rescued from a running head is worth. As much as one the narrow
+# reading takes off the page, and the corpus is what says so.
+#
+# The design proposed 0.8 -- one step down, for the similarity match that
+# decided the line was furniture. Swept over the volumes that carry such a
+# rescue at all (0.5 to 1.0, every tenth): Gli Actus, Josephus and Jesus and
+# Themistios do not move by a single label anywhere in that range, and Lewy
+# moves only at the top of it. At 1.0 Lewy is identical to what it was before
+# the rescues became witnesses; at 0.8 it gains three labels and *changes nine*
+# -- a segment founded at physical 497 counting 1, 2, 3 where the volume prints
+# 481, 482, 483. That is Lewy's own defect, an OCR that eats the leading digit
+# of the running head (`lewy-haertetest`), and a discount on the rescue is what
+# lets those readings out-argue the ones that are whole. More labels is the
+# wrong direction there, exactly as with `lam` in FitParams.
+#
+# The reading behind this witness is also not a step *further* from the page
+# than the narrow one. The narrow reading has to guess that "146 WILHELM HEIL"
+# is a folio beside a title (`pagelabel.is_running_head_like`); the stripper
+# knows, because it found the same line on page after page. What E1 corrected
+# was the *inconsistency* -- the same rescue counting 1.0 or 0.5 depending on
+# whether the geometry happened to cut an apparatus -- not the level.
+#
+# Kept as a constant of its own rather than folded into PRINTED_WEIGHT: it is
+# a different source, measured separately, and free to move when a volume
+# arrives that argues with it.
+HEAD_WEIGHT = PRINTED_WEIGHT
+
+# Which witness a rescue makes, by the edge it was taken from.
+_RESCUE = {
+    "top": ("printed-head", HEAD_WEIGHT, "running head"),
+    "bottom": ("printed-footer", FOOTER_WEIGHT, "running footer"),
+}
+
+# Which edge of the page each printed witness read. Named rather than split off
+# the source string, because two of these sources do not name an edge and one
+# of them must not answer at all:
+#
+#   printed-top/bottom   the page's own outermost line
+#   printed-head         a folio rescued from the running head -- which *is*
+#                        the topmost line of the page
+#   printed-footer       a folio rescued from a running footer, and that footer
+#                        may have sat at the foot of the body or inside a cut
+#                        apparatus. Two places under one name: it can say what
+#                        the page is called, but not where on the page anything
+#                        stood, so it neither locates the folio band nor
+#                        proposes a segment boundary.
+#   printed-geometric    the second round, which has the band already
+#
+# Read by ``boundary_candidates`` here and by ``verdict._sightings``: one table,
+# because it is one question.
+WITNESS_EDGE = {
+    "printed-top": "top",
+    "printed-bottom": "bottom",
+    "printed-head": "top",
+}
+
 
 def rescued_observations(rescued_by_pos) -> list[Observation]:
-    """What a running footer said before it was stripped.
+    """What a running element said before it was stripped.
 
-    Called ``printed-footer`` and not ``footer-rescue`` as the design had it, so
-    that it sorts with the other readings the page itself carries: the verdict
+    ``rescued_by_pos`` maps a position to the ``(edge, label)`` pairs rescued
+    there -- a page can carry furniture at both edges, and each edge is one
+    statement.
+
+    Called ``printed-…`` and not ``…-rescue`` as the design had it, so that
+    these sort with the other readings the page itself carries: the verdict
     reads the ``printed-`` prefix to decide that a page stated its own number,
     and ``label_source`` travels to archilles with exactly that meaning. The
     page did print this -- inside furniture, but in its own ink.
     """
-    return [
-        Observation(pos=pos, label=label, source="printed-footer",
-                    weight=FOOTER_WEIGHT,
-                    why=f"{label!r} rescued from the running footer of "
-                        f"physical page {pos}")
-        for pos, label in sorted(rescued_by_pos.items())
-        if label is not None and ordinal_of(label) is not None and pos >= 1
-    ]
+    out: list[Observation] = []
+    for pos, rescues in sorted(rescued_by_pos.items()):
+        if pos < 1:
+            continue
+        for edge, label in rescues:
+            if label is None or ordinal_of(label) is None:
+                continue
+            source, weight, what = _RESCUE[edge]
+            out.append(Observation(
+                pos=pos, label=label, source=source, weight=weight,
+                why=f"{label!r} rescued from the {what} of physical page {pos}",
+            ))
+    return out
 
 
 # What a contents link is worth. More than a contents entry the search placed
@@ -383,12 +486,21 @@ def boundary_candidates(pages, observations, pos_of=_index,
     # page of the volume, and reading it as a folio would litter the fit with
     # candidates. Which edge is right is still the fit's decision -- this only
     # decides whose breaks are worth looking at.
-    edges = {
-        "bottom": [(pos_of(p), p.label_bottom) for p in pages
-                   if pos_of(p) >= 1 and p.label_bottom is not None],
-        "top": [(pos_of(p), p.label_top) for p in pages
-                if pos_of(p) >= 1 and p.label_top is not None],
-    }
+    #
+    # Read off the observations, not off the page's text fields. A folio the
+    # volume printed inside its running head is not in the body once the head
+    # is stripped, and a run it breaks is broken whether or not a later stage
+    # left the number lying in the text: Gli Actus opens BIBLIOGRAFIA on a
+    # silent page and prints 312 on the page after it -- the very case the
+    # candidate below the catalogue was written for -- and the break that
+    # proposes it comes from a rescued head.
+    edges: dict[str, list[tuple[int, str]]] = {"bottom": [], "top": []}
+    for o in observations:
+        edge = WITNESS_EDGE.get(o.source)
+        if edge is not None and o.pos >= 1:
+            edges[edge].append((o.pos, o.label))
+    for group in edges.values():
+        group.sort()
     # Ties go to the bottom, which is where volumes paginate far more often and
     # which the older chain also preferred.
     best_edge = max(("bottom", "top"), key=lambda e: _consistent_steps(edges[e]))

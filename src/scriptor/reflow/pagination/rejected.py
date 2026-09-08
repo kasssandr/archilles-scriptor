@@ -198,10 +198,11 @@ def _verdict_for(o, page, predicted: str | None, in_a_run: set[int],
         return "truncated-numeral"
     # Only a number the footer rescue produced. That rescue reaches into the
     # apparatus by construction, so a number from it that the plan refuses is a
-    # note number. A reading off the head or foot of the page is not from there,
-    # and letting the apparatus claim it costs the classification its best case:
-    # a chapter opening carries note 1, and Gli Actus opens its chapters with a
-    # bare "2".
+    # note number. A reading off the head or foot of the page is not from there
+    # -- ``printed-head`` included, which is a rescue too but out of the running
+    # head, where no apparatus is -- and letting the apparatus claim it costs
+    # the classification its best case: a chapter opening carries note 1, and
+    # Gli Actus opens its chapters with a bare "2".
     value = ordinal_of(o.label)
     if (o.source == "printed-footer" and value is not None
             and any(abs(value - n) <= NOTE_NEIGHBOURHOOD for n in notes)):

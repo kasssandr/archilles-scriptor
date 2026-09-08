@@ -1575,10 +1575,18 @@ def main(
     ]
 
     # Chapter running heads, removed with knowledge of the full title — the
-    # generic stripper below would preserve the title's own year ("… in 759")
-    # as a phantom folio.
+    # generic stripper below would take the title's own year ("… in 759") for a
+    # phantom folio.
+    rescued_heads: list[list[str]] = [[] for _ in page_lines]
     if chapter_titles:
-        page_lines = outline_mod.strip_running_titles(page_lines, chapter_titles)
+        page_lines, rescued_heads, contested = outline_mod.strip_running_titles(
+            page_lines, chapter_titles)
+        if contested:
+            print(
+                f"Chapter running heads carrying a number at both edges: "
+                f"{contested} (the leading one is taken)",
+                file=sys.stderr,
+            )
 
     raw_texts = ["\n".join(lines) for lines in page_lines]
 
@@ -1592,17 +1600,35 @@ def main(
         remove_running_footers_from_blocks,
         strip_running_elements,
     )
-    cleaned, headers, footers = strip_running_elements(raw_texts, foot_blocks=fn_blocks)
-    # The rescued folios are not put back into the text. They travel to the
-    # consensus as a witness of their own (``printed-footer``), so that a
-    # conflict between the page's own folio and a number rescued out of its
-    # apparatus is settled by the sequence rather than by a guard.
-    fn_blocks, rescued_folios = remove_running_footers_from_blocks(fn_blocks, footers)
-    rescued_by_ordinal = {
-        ordinal: folio
-        for ordinal, folio in enumerate(rescued_folios, start=1)
-        if folio is not None
-    }
+    cleaned, headers, footers, rescued_top, rescued_bottom = strip_running_elements(
+        raw_texts, foot_blocks=fn_blocks)
+    fn_blocks, rescued_blocks = remove_running_footers_from_blocks(fn_blocks, footers)
+    # No rescued folio is put back into the text. Each travels to the consensus
+    # as a witness of its own -- ``printed-head`` at the top edge,
+    # ``printed-footer`` at the foot -- so that a conflict between the page's
+    # own folio and a number taken out of its furniture is settled by the
+    # sequence rather than by a guard, and so that the same rescue is worth the
+    # same whether or not the geometry happened to cut the apparatus.
+    #
+    # Four paths reach into a stripped line, one per edge and stripper, and all
+    # four are heard. A page can carry two lines of furniture and they do not
+    # say the same thing: Josephus and Jesus heads its pages with a download
+    # banner ending in the year and with the chapter's running head ending in
+    # the folio. Choosing between them here would be deciding on one source
+    # while a second exists; the fit is where that belongs. Repetitions are
+    # dropped, because the same number stated twice is one statement.
+    rescued_by_ordinal: dict[int, list[tuple[str, str]]] = {}
+    for ordinal, (heads, tops, block, bottoms) in enumerate(
+        zip(rescued_heads, rescued_top, rescued_blocks, rescued_bottom), start=1
+    ):
+        at_edge: list[tuple[str, str]] = []
+        for edge, folios in (("top", heads + tops),
+                             ("bottom", ([block] if block else []) + bottoms)):
+            for folio in folios:
+                if (edge, folio) not in at_edge:
+                    at_edge.append((edge, folio))
+        if at_edge:
+            rescued_by_ordinal[ordinal] = at_edge
     if headers:
         print(f"Running headers removed ({len(headers)}): {headers[:3]}", file=sys.stderr)
     if footers:
@@ -1620,6 +1646,15 @@ def main(
         zip(cleaned, raw_texts, fn_blocks, source_pages, reconstructions), start=1
     ):
         pg = parse_page(text, fn_block=fn_block, geometry_verified=rec.measured)
+        if pg is None and rescued_by_ordinal.get(ordinal):
+            # The page was not empty: everything it carried was furniture, and
+            # the strippers took it. That is not the same as a blank leaf, and
+            # dropping it would take the label with it -- Josephus and Jesus
+            # sets fourteen part-titles and chapter openings with nothing on
+            # them but the download banner, and each is a page the volume
+            # numbers. It survives as itself: no body, one witness, a place in
+            # the sequence.
+            pg = Page(num=-1, body_lines=[])
         if pg is not None:
             page_headers.append(header_of_page(raw, headers))
             pg.backend_label = sp.label

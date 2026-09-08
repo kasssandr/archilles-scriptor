@@ -186,14 +186,23 @@ def _strip_edges(s: str) -> tuple[str | None, str, str | None]:
 
 def strip_running_titles(
     pages_lines: list[list[str]], titles: list[str]
-) -> list[list[str]]:
+) -> tuple[list[list[str]], list[list[str]], int]:
     """Remove chapter running heads from the head region of every page.
 
     Unlike the generic stripper this one knows the full title, so an edge
-    number is kept only when it is *not* the title's own: the trailing year of
-    "The Surrender … in 759" vanishes with the head instead of being preserved
-    as a phantom folio, while a genuine folio sharing the line ("44 The
-    Surrender …") survives for label detection.
+    number is rescued only when it is *not* the title's own: the trailing year
+    of "The Surrender … in 759" vanishes with the head instead of being taken
+    for a folio, while a genuine folio sharing the line ("44 The Surrender …")
+    is handed on for the consensus to weigh.
+
+    Returns (cleaned_pages, rescued, contested) -- ``rescued`` the folios per
+    page, ``contested`` how many *lines* offered two. One line can carry a
+    number at both edges and only one of them can be the folio; there the
+    leading one wins, because that is the edge a volume printing its folio in
+    the running head uses when the title also ends in a number. Across lines
+    nothing is chosen: a page can carry two heads, and two heads are two
+    statements. The count is reported rather than swallowed: it is the size of
+    the case nobody has measured yet.
     """
     # Each title, split at its numeric edges: chapter number, core, year.
     wants = []
@@ -202,11 +211,14 @@ def strip_running_titles(
         if _norm(core):
             wants.append((lead, _norm(core), trail))
     if not wants:
-        return pages_lines
+        return pages_lines, [[] for _ in pages_lines], 0
 
     out: list[list[str]] = []
+    rescued: list[list[str]] = []
+    contested = 0
     for lines in pages_lines:
         kept: list[str] = []
+        folios: list[str] = []
         for i, line in enumerate(lines):
             if i >= HEAD_REGION:
                 kept.extend(lines[i:])
@@ -217,10 +229,14 @@ def strip_running_titles(
             if hit is None:
                 kept.append(line)
                 continue
-            # The head goes; a folio that is not the title's own number stays.
-            if lead is not None and lead != hit[0]:
-                kept.append(lead)
-            if trail is not None and trail != hit[2]:
-                kept.append(trail)
+            # The head goes; a folio that is not the title's own number is
+            # rescued -- as a statement, not as a line put back into the text.
+            candidates = [n for n, own in ((lead, hit[0]), (trail, hit[2]))
+                          if n is not None and n != own]
+            if len(candidates) > 1:
+                contested += 1
+            if candidates and candidates[0] not in folios:
+                folios.append(candidates[0])
         out.append(kept)
-    return out
+        rescued.append(folios)
+    return out, rescued, contested

@@ -28,7 +28,7 @@ def test_a_page_without_a_physical_index_is_not_asked():
 
 def test_the_catalogue_weighs_what_it_gets_right():
     pages = [_page(i, bottom=str(i), backend=str(i)) for i in range(1, 6)]
-    assert catalogue_weight(pages) == 1.0
+    assert catalogue_weight(pages, printed_observations(pages)) == 1.0
     assert len(catalogue_observations(pages, 1.0)) == 5
 
 
@@ -36,14 +36,40 @@ def test_a_catalogue_that_agrees_with_nothing_weighs_nothing():
     # Bauer: 339 of 339 pages off by one. As a stater of values it is worth
     # nothing; its structure is used from stage 2 on, not its numbers.
     pages = [_page(i, bottom=str(i), backend=str(i - 1)) for i in range(2, 8)]
-    assert catalogue_weight(pages) == 0.0
+    assert catalogue_weight(pages, printed_observations(pages)) == 0.0
     assert catalogue_observations(pages, 0.0) == []
+
+
+def test_the_catalogue_is_weighed_against_a_folio_rescued_from_furniture():
+    # Josephus and Jesus prints its folio in the running head on 330 pages.
+    # Weighed against the *body*, the catalogue had nothing to be judged
+    # against and fell silent -- its earned weight would have depended on which
+    # stage had already edited the page. A folio printed inside furniture is a
+    # printed folio.
+    from scriptor.reflow.pagination.witnesses import rescued_observations
+
+    pages = [_page(i, backend=str(i)) for i in range(1, 6)]
+    rescued = {i: [("top", str(i))] for i in range(1, 6)}
+    stated = printed_observations(pages) + rescued_observations(rescued)
+    assert printed_observations(pages) == [], "die Seiten drucken im Text nichts"
+    assert catalogue_weight(pages, stated) == 1.0
+
+
+def test_furniture_does_not_get_to_judge_the_catalogue():
+    # Josephus and Jesus heads 330 of its pages with the year 2025. Measured
+    # against that, its catalogue scored 0.04 while agreeing with 14 of the 14
+    # folios the volume actually prints -- the wider reading has thrown such a
+    # string out since MAX_REPEATS, the measure did not.
+    pages = [_page(i, top="2025", backend=str(i)) for i in range(1, 9)]
+    for i in (3, 5, 7):
+        pages[i - 1] = _page(i, bottom=str(i), top="2025", backend=str(i))
+    assert catalogue_weight(pages, printed_observations(pages)) == 1.0
 
 
 def test_a_catalogue_too_small_to_check_weighs_nothing():
     # Two overlapping pages cannot tell a real catalogue from a mechanical one.
     pages = [_page(1, bottom="1", backend="1"), _page(2, bottom="2", backend="2")]
-    assert catalogue_weight(pages) == 0.0
+    assert catalogue_weight(pages, printed_observations(pages)) == 0.0
 
 
 def test_a_broken_run_proposes_a_boundary():
