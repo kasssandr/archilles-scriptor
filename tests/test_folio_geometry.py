@@ -325,3 +325,42 @@ def test_a_lone_geometric_reading_founds_nothing():
         edges[i] = [_edge("bottom", "Vorwort", 0.95)]
     run_verdict(pages, edges=edges)
     assert pages[0].label is None
+
+
+# --- a rescued running head is a folio the geometry can learn from ------------
+# Gli Actus prints its folio in the running head on 340 pages. Once the rescue
+# stopped writing that number back into the text, the volume's own habit was
+# invisible to the second round: 340 sightings fell to 31, and the plan lost
+# three segment boundaries with them. The rescue names its edge -- the running
+# head *is* the topmost line of the page -- and the geometry only supplies the
+# height. A footer rescue does not, because it may have come out of a cut
+# apparatus rather than off the foot of the page.
+
+def _head_volume():
+    """Ten pages whose folio the volume prints inside the running head."""
+    pages, edges, rescued = [], {}, {}
+    for i in range(1, 11):
+        label = str(100 + i)
+        pages.append(Page(num=-1, body_lines=["Text."], index=i))
+        edges[i] = [_edge("top", f"{label} WILHELM HEIL", 0.06)]
+        rescued[i] = [("top", label)]
+    return pages, edges, rescued
+
+
+def test_a_rescued_running_head_teaches_the_volume_its_habit():
+    pages, edges, rescued = _head_volume()
+    verdict = run_verdict(pages, edges=edges, rescued=rescued)
+    assert verdict.band is not None
+    assert verdict.band.edge == "top"
+    assert [p.label for p in pages] == [str(100 + i) for i in range(1, 11)]
+
+
+def test_a_rescued_footer_teaches_no_habit():
+    # Two places under one name: the running footer may have sat at the foot of
+    # the body or inside a footnote block the geometry cut off. It says what the
+    # page is called, not where the volume prints its folios.
+    pages, edges, rescued = _head_volume()
+    at_the_foot = {pos: [("bottom", label)]
+                   for pos, ((_edge, label),) in rescued.items()}
+    verdict = run_verdict(pages, edges=edges, rescued=at_the_foot)
+    assert verdict.band is None

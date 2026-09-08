@@ -93,6 +93,25 @@ def _confirming(observations, plan) -> dict[int, list[Observation]]:
             for pos, group in at.items()}
 
 
+# Which edge of the page each first-round witness read. Named rather than split
+# off the source string, because two of these sources do not name an edge and
+# one of them must not answer at all:
+#
+#   printed-top/bottom   the page's own outermost line
+#   printed-head         a folio rescued from the running head -- which *is*
+#                        the topmost line of the page, so the height the
+#                        geometry supplies is the folio's own
+#   printed-footer       a folio rescued from a running footer, and that footer
+#                        may have sat inside a cut apparatus rather than at the
+#                        foot of the body. Two places under one name: it says
+#                        nothing about where the volume prints its folios.
+_WITNESS_EDGE = {
+    "printed-top": "top",
+    "printed-bottom": "bottom",
+    "printed-head": "top",
+}
+
+
 def _sightings(confirming, edges):
     """Where the folios the first round confirmed actually stood on the page.
 
@@ -105,9 +124,9 @@ def _sightings(confirming, edges):
     for pos, group in confirming.items():
         lines = edges.get(pos) or []
         for o in group:
-            if not o.source.startswith("printed-"):
+            edge = _WITNESS_EDGE.get(o.source)
+            if edge is None:
                 continue
-            edge = o.source.split("-")[-1]
             for line in lines:
                 if line.edge == edge:
                     out.append((edge, line.height))
@@ -150,11 +169,15 @@ def run_verdict(pages, params: FitParams | None = None,
         fallback = {id(p): i for i, p in enumerate(pages, start=1)}
         pos_of, may_compute = (lambda p: fallback[id(p)]), False
 
-    cat_weight = catalogue_weight(pages, pos_of)
-    observations = (printed_observations(pages, pos_of)
+    # The printed readings first, because the catalogue is weighed against
+    # them: a source's reliability is measured on the volume, and the measure
+    # is what the volume itself states, wherever on the page it stated it.
+    stated = (printed_observations(pages, pos_of)
+              + rescued_observations(rescued or {}))
+    cat_weight = catalogue_weight(pages, stated, pos_of)
+    observations = (stated
                     + catalogue_observations(pages, cat_weight, pos_of)
                     + toc_observations(chapters)
-                    + rescued_observations(rescued or {})
                     + link_observations(links or {}))
     last_pos = max(pos_of(p) for p in pages)
     plan = fit(observations,

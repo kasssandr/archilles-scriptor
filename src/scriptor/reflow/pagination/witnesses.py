@@ -60,18 +60,36 @@ def printed_observations(pages, pos_of=_index) -> list[Observation]:
     return out
 
 
-def catalogue_weight(pages, pos_of=_index) -> float:
+def catalogue_weight(pages, stated, pos_of=_index) -> float:
     """How much this volume's PDF catalogue has earned, from 0 to 1.
 
     The rate at which it agrees with the printed pages, over the pages where
     both exist. Below MIN_CATALOGUE_OVERLAP there is nothing to judge and the
     answer is zero -- silence, not doubt.
+
+    ``stated`` are the first-round printed observations, and it is required
+    rather than defaulted: an empty one silently makes every catalogue worth
+    nothing. The rate is measured
+    against *those*, not against the page's text fields, because a folio the
+    page printed inside furniture is a printed folio: it is simply not in the
+    body any more once the running element was stripped. Measuring against the
+    text made the catalogue's earned weight depend on which stage had already
+    edited the page -- Josephus and Jesus prints its folio in the running head
+    on 330 pages, and reading only the body left the catalogue with nothing to
+    be judged against and therefore no voice at all.
+
+    Order within a position follows the order the witnesses were gathered in:
+    bottom, then top, then the rescues. The narrow reading of the page's own
+    edge answers first where there is one.
     """
+    read: dict[int, str] = {}
+    for o in stated:
+        read.setdefault(o.pos, o.label)
     both = [
-        (p.backend_label, p.label_bottom or p.label_top)
+        (p.backend_label, read[pos_of(p)])
         for p in pages
         if pos_of(p) >= 1 and p.backend_label is not None
-        and (p.label_bottom or p.label_top) is not None
+        and read.get(pos_of(p)) is not None
     ]
     if len(both) < MIN_CATALOGUE_OVERLAP:
         return 0.0
