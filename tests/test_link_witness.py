@@ -6,10 +6,11 @@ in the wrong place. A link removes that step: the file itself resolves the
 destination to a page, so the only thing left to read is the number the contents
 line prints.
 
-Measured over the corpus, that is rare: of eighteen volumes exactly one carries
-contents links (Libros). Where it happens it is the most direct evidence about a
-page reference a PDF can hold, which is why it outweighs every other witness
-except the page printing the number itself.
+Measured over the corpus, five of twenty volumes carry contents links -- Libros
+86 of them, Josephus and Jesus 65, Le radici 33, Lewy 15 and its pdf24 rendering
+9. Where it happens it is the most direct evidence about a page reference a PDF
+can hold, which is why it outweighs every other witness except the page printing
+the number itself.
 """
 
 from scriptor.reflow.core import Page
@@ -105,9 +106,7 @@ def _volume_with_a_catalogue(links=None):
     """Ten pages carried by a catalogue that has only partly earned its hearing.
 
     Three pages print a folio; the catalogue matches two of them, so it weighs
-    0.67 -- below a link, above nothing. That is Josephus and Jesus in
-    miniature, where the catalogue is right about the volume and agrees with 4 %
-    of what the pages themselves were read as printing.
+    0.67 -- below a link, above nothing.
     """
     pages = []
     for i in range(1, 11):
@@ -121,14 +120,56 @@ def _volume_with_a_catalogue(links=None):
 
 def test_the_source_names_the_link_and_not_a_weaker_witness():
     # Josephus and Jesus: the catalogue and the contents links agree on 321
-    # pages, and every label was credited to the catalogue. The field is
-    # supposed to name the *strongest* witness that confirmed the label, and a
-    # link the producer resolved outweighs a catalogue that agrees with 4 % of
-    # what the volume prints.
+    # pages, and every label was credited to the catalogue. The field names the
+    # best witness that confirmed the label, and a link the producer resolved
+    # is better than a catalogue asserting the same thing.
     pages = _volume_with_a_catalogue({1: [(7, "Kapitel 1 ....... 27")]})
     assert pages[6].label == "27"
     assert pages[6].label_source == "link"
     assert pages[7].label_source == "catalogue"
+
+
+def _volume_with_a_good_catalogue(links=None):
+    """Ten pages whose catalogue is right about every folio the pages print.
+
+    Its earned weight is 1.0 -- above LINK_WEIGHT. That is Josephus and Jesus
+    once its rate is measured against what the volume states rather than against
+    what the strippers left in the body: 0.99, not 0.04.
+    """
+    pages = []
+    for i in range(1, 11):
+        printed = str(20 + i) if i in (1, 2, 3, 4) else None
+        p = _page(i, printed)
+        p.backend_label = str(20 + i)
+        pages.append(p)
+    run_verdict(pages, links=links or {})
+    return pages
+
+
+def test_a_link_still_names_the_source_against_a_catalogue_that_outweighs_it():
+    """Weight alone used to decide, and that was the arithmetic standing in for
+    the argument. A link is two printed facts -- a number read off a line the
+    volume printed, and a destination the file itself resolves; a catalogue is
+    an assertion. Where both name the same page, the attested one is the answer,
+    because that is the difference between a page with an anchor and one
+    without.
+
+    Measured: Josephus and Jesus' catalogue earns 0.99 once its rate is taken
+    against what the volume states, and it took 26 pages back from the link.
+    """
+    from scriptor.reflow.pagination.witnesses import LINK_WEIGHT
+
+    plain = _volume_with_a_good_catalogue()
+    assert plain[6].label_source == "catalogue", "sonst misst der Test nichts"
+
+    pages = _volume_with_a_good_catalogue({1: [(7, "Kapitel 1 ....... 27")]})
+    assert pages[6].label == "27"
+    assert pages[6].label_source == "link"
+    # Und der Katalog wiegt hier wirklich mehr als der Link.
+    from scriptor.reflow.pagination.witnesses import (
+        catalogue_weight, printed_observations,
+    )
+    assert catalogue_weight(pages, printed_observations(pages)) > LINK_WEIGHT
 
 
 def test_a_linked_page_is_better_attested_than_an_unlinked_one():
