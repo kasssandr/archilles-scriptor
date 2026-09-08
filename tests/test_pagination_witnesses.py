@@ -55,6 +55,17 @@ def test_the_catalogue_is_weighed_against_a_folio_rescued_from_furniture():
     assert catalogue_weight(pages, stated) == 1.0
 
 
+def test_furniture_does_not_get_to_judge_the_catalogue():
+    # Josephus and Jesus heads 330 of its pages with the year 2025. Measured
+    # against that, its catalogue scored 0.04 while agreeing with 14 of the 14
+    # folios the volume actually prints -- the wider reading has thrown such a
+    # string out since MAX_REPEATS, the measure did not.
+    pages = [_page(i, top="2025", backend=str(i)) for i in range(1, 9)]
+    for i in (3, 5, 7):
+        pages[i - 1] = _page(i, bottom=str(i), top="2025", backend=str(i))
+    assert catalogue_weight(pages, printed_observations(pages)) == 1.0
+
+
 def test_a_catalogue_too_small_to_check_weighs_nothing():
     # Two overlapping pages cannot tell a real catalogue from a mechanical one.
     pages = [_page(1, bottom="1", backend="1"), _page(2, bottom="2", backend="2")]

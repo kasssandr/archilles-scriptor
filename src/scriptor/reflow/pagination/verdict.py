@@ -24,6 +24,7 @@ from scriptor.reflow.pagelabel import ordinal_of, style_of
 from scriptor.reflow.pagination.observation import Observation
 from scriptor.reflow.pagination.plan import FitParams, PaginationPlan, fit
 from scriptor.reflow.pagination.witnesses import (
+    WITNESS_EDGE,
     boundary_candidates,
     catalogue_observations,
     catalogue_weight,
@@ -93,38 +94,22 @@ def _confirming(observations, plan) -> dict[int, list[Observation]]:
             for pos, group in at.items()}
 
 
-# Which edge of the page each first-round witness read. Named rather than split
-# off the source string, because two of these sources do not name an edge and
-# one of them must not answer at all:
-#
-#   printed-top/bottom   the page's own outermost line
-#   printed-head         a folio rescued from the running head -- which *is*
-#                        the topmost line of the page, so the height the
-#                        geometry supplies is the folio's own
-#   printed-footer       a folio rescued from a running footer, and that footer
-#                        may have sat inside a cut apparatus rather than at the
-#                        foot of the body. Two places under one name: it says
-#                        nothing about where the volume prints its folios.
-_WITNESS_EDGE = {
-    "printed-top": "top",
-    "printed-bottom": "bottom",
-    "printed-head": "top",
-}
-
-
 def _sightings(confirming, edges):
     """Where the folios the first round confirmed actually stood on the page.
 
     The edge comes from the witness that was confirmed, not from a search
     through the text: the first round asked each edge by name, so a confirmed
     ``printed-bottom`` says the folio was at the foot, and the geometry only has
-    to supply the height it was at.
+    to supply the height it was at. Which witness names which edge is
+    ``witnesses.WITNESS_EDGE``, and a rescued running head names the top: the
+    head *is* the topmost line, so the height the geometry supplies is the
+    folio's own.
     """
     out = []
     for pos, group in confirming.items():
         lines = edges.get(pos) or []
         for o in group:
-            edge = _WITNESS_EDGE.get(o.source)
+            edge = WITNESS_EDGE.get(o.source)
             if edge is None:
                 continue
             for line in lines:
@@ -162,8 +147,8 @@ def run_verdict(pages, params: FitParams | None = None,
     # *distance* is not sound, because nothing says the list is complete, so
     # such a document gets only labels somebody observed. Nothing is enclosed
     # where the distance between two pages is unknown.
-    stated = {id(p): p.index for p in pages if p.index >= 1}
-    if stated:
+    indexed = {id(p): p.index for p in pages if p.index >= 1}
+    if indexed:
         pos_of, may_compute = (lambda p: p.index), True
     else:
         fallback = {id(p): i for i, p in enumerate(pages, start=1)}

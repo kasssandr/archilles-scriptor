@@ -155,20 +155,23 @@ def remove_running_headers(
     pages_text: list[str],
     running_headers: list[str],
     similarity_threshold: float = 0.85,
-) -> tuple[list[str], list[str | None]]:
-    """Strip the running head, and hand back the folio that shared its line.
+) -> tuple[list[str], list[list[str]]]:
+    """Strip the running head, and hand back the folios that shared its lines.
 
-    Returns the cleaned pages and, per page, the page number embedded in a
-    removed head. The first one wins: a page has one running head, and a second
-    match in the head region is the same statement, not a second folio.
+    Returns the cleaned pages and, per page, every page number embedded in a
+    removed head -- a list, because a page can carry more than one line of
+    furniture and they do not say the same thing. Josephus and Jesus heads its
+    pages twice: a download banner ending in the year 2025, and the chapter's
+    running head ending in the folio. Keeping only the first threw the folio
+    away and left the year to speak for the page.
     """
     cleaned_pages = []
-    rescued: list[str | None] = []
+    rescued: list[list[str]] = []
     for page_text in pages_text:
         lines = page_text.strip().split("\n")
         cleaned_lines: list[str] = []
         lines_checked = 0
-        folio: str | None = None
+        folios: list[str] = []
         for line in lines:
             if not line.strip():
                 cleaned_lines.append(line)
@@ -186,9 +189,11 @@ def remove_running_headers(
             else:
                 # The title goes, and so does the number's place in the text;
                 # the number itself is handed on as a witness.
-                folio = folio or _extract_edge_page_number(line)
+                folio = _extract_edge_page_number(line)
+                if folio is not None and folio not in folios:
+                    folios.append(folio)
         cleaned_pages.append("\n".join(cleaned_lines))
-        rescued.append(folio)
+        rescued.append(folios)
     return cleaned_pages, rescued
 
 
@@ -236,13 +241,13 @@ def remove_running_footers(
     pages_text: list[str],
     running_footers: list[str],
     similarity_threshold: float = 0.85,
-) -> tuple[list[str], list[str | None]]:
-    """Strip the running footer, and hand back the folio that shared its line.
+) -> tuple[list[str], list[list[str]]]:
+    """Strip the running footer, and hand back the folios that shared its lines.
 
     Same contract as ``remove_running_headers``, at the other edge.
     """
     cleaned_pages = []
-    rescued: list[str | None] = []
+    rescued: list[list[str]] = []
     for page_text in pages_text:
         lines = page_text.strip().split("\n")
         footer_indices: set[int] = set()
@@ -260,15 +265,17 @@ def remove_running_footers(
                         footer_indices.add(idx)
                         break
         cleaned_lines: list[str] = []
-        folio: str | None = None
+        folios: list[str] = []
         for idx, line in enumerate(lines):
             if idx in footer_indices:
                 # The footer goes; the number it carried is handed on.
-                folio = folio or _extract_edge_page_number(line)
+                folio = _extract_edge_page_number(line)
+                if folio is not None and folio not in folios:
+                    folios.append(folio)
                 continue
             cleaned_lines.append(line)
         cleaned_pages.append("\n".join(cleaned_lines))
-        rescued.append(folio)
+        rescued.append(folios)
     return cleaned_pages, rescued
 
 
@@ -317,7 +324,7 @@ def strip_running_elements(
     footer_min: int | None = None,
     similarity_threshold: float = 0.85,
     foot_blocks: list[list[str] | None] | None = None,
-) -> tuple[list[str], list[str], list[str], list[str | None], list[str | None]]:
+) -> tuple[list[str], list[str], list[str], list[list[str]], list[list[str]]]:
     """Convenience: detect + remove headers and footers in one call.
 
     ``foot_blocks`` are footnote blocks the page geometry has already cut off.

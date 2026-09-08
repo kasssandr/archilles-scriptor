@@ -142,7 +142,7 @@ def test_a_chapter_running_head_is_removed_without_preserving_its_year():
         "40",
         "Aniane, is mutilated and, for the period 717 through 777, suffers an ",
     ]
-    assert rescued == [None], "759 gehoert zum Titel und ist keine Folio"
+    assert rescued == [[]], "759 gehoert zum Titel und ist keine Folio"
 
 
 def test_a_folio_sharing_the_head_line_is_handed_on_not_left_behind():
@@ -154,7 +154,7 @@ def test_a_folio_sharing_the_head_line_is_handed_on_not_left_behind():
     # The line was furniture; a bare "44" put back in its place would be
     # indistinguishable from a folio the page prints in its own right.
     assert stripped[0] == ["Narbonne for seven long years."]
-    assert rescued == ["44"]
+    assert rescued == [["44"]]
 
 
 def test_a_number_at_both_edges_is_counted_and_the_leading_one_taken():
@@ -164,7 +164,7 @@ def test_a_number_at_both_edges_is_counted_and_the_leading_one_taken():
     ]]
     stripped, rescued, contested = strip_running_titles(pages, [TITLE])
     assert stripped[0] == ["Narbonne for seven long years."]
-    assert rescued == ["44"]
+    assert rescued == [["44"]]
     assert contested == 1
 
 
@@ -177,7 +177,7 @@ def test_body_text_below_the_head_region_is_never_touched():
     ]]
     stripped, rescued, contested = strip_running_titles(pages, [TITLE])
     assert stripped == pages
-    assert rescued == [None] and contested == 0
+    assert rescued == [[]] and contested == 0
 
 
 # ----------------------------------------------------------------------
