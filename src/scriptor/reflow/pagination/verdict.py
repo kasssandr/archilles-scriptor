@@ -177,27 +177,31 @@ def run_verdict(pages, params: FitParams | None = None,
     # why this can only ever add labels to a volume that already had some.
     band = folio_band(_sightings(confirming, edges)) if edges else None
     if band is not None:
-        # Silent where the *page* spoke -- whether or not the plan agreed with
-        # it. Two conditions in one, and both matter.
+        # Two things keep the second round from arguing with itself, and they
+        # are not the same thing.
         #
-        # It has to be the page: a contents entry, a link or a catalogue says
-        # what a page is called, not that the page printed anything. Letting
-        # one of those stand the second round down trades a printed reading for
-        # a derived one at the same value, and the page loses its attestation
-        # with it (Themistios physical 247: the contents found the position,
-        # and a ``printed-geometric`` 232 that had been read went unread).
+        # ``spoken_for`` -- where the *page* spoke and the plan followed it, the
+        # question is answered. It has to be the page: a contents entry, a link
+        # or a catalogue says what a page is called, not that the page printed
+        # anything, and standing the round down for one of those trades a
+        # printed reading for a derived one at the same value, attestation and
+        # all (Themistios physical 247: the contents found the position, and a
+        # ``printed-geometric`` 232 that had been read went unread).
         #
-        # And it has to be *read*, not *confirmed*: the wider reading looks at
-        # the same outermost line the narrow one already looked at, so where
-        # the narrow reading took something the wide one adds no evidence, only
-        # a second voice with the same cause. Asking only the confirmed ones
-        # would let a disagreement count twice -- La masonería physical 79
-        # prints 15 where its catalogue says 13, and the same line would be
-        # read once narrowly and once geometrically, halving the page's
-        # confidence over one printed line.
-        spoken_for = {o.pos for o in observations
-                      if o.source.startswith("printed")}
-        second = geometric_observations(edges, band, spoken_for=spoken_for)
+        # ``already`` -- a *reading* the narrow round produced at that position.
+        # Where the plan refused the narrow reading the question is still open
+        # and this round may speak; it reads the same line with a wider
+        # vocabulary, which on Lewy is the difference between "1" and "441".
+        # But where it arrives at the same string, the two have one cause and
+        # one line would count as two voices: La masonería physical 79 prints
+        # 15 where its catalogue says 13, and reading that line twice halved
+        # the page's confidence over a single dissent.
+        spoken_for = {pos for pos, group in confirming.items()
+                      if any(o.source.startswith("printed") for o in group)}
+        already = {(o.pos, o.label) for o in observations
+                   if o.source.startswith("printed")}
+        second = geometric_observations(edges, band, spoken_for=spoken_for,
+                                        already=already)
         if second:
             observations = observations + second
             plan = fit(observations,

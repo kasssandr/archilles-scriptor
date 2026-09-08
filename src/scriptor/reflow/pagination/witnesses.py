@@ -231,7 +231,7 @@ def folio_band(sightings) -> Band | None:
 
 
 def geometric_observations(edges_by_pos, band: Band | None,
-                           spoken_for=()) -> list[Observation]:
+                           spoken_for=(), already=()) -> list[Observation]:
     """Read the folio again, where the volume's habit says one should be.
 
     This is the second round, and it exists because the narrow reading has to
@@ -239,12 +239,22 @@ def geometric_observations(edges_by_pos, band: Band | None,
     rule dressed up. Those refusals are safe only as long as a refusal is all
     that follows; here the place carries the burden the vocabulary used to.
 
-    Silent where the page already stated a label the first round could read --
-    a second, weaker voice could only argue with the first. Silent, too, where a
-    reading keeps coming back: see MAX_REPEATS.
+    Silent where the page already stated a label the first round could read and
+    the plan followed it (``spoken_for``) -- there the question is answered, and
+    a second, weaker voice could only argue with the first. Where the plan did
+    *not* follow, the question is open and this round may speak: it reads the
+    same line with a wider vocabulary, and on a scan that eats the leading digit
+    of a running head that is the difference between "1" and "441".
+
+    Silent, too, on a reading the narrow round already produced at that position
+    (``already``, as ``(pos, label)`` pairs). Then the two have one cause -- the
+    same printed line -- and counting both would make one line two voices.
+
+    Silent, finally, where a reading keeps coming back: see MAX_REPEATS.
     """
     if band is None:
         return []
+    seen_narrow = {(pos, label.strip().lower()) for pos, label in already}
 
     readings = [
         (pos, line, read_label_relaxed(line.text))
@@ -262,6 +272,8 @@ def geometric_observations(edges_by_pos, band: Band | None,
     out: list[Observation] = []
     for pos, line, label in readings:
         if label is None or label in furniture:
+            continue
+        if (pos, label.strip().lower()) in seen_narrow:
             continue
         where = "head" if line.edge == "top" else "foot"
         out.append(Observation(
