@@ -239,16 +239,33 @@ def run_verdict(pages, params: FitParams | None = None,
         if printed:
             p.label, p.label_source = printed[0].label, "printed"
         elif group:
-            # The *strongest* witness that confirmed the label, which is what
-            # the field promises. Masones has no PDF catalogue whatsoever and
-            # six of its pages were once recorded as "catalogue" -- their labels
-            # come from its table of contents; Josephus and Jesus had every one
-            # of its 321 catalogue labels credited to the catalogue although
-            # contents links confirmed them too, and a link the producer
-            # resolved outweighs a catalogue agreeing with 4 % of what the
-            # volume prints. Heaviest wins, ties by source name so the answer
-            # never depends on the order the witnesses were gathered in.
-            best = max(group, key=lambda o: (o.weight, o.source))
+            # The best witness that confirmed the label, which is what the field
+            # promises. Masones has no PDF catalogue whatsoever and six of its
+            # pages were once recorded as "catalogue" -- their labels come from
+            # its table of contents.
+            #
+            # Best is not simply heaviest. A witness that *attests* comes first:
+            # a contents link is two printed facts, the number read off a line
+            # the volume printed and the destination the file itself resolves,
+            # while a catalogue is an assertion with nothing behind it. Where
+            # both name the same page the attested one is the better answer, and
+            # it is the difference between a page with an anchor and one
+            # without (``_attests``).
+            #
+            # This used to be decided by weight alone, on the grounds that a
+            # link outweighs "a catalogue agreeing with 4 % of what the volume
+            # prints" -- Josephus and Jesus, whose 321 catalogue labels had all
+            # been credited to the catalogue. Those 4 % were a measurement
+            # error: the rate was taken against a body from which the strippers
+            # had already removed the folios, and the volume heads 330 of its
+            # pages with the year 2025, which stood in the denominator. Measured
+            # properly the same catalogue earns 0.99 and would take those 26
+            # pages back from the link. The intent was always the anchor, not
+            # the arithmetic; now it is written down as that.
+            #
+            # Among equals, heaviest wins, then source name, so the answer never
+            # depends on the order the witnesses were gathered in.
+            best = max(group, key=lambda o: (_attests(o), o.weight, o.source))
             p.label, p.label_source = best.label, best.source
         else:
             span = spans.get(seg.start_pos)
