@@ -29,7 +29,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from scriptor.reflow.outline import OutlineEntry, match_prefix_lines
+from scriptor.reflow.outline import (
+    OutlineEntry,
+    match_prefix_lines,
+    match_title_lines,
+)
 
 # A title that numbers itself below a top level: "II.1", "2.3.1.", "1.1.". The
 # entry says what it is and no count can overrule it -- a volume may well carry
@@ -213,6 +217,12 @@ def from_toc(
     ``toc_positions`` are the pages of the contents itself, and they are not a
     place to look: every title stands there. Measured at Carlomagno, two of
     four apparent hits were the contents page listing them.
+
+    Searched over the whole page, not its head. A chapter opens at the top of
+    a page, but a *section* opens where the previous one ended, and a contents
+    lists both. Reading only the head found the running head of the page after
+    the opening instead -- measured on De eerste minister, where 18 finds
+    landed one page late and each contradicted the folio the page prints.
     """
     out: dict[int, ChapterStart] = {}
     for e in entries:
@@ -223,11 +233,11 @@ def from_toc(
         for pos, lines in sorted(lines_by_pos.items()):
             if pos in toc_positions or pos in out:
                 continue
-            # A cheap gate before the expensive comparison: a page that opens a
-            # chapter prints the title's first word in its first lines.
-            if head not in " ".join(lines[:4]).lower():
+            # A cheap gate before the expensive comparison: the page that
+            # spells the title out prints its first word somewhere.
+            if head not in " ".join(lines).lower():
                 continue
-            if match_prefix_lines(lines, title) is None:
+            if match_title_lines(lines, title) is None:
                 continue
             out[pos] = ChapterStart(
                 pos=pos, title=title, rank=e.level, source="toc",
