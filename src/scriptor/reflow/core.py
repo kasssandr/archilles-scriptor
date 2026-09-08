@@ -1575,10 +1575,18 @@ def main(
     ]
 
     # Chapter running heads, removed with knowledge of the full title — the
-    # generic stripper below would preserve the title's own year ("… in 759")
-    # as a phantom folio.
+    # generic stripper below would take the title's own year ("… in 759") for a
+    # phantom folio.
+    rescued_heads: list[str | None] = [None] * len(page_lines)
     if chapter_titles:
-        page_lines = outline_mod.strip_running_titles(page_lines, chapter_titles)
+        page_lines, rescued_heads, contested = outline_mod.strip_running_titles(
+            page_lines, chapter_titles)
+        if contested:
+            print(
+                f"Chapter running heads carrying a number at both edges: "
+                f"{contested} (the leading one is taken)",
+                file=sys.stderr,
+            )
 
     raw_texts = ["\n".join(lines) for lines in page_lines]
 
@@ -1592,17 +1600,30 @@ def main(
         remove_running_footers_from_blocks,
         strip_running_elements,
     )
-    cleaned, headers, footers = strip_running_elements(raw_texts, foot_blocks=fn_blocks)
-    # The rescued folios are not put back into the text. They travel to the
-    # consensus as a witness of their own (``printed-footer``), so that a
-    # conflict between the page's own folio and a number rescued out of its
-    # apparatus is settled by the sequence rather than by a guard.
-    fn_blocks, rescued_folios = remove_running_footers_from_blocks(fn_blocks, footers)
-    rescued_by_ordinal = {
-        ordinal: folio
-        for ordinal, folio in enumerate(rescued_folios, start=1)
-        if folio is not None
-    }
+    cleaned, headers, footers, rescued_top, rescued_bottom = strip_running_elements(
+        raw_texts, foot_blocks=fn_blocks)
+    fn_blocks, rescued_blocks = remove_running_footers_from_blocks(fn_blocks, footers)
+    # No rescued folio is put back into the text. Each travels to the consensus
+    # as a witness of its own -- ``printed-head`` at the top edge,
+    # ``printed-footer`` at the foot -- so that a conflict between the page's
+    # own folio and a number taken out of its furniture is settled by the
+    # sequence rather than by a guard, and so that the same rescue is worth the
+    # same whether or not the geometry happened to cut the apparatus.
+    #
+    # Four paths reach into a stripped line, one per edge and stripper. Where
+    # two speak at the same edge the better-informed one is heard: at the head,
+    # the stripper that knew the chapter title over the generic one; at the
+    # foot, the established rescue out of a cut apparatus over the new one out
+    # of the body. Both edges of one page may speak, and then both are stated.
+    rescued_by_ordinal: dict[int, list[tuple[str, str]]] = {}
+    for ordinal, (head, top, block, bottom) in enumerate(
+        zip(rescued_heads, rescued_top, rescued_blocks, rescued_bottom), start=1
+    ):
+        at_edge = [(edge, folio) for edge, folio in
+                   (("top", head or top), ("bottom", block or bottom))
+                   if folio is not None]
+        if at_edge:
+            rescued_by_ordinal[ordinal] = at_edge
     if headers:
         print(f"Running headers removed ({len(headers)}): {headers[:3]}", file=sys.stderr)
     if footers:

@@ -243,24 +243,53 @@ def geometric_observations(edges_by_pos, band: Band | None,
 # own number.
 FOOTER_WEIGHT = 0.5
 
+# What a folio rescued from a running head is worth. One step below the printed
+# reading, like the footer rescue, because a similarity match decided the line
+# was furniture -- but only one, where the footer rescue has two: the head is
+# the head, and nothing an apparatus prints can be mistaken for it. The footer
+# rescue reaches into a cut note block by construction, and that is what its
+# half is paying for.
+#
+# Level with GEOMETRIC_WEIGHT, which is the same kind of statement: the page
+# printing about itself, read at a place the volume's own habit vouches for.
+# Above the catalogue, below the narrow reading. Whether 0.8 holds is a
+# question for the corpus, not for this comment -- it was measured over the 22
+# volumes when the rescues stopped being written back into the text.
+HEAD_WEIGHT = 0.8
+
+# Which witness a rescue makes, by the edge it was taken from.
+_RESCUE = {
+    "top": ("printed-head", HEAD_WEIGHT, "running head"),
+    "bottom": ("printed-footer", FOOTER_WEIGHT, "running footer"),
+}
+
 
 def rescued_observations(rescued_by_pos) -> list[Observation]:
-    """What a running footer said before it was stripped.
+    """What a running element said before it was stripped.
 
-    Called ``printed-footer`` and not ``footer-rescue`` as the design had it, so
-    that it sorts with the other readings the page itself carries: the verdict
+    ``rescued_by_pos`` maps a position to the ``(edge, label)`` pairs rescued
+    there -- a page can carry furniture at both edges, and each edge is one
+    statement.
+
+    Called ``printed-…`` and not ``…-rescue`` as the design had it, so that
+    these sort with the other readings the page itself carries: the verdict
     reads the ``printed-`` prefix to decide that a page stated its own number,
     and ``label_source`` travels to archilles with exactly that meaning. The
     page did print this -- inside furniture, but in its own ink.
     """
-    return [
-        Observation(pos=pos, label=label, source="printed-footer",
-                    weight=FOOTER_WEIGHT,
-                    why=f"{label!r} rescued from the running footer of "
-                        f"physical page {pos}")
-        for pos, label in sorted(rescued_by_pos.items())
-        if label is not None and ordinal_of(label) is not None and pos >= 1
-    ]
+    out: list[Observation] = []
+    for pos, rescues in sorted(rescued_by_pos.items()):
+        if pos < 1:
+            continue
+        for edge, label in rescues:
+            if label is None or ordinal_of(label) is None:
+                continue
+            source, weight, what = _RESCUE[edge]
+            out.append(Observation(
+                pos=pos, label=label, source=source, weight=weight,
+                why=f"{label!r} rescued from the {what} of physical page {pos}",
+            ))
+    return out
 
 
 # What a contents link is worth. More than a contents entry the search placed

@@ -1,9 +1,17 @@
-"""A folio rescued from a running footer is a witness, not an appended line.
+"""A folio rescued from a running element is a witness, not an appended line.
 
-A running footer carrying the page number is stripped as a unit, so the number
-has to survive the strip (reflow/running_elements). Where the geometry cut the
-apparatus, the footer sits inside the footnote block and the rescue happens
-there.
+A running head or footer carrying the page number is stripped as a unit, so the
+number has to survive the strip (reflow/running_elements, reflow/outline).
+Where the geometry cut the apparatus, the footer sits inside the footnote block
+and the rescue happens there.
+
+Four paths rescue such a number, and until stage 6 the weight of the same
+rescue depended on which of them found it: the one at the foot of a cut
+apparatus stated its case as a witness at half weight, while the three others
+wrote the bare number back into the text, where parse_page could not tell it
+from a folio the page prints in its own right and gave it full weight. The edge
+now decides -- ``printed-head`` at the top, ``printed-footer`` at the foot --
+and the geometry decides nothing.
 
 Until stage 5 the rescued number was appended to the page text, which made it
 indistinguishable from a folio the page prints in its own right -- and forced a
@@ -29,7 +37,7 @@ def _page(index, label=None):
 
 
 def test_the_rescue_states_its_reading():
-    obs = rescued_observations({7: "146"})
+    obs = rescued_observations({7: [("bottom", "146")]})
     assert [(o.pos, o.label, o.source) for o in obs] == [
         (7, "146", "printed-footer")
     ]
@@ -38,18 +46,52 @@ def test_the_rescue_states_its_reading():
 def test_the_rescue_weighs_less_than_the_page_itself():
     # It has been through a similarity match that decided the line was furniture
     # -- one step more than a folio the detector reads off the page.
-    (o,) = rescued_observations({7: "146"})
+    (o,) = rescued_observations({7: [("bottom", "146")]})
     assert o.weight == 0.5
 
 
 def test_nothing_is_stated_without_a_rescue():
-    assert rescued_observations({7: None}) == []
+    assert rescued_observations({7: [("bottom", None)]}) == []
     assert rescued_observations({}) == []
+
+
+def test_the_edge_decides_which_witness_a_rescue_makes():
+    obs = rescued_observations({7: [("top", "146")], 9: [("bottom", "148")]})
+    assert [(o.pos, o.source, o.weight) for o in obs] == [
+        (7, "printed-head", 0.8),
+        (9, "printed-footer", 0.5),
+    ]
+
+
+def test_a_head_rescue_outweighs_a_footer_rescue():
+    # One fallible step, not two: the head is the head, while the footer rescue
+    # reaches into a cut note block by construction.
+    from scriptor.reflow.pagination.witnesses import (
+        FOOTER_WEIGHT, GEOMETRIC_WEIGHT, HEAD_WEIGHT, PRINTED_WEIGHT,
+    )
+    assert FOOTER_WEIGHT < HEAD_WEIGHT < PRINTED_WEIGHT
+    assert HEAD_WEIGHT == GEOMETRIC_WEIGHT
+
+
+def test_both_edges_of_one_page_may_speak():
+    obs = rescued_observations({7: [("top", "146"), ("bottom", "9")]})
+    assert [(o.label, o.source) for o in obs] == [
+        ("146", "printed-head"), ("9", "printed-footer"),
+    ]
+
+
+def test_a_rescued_running_head_labels_a_page_and_stays_printed():
+    # The archilles contract: every ``printed-*`` source writes label_source
+    # "printed". A rescue is lighter, not different in kind.
+    pages = [_page(1, "144"), _page(2, "145"), _page(3), _page(4, "147")]
+    run_verdict(pages, rescued={3: [("top", "146")]})
+    assert [p.label for p in pages] == ["144", "145", "146", "147"]
+    assert pages[2].label_source == "printed"
 
 
 def test_a_rescued_folio_labels_a_page_that_prints_nothing_else():
     pages = [_page(1, "144"), _page(2, "145"), _page(3), _page(4, "147")]
-    run_verdict(pages, rescued={3: "146"})
+    run_verdict(pages, rescued={3: [("bottom", "146")]})
     assert [p.label for p in pages] == ["144", "145", "146", "147"]
     assert pages[2].label_source == "printed"
 
@@ -58,13 +100,13 @@ def test_the_printed_folio_wins_against_a_rescued_footnote_number():
     # Carlomagno: the page prints "41" at its foot and the apparatus yields
     # "17". Both are stated; the sequence settles it, and no guard is needed.
     pages = [_page(1, "39"), _page(2, "40"), _page(3, "41"), _page(4, "42")]
-    run_verdict(pages, rescued={3: "17"})
+    run_verdict(pages, rescued={3: [("bottom", "17")]})
     assert [p.label for p in pages] == ["39", "40", "41", "42"]
 
 
 def test_a_rescued_number_that_fits_nothing_labels_nothing():
     pages = [_page(1, "39"), _page(2, "40"), _page(3), _page(4, "42")]
-    run_verdict(pages, rescued={3: "17"})
+    run_verdict(pages, rescued={3: [("bottom", "17")]})
     assert pages[2].label == "41"      # the sequence, not the rescue
 
 
