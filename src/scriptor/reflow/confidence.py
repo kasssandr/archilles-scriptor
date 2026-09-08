@@ -99,6 +99,10 @@ class GlyphEvidence:
     reproducibility survives: same pages, same profile, same output. They are also
     deliberately few, so a book's own typography always outweighs the corpus
     average once the book has said anything at all.
+
+    This is the glyph axis of the rule written out in ``scriptor.reflow``: the
+    weight is measured on the volume rather than set, and the evidence stays
+    readable back to the page it came from.
     """
 
     counts: Counter = field(default_factory=Counter)          # (digit, glyph) -> seen here

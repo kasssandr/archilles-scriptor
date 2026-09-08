@@ -116,6 +116,36 @@ def match_prefix_lines(lines: list[str], title: str) -> int | None:
     return None
 
 
+def match_title_lines(lines: list[str], title: str) -> int | None:
+    """The first line from which ``lines`` spell ``title`` out, or None.
+
+    ``match_prefix_lines`` asks the same question of the page's first lines
+    only, because it is used to *cut* those lines off. A contents search cuts
+    nothing, and the page it is looking for does not always open with the
+    title: a section heading stands where the previous section ended, which is
+    anywhere down the page. De eerste minister sets "De geschiedenis van de
+    raadpensionaris" on line 7 of the page that opens it -- and on line 1 of
+    the page after, as a running head. Reading only the head therefore finds
+    the furniture and misses the heading, which is the wrong way round.
+
+    Accumulates from each start in turn, with the same tolerance and the same
+    length bound, so a title still has to be spelt out by whole lines and a
+    long paragraph can never drift into a match.
+    """
+    want = _norm(title)
+    if not want:
+        return None
+    for start in range(len(lines)):
+        got = ""
+        for line in lines[start: start + HEAD_REGION + 2]:
+            got += _norm(line)
+            if len(got) >= len(want) * MATCH_RATIO and _similar(got, want):
+                return start
+            if len(got) > len(want) * 1.2:
+                break
+    return None
+
+
 def chapter_headings(
     entries: list[OutlineEntry], pages_lines: list[list[str]]
 ) -> dict[int, tuple[str, int]]:

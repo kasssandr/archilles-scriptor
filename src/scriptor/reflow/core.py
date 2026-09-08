@@ -1648,6 +1648,17 @@ def main(
     # Entries are placed by their title, never by their number: the number is a
     # printed page, and turning it into a position would need the very plan this
     # informs.
+    #
+    # Searched on the *raw* channel, not on the body the strippers left. A
+    # chapter title is the one thing a volume prints both as a heading and as a
+    # running head, so on the opening page -- the page this path exists for --
+    # the generic stripper has just removed what the search is looking for.
+    # ``raw_texts`` is the right snapshot: after strip_running_titles, so an
+    # outline volume's heads are already gone and the search cannot land on the
+    # page *after* the opening, and before strip_running_elements, so the
+    # opening still spells its title out. Empty lines are dropped because
+    # mark_indent_breaks injects them and match_prefix_lines only ever looks at
+    # HEAD_REGION + 2 lines (outline.py) -- a blank would spend that window.
     from scriptor.reflow.chapters import contents_pages, from_toc
     from scriptor.reflow.toc import parse_toc
 
@@ -1655,9 +1666,14 @@ def main(
     if toc_pages:
         parsed = parse_toc(toc_pages)
         if parsed.entries:
+            raw_by_pos = {
+                pg.index: [ln for ln in raw_texts[pg.index - 1].splitlines()
+                           if ln.strip()]
+                for pg in pages
+            }
             found = from_toc(
                 parsed.entries,
-                {p.index: p.body_lines for p in pages},
+                raw_by_pos,
                 {p.index for p in toc_pages},
             )
             known = {c.pos for c in chapter_starts}

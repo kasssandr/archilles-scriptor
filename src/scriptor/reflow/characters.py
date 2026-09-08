@@ -82,6 +82,10 @@ def learn_broken_glyphs(pages: list[list[str]]) -> dict[str, str]:
     "figures" never appears intact in the Oxford Handbook, while "first" does.
     Asking each word for its own proof would resolve 37 of 225 forms; asking the
     character resolves all of them from those 37.
+
+    The third axis of the rule written out in ``scriptor.reflow``: a reading is
+    earned on this document, with a minimum of evidence and a margin, and it
+    repairs rather than decides.
     """
     intact: Counter[str] = Counter()
     broken: set[str] = set()
