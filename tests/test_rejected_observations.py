@@ -218,3 +218,27 @@ def test_the_order_is_the_reading_order_of_the_document():
     pages = _pages(*(_page(p) for p in (67, 107, 198)))
     assert [r.observation.pos for r in classify(rejected, pages,
                                                 PaginationPlan())] == [67, 107, 198]
+
+
+def test_a_numeral_the_scan_swapped_a_glyph_in():
+    # Lewy's other damage, measured 2026-09-09: the plan says 161 and the head
+    # reads "101". Same length, one place -- and not the units place, or an
+    # ordinary offset would answer to the same name.
+    plan = PaginationPlan(segments=(
+        Segment(start_pos=27, start_label="1", style="arabic"),
+    ))
+    got = _verdicts([_obs(187, "101", source="printed-head", weight=1.0)],
+                    _pages(_page(187)), plan)
+    assert got == ["confused-numeral"]
+
+
+def test_a_reading_one_off_in_the_units_place_is_not_called_a_confusion():
+    # Carlomagno's blank verso: the page prints 13 where the running count says
+    # 12. The report must not explain that by a rule the fit does not apply --
+    # the fit lets such a reading found a segment, on purpose.
+    plan = PaginationPlan(segments=(
+        Segment(start_pos=1, start_label="1", style="arabic"),
+    ))
+    got = _verdicts([_obs(12, "13", source="printed-head", weight=1.0)],
+                    _pages(_page(12)), plan)
+    assert got != ["confused-numeral"]

@@ -355,3 +355,61 @@ def test_the_rule_does_not_reach_across_a_change_of_numbering_system():
     plan = fit(obs, boundaries=[7, 10], last_pos=13, params=P)
     assert len(plan.segments) == 2
     assert plan.value_at(10) == 1
+
+
+# --- A confused numeral may contradict, but it may not found a segment --------
+#
+# Lewy again, measured 2026-09-09 (docs/internal, M1): the scan does not always
+# lose a digit, it also swaps one. Page 161 reads "101", 211 reads "311", 544
+# reads "644" -- same length, one place different, and the rest counts on
+# perfectly. Twenty-eight of Lewy's pages hang on a single such segment.
+#
+# The rule has to stop at the units place, and that is the whole measurement:
+# a change there is what an ordinary offset looks like. Carlomagno prints 11 on
+# its eleventh page and 13 on its twelfth, because the blank verso before each
+# chapter opening is not in the file; its offset grows 0, 1, 2, 3, 4, 5 over the
+# volume, and every one of those steps is "same length, one place". A rule that
+# forbade them cost Carlomagno the numbering of pages 2 to 8.
+
+
+def test_a_stretch_with_one_swapped_digit_does_not_found_a_segment():
+    # The plan runs at offset -26. Ten pages read a hundred too high, and each
+    # of those readings differs from what the plan states there in exactly one
+    # place -- the hundreds digit. Enough of them to outweigh the segment price,
+    # so without the rule the fit really does buy the stretch a numbering of its
+    # own: measured, it yields segments at 430, 467 and 477 and calls page 467
+    # "541".
+    obs = ([_obs(p, str(p - 26)) for p in range(430, 467)]
+           + [_obs(p, str(p - 26 + 100)) for p in range(467, 477)]
+           + [_obs(p, str(p - 26)) for p in range(477, 507)])
+    plan = fit(obs, boundaries=[430, 467, 477], last_pos=506, params=P)
+    assert len(plan.segments) == 1
+    assert plan.value_at(467) == 441
+
+
+def test_a_change_in_the_units_place_is_an_offset_and_founds_a_segment():
+    # Carlomagno's case, and the reason the rule stops where it does. The plan
+    # runs at offset 0 and a chapter opens on a recto whose blank verso is
+    # missing from the file, so the count steps up by one. That reading differs
+    # from the running count in one place too -- and it is the volume speaking.
+    obs = ([_obs(p, str(p)) for p in range(1, 12)]
+           + [_obs(p, str(p + 1)) for p in range(12, 21)])
+    plan = fit(obs, boundaries=[1, 12], last_pos=20, params=P)
+    assert len(plan.segments) == 2
+    assert plan.value_at(12) == 13
+
+
+def test_the_confusion_rule_does_not_reach_across_a_change_of_length():
+    # "99" against a running "100" is not one swapped glyph, it is a different
+    # numeral. is_mutilation owns that case; this rule must not also claim it,
+    # or the two would disagree about what they saw.
+    from scriptor.reflow.pagination.plan import is_confusable
+
+    assert not is_confusable("99", "100")
+    assert is_confusable("101", "161")
+    assert not is_confusable("13", "14")
+    assert not is_confusable("311", "313")
+    assert is_confusable("221", "241")
+    # Roman numerals are glyphs like any other, and the same rule reads them.
+    assert is_confusable("xxi", "xxv") is False   # units place
+    assert is_confusable("xxi", "xli") is True    # tens place
