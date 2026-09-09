@@ -1359,18 +1359,26 @@ def main(
     # and says nothing about it.
     # Two columns share one baseline grid, so the assembly above has to know about
     # the lane before it clusters, not after: joining across it interleaves the two
-    # columns word for word. The lane is measured over the whole document, because
-    # a single page's full-width table would hide it.
-    from scriptor.reflow.columns import find_gutter
+    # columns word for word. The lane is measured on each page and summarised over
+    # the volume, because a single page's full-width table would hide it — and
+    # because a scan carries its type area a little differently on the verso than
+    # on the recto, which swept together erases the lane altogether (Sigilla Veri;
+    # see reflow/columns).
+    from scriptor.reflow.columns import page_gutters
 
-    gutter = find_gutter(source_pages)
+    gutters = page_gutters(source_pages)
+    gutter = next((g for g in gutters if g is not None), None)
     if gutter is not None:
+        lanes = sorted({(g.x0, g.x1) for g in gutters if g is not None})
+        where = "; ".join(f"{x0:.1f}–{x1:.1f}pt" for x0, x1 in lanes)
         print(
-            f"Two-column layout: gutter at {gutter.x0:.1f}–{gutter.x1:.1f}pt; "
-            f"columns are read one after the other",
+            f"Two-column layout: gutter at {where}"
+            + (" (verso and recto differ)" if len(lanes) > 1 else "")
+            + "; columns are read one after the other",
             file=sys.stderr,
         )
-    reconstructions = [reconstruct(sp, gutter=gutter) for sp in source_pages]
+    reconstructions = [reconstruct(sp, gutter=g)
+                       for sp, g in zip(source_pages, gutters)]
     measured = sum(1 for r in reconstructions if r.measured)
     print(
         f"{measured} of {len(reconstructions)} pages reassembled from geometry",

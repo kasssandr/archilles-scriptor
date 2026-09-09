@@ -239,3 +239,75 @@ def test_a_float_is_anchored_at_the_first_paragraph_break():
         "right column line one",
         "5",
     ]
+
+
+# --- The gutter is a page's measurement, summarised over the volume -----------
+#
+# Sigilla Veri, measured 2026-09-09 (docs/internal, M6): a two-column Fraktur
+# lexicon whose verso and recto carry the type area about 20pt apart, more than
+# the gutter is wide. Swept over all the volume's lines at once, no lane stays
+# clear and find_gutter reports nothing at all -- while the same search finds a
+# gutter on every single one of its sixty pages. The consequence was visible but
+# unconnected: "23 pages hold a line with a column-wide horizontal gap".
+
+
+def _shifted_page(index, *, shift, width=612.0, rows=20):
+    """The two-column page, moved sideways -- a binding offset."""
+    page = _two_column_page(index, width=width, rows=rows)
+    moved = []
+    for line in page.lines:
+        box = Box(line.box.x0 + shift, line.box.y0,
+                  line.box.x1 + shift, line.box.y1)
+        moved.append(Line(spans=[Span(line.text, box=box, size=9.0)],
+                          box=box, baseline=line.baseline))
+    return SourcePage(index=index, width=width, height=792.0, lines=moved)
+
+
+def test_a_gutter_that_alternates_between_verso_and_recto_is_still_a_gutter():
+    from scriptor.reflow.columns import page_gutters
+
+    pages = [_shifted_page(i, shift=0.0 if i % 2 else 20.0) for i in range(1, 21)]
+
+    # The old measurement, over all lines at once, sees nothing.
+    assert find_gutter(pages) is None
+
+    gutters = page_gutters(pages)
+    assert all(g is not None for g in gutters)
+    # Two lanes, one per side of the sheet, each carried by its own pages.
+    assert len({(g.x0, g.x1) for g in gutters}) == 2
+
+
+def test_a_page_without_a_lane_of_its_own_still_gets_the_volume_s():
+    """A full-width table hides the lane on one page. The volume keeps it."""
+    from scriptor.reflow.columns import page_gutters
+
+    wide = SourcePage(index=7, width=612.0, height=792.0, lines=[
+        _frag(f"a table row running right across {i}", 55.0, 90.0 + i * 12.0,
+              x1=557.0)
+        for i in range(20)
+    ])
+    pages = [_two_column_page(i) for i in range(1, 7)] + [wide] \
+        + [_two_column_page(i) for i in range(8, 14)]
+
+    gutters = page_gutters(pages)
+    assert gutters[6] is not None
+    assert gutters[6].x0 == 296.0
+
+
+def test_a_single_column_volume_reports_no_gutter_on_any_page():
+    from scriptor.reflow.columns import page_gutters
+
+    pages = [_single_column_page(i) for i in range(1, 11)]
+    assert page_gutters(pages) == [None] * 10
+
+
+def test_a_few_pages_with_a_lane_do_not_make_a_two_column_volume():
+    """Measured over the corpus: Sigilla Veri holds a lane on 100 % of its
+    pages and Les apologistes on 86 %, while the next volume down manages 18 %.
+    Those eighteen per cent are chance white in single-column prose, and a
+    volume must not be cut into columns on their account."""
+    from scriptor.reflow.columns import page_gutters
+
+    pages = ([_two_column_page(i) for i in range(1, 4)]
+             + [_single_column_page(i, width=612.0) for i in range(4, 21)])
+    assert page_gutters(pages) == [None] * 20
