@@ -8,10 +8,20 @@ wide, columns 55--296 and 320--557) reads ``Abstract with agent architecture and
 tool-calling paradigm ... Recent advances in Large Language Model (LLM) agents
 have enadoption of agentic search``: every word present, the argument destroyed.
 
-The gutter is measured across the whole document, not per page. A page carrying a
-full-width table has no lane of its own, and a book whose last page holds four
-lines would report one that is not there. What makes a lane a gutter is that the
-document keeps it clear.
+The gutter is measured *on the page* and summarised over the volume. A page
+carrying a full-width table has no lane of its own, and a book whose last page
+holds four lines would report one that is not there -- so what makes a lane a
+gutter is still that the volume keeps it clear, and that is now counted in
+pages rather than swept over every line at once.
+
+Sweeping the whole volume was the older rule and it fails on any scan whose type
+area moves. Sigilla Veri, a two-column Fraktur lexicon, carries its columns
+about 20pt further right on the verso than on the recto -- more than the gutter
+is wide. Over all lines together no lane stays clear and the volume reports no
+gutter at all, while the same search finds one on every single page. Measured
+2026-09-09 (docs/internal, M6). Page by page the two lanes are plain, and the
+share of pages holding one separates cleanly: 100 % there, 86 % on Les
+apologistes, 18 % on the next volume down, where the white is chance.
 
 Reading order is then a recursive cut: lines that cross the lane (a title, a
 full-width table, an author block) separate the page into bands; inside a band the
@@ -22,6 +32,7 @@ that stays in ``core`` (README: "A backend reports, it does not judge").
 from __future__ import annotations
 
 from dataclasses import dataclass
+from statistics import median
 
 from scriptor.page import Line, SourcePage
 
@@ -42,6 +53,13 @@ MIN_SIDE_SHARE = 0.20
 # not a hole in one line -- Thil-Lorrain hands over a printed line in four
 # fragments, and the white between two of them is a word space, not a gutter.
 MIN_COLUMN_DEPTH = 10
+
+# Share of a volume's pages that must hold a lane of their own before the volume
+# counts as set in two columns. Measured over the corpus (M6, 2026-09-09):
+# Sigilla Veri 100 %, Les apologistes 86 %, and the next volume down 18 % --
+# Lewy, whose eighteen per cent is chance white in single-column prose. The gap
+# between 18 % and 86 % is where this sits, and nothing in the corpus lies in it.
+MIN_PAGE_SHARE = 0.5
 
 # Only the middle of the page is searched. Margins are white by definition, and a
 # lane hard against the type area is a hanging indent, not a second column.
@@ -152,9 +170,34 @@ def find_gutter(
     min_side_share: float = MIN_SIDE_SHARE,
     min_depth: int = MIN_COLUMN_DEPTH,
 ) -> Gutter | None:
-    """The lane this document keeps clear between two columns, if it keeps one."""
-    lines = _boxed(pages)
-    width = _page_width(pages)
+    """The lane this document keeps clear between two columns, if it keeps one.
+
+    Kept for the callers that want one answer for the volume. What the reading
+    order uses is ``page_gutters``, which asks the same question of each page.
+    """
+    return _lane_of(_boxed(pages), pages, _page_width(pages),
+                    min_width=min_width,
+                    max_crossing_share=max_crossing_share,
+                    min_side_share=min_side_share, min_depth=min_depth)
+
+
+def _lane_of(
+    lines: list[Line],
+    pages: list[SourcePage],
+    width: float | None,
+    *,
+    min_width: float,
+    max_crossing_share: float,
+    min_side_share: float,
+    min_depth: int,
+) -> Gutter | None:
+    """The clear lane in ``lines``, judged against ``width``.
+
+    ``width`` is passed in rather than taken from ``pages`` so that a single
+    page can be measured against the *volume's* page width: a foldout must not
+    move the search band, and one page is not enough to tell a foldout from the
+    format.
+    """
     if not lines or not width:
         return None
 
@@ -177,6 +220,68 @@ def find_gutter(
         if deep_left >= min_depth and deep_right >= min_depth:
             return Gutter(x0, x1)
     return None
+
+
+def page_gutters(
+    pages: list[SourcePage],
+    *,
+    min_width: float = MIN_GUTTER_WIDTH,
+    max_crossing_share: float = MAX_CROSSING_SHARE,
+    min_side_share: float = MIN_SIDE_SHARE,
+    min_depth: int = MIN_COLUMN_DEPTH,
+    min_page_share: float = MIN_PAGE_SHARE,
+) -> list[Gutter | None]:
+    """The gutter of each page, parallel to ``pages``; None where there is none.
+
+    Three steps, and each answers a question the others cannot.
+
+    *Does this page hold a lane?* The same test as ``find_gutter``, applied to
+    one page against the volume's page width.
+
+    *Is this volume set in columns?* Enough of its pages have to hold one
+    (``MIN_PAGE_SHARE``). A page of chance white is not a column, and eighteen
+    per cent of them are not either.
+
+    *Where is the lane on a page that does not show one?* It gets the lane its
+    neighbours keep -- the median of what was found, so a full-width table does
+    not cost a page its reading order. Split by parity, because a scan's binding
+    offset alternates with the side of the sheet, and taken together where one
+    side has too few findings to have a median of its own.
+
+    The parity split needs no threshold and takes none: on a volume whose type
+    area does not move it changes nothing, because both medians land in the same
+    place (Les apologistes, 374.6 against 374.9). Where it does move it is the
+    whole answer (Sigilla Veri, 306.8 against 286.7).
+    """
+    width = _page_width(pages)
+    found: list[Gutter | None] = []
+    for page in pages:
+        found.append(_lane_of(_boxed([page]), [page], width,
+                              min_width=min_width,
+                              max_crossing_share=max_crossing_share,
+                              min_side_share=min_side_share,
+                              min_depth=min_depth))
+    if not pages or sum(g is not None for g in found) < len(pages) * min_page_share:
+        return [None] * len(pages)
+
+    lanes = [_median_lane(found[0::2]), _median_lane(found[1::2])]
+    if any(lane is None for lane in lanes):
+        together = _median_lane(found)
+        lanes = [together, together]
+    return [lanes[i % 2] for i in range(len(pages))]
+
+
+def _median_lane(found: list[Gutter | None]) -> Gutter | None:
+    """The middle of the lanes actually found, edge by edge.
+
+    The median rather than the mean: one page whose lane the geometry read
+    twice as wide should not move the answer, and with a scan it will happen.
+    """
+    lanes = [g for g in found if g is not None]
+    if not lanes:
+        return None
+    return Gutter(median(sorted(g.x0 for g in lanes)),
+                  median(sorted(g.x1 for g in lanes)))
 
 
 def _anchor_floats(
