@@ -199,6 +199,42 @@ def is_mutilation(reading: str, predicted: str) -> bool:
     return b.startswith(a) or b.endswith(a)
 
 
+def is_confusable(reading: str, predicted: str) -> bool:
+    """Is ``reading`` ``predicted`` with one glyph swapped?
+
+    The other half of what a scan does to a numeral. ``is_mutilation`` covers
+    what the extraction *lost*; this covers what it *exchanged*. Lewy again,
+    measured 2026-09-09: page 161 reads "101", 211 reads "311", 544 reads "644".
+    Same length, one place different, and the rest counts on perfectly -- so the
+    stretch founds a numbering of its own with exactly as many witnesses as the
+    truth, which is the failure ``is_mutilation``'s docstring describes for the
+    other direction.
+
+    **The units place is excluded, and that exclusion is the whole rule.** A
+    change there is indistinguishable from an ordinary offset. Carlomagno prints
+    11 on its eleventh page and 13 on its twelfth, because the blank verso
+    before each chapter opening is not in the file; its offset grows 0, 1, 2, 3,
+    4, 5 across the volume and every one of those steps is "same length, one
+    place different". Gli Actus does the same at its register. Measured over the
+    corpus, the wide form of this rule matched 25 segment boundaries of which 18
+    were such offsets, and forbidding them cost Carlomagno the numbering of
+    pages 2 to 8, Gli Actus eleven labels and Les apologistes twelve. Restricted
+    to the higher places it matches seven, six of them Lewy's, and the seventh
+    is the two-book-pages-to-a-sheet scan whose offsets step in tens.
+
+    A swap further left moves the value by ten, a hundred, a thousand. No
+    volume's own numbering steps that far at a chapter opening.
+
+    Compared as written labels, case-insensitively, like ``is_mutilation``: what
+    the extraction exchanged is glyphs, and roman numerals are glyphs too.
+    """
+    a, b = reading.strip().lower(), predicted.strip().lower()
+    if not a or not b or len(a) != len(b):
+        return False
+    differing = [i for i, (x, y) in enumerate(zip(a, b)) if x != y]
+    return len(differing) == 1 and differing[0] != len(a) - 1
+
+
 def running_count(tail_segments, pos: int) -> tuple[str, str] | None:
     """What the segments after ``pos`` say the count is at ``pos``.
 
@@ -354,11 +390,14 @@ class _Tally:
             # Nor does one reading make a numbering system (FitParams.min_attested).
             if self.hits[(style, offset)] < self.params.min_attested:
                 continue
-            # Nor does a numbering the extraction damaged (``is_mutilation``).
+            # Nor does a numbering the extraction damaged -- whether it lost a
+            # glyph (``is_mutilation``) or exchanged one (``is_confusable``).
             # Same system only: "ix" is not a broken "9", it is another script.
-            if (running is not None and running[0] == style
-                    and is_mutilation(encode_label(start_value, style), running[1])):
-                continue
+            if running is not None and running[0] == style:
+                written = encode_label(start_value, style)
+                if (is_mutilation(written, running[1])
+                        or is_confusable(written, running[1])):
+                    continue
             score = self.base + self.gain[(style, offset)]
             # A section begins on the right; see FitParams.rho.
             if start_value % 2 == 0:

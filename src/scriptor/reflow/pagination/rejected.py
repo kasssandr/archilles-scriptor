@@ -31,6 +31,14 @@ stretch of mutilations forms a numbering with as many witnesses as the truth.
 That is why this one category no longer only names a rejection after the fact:
 ``plan.is_mutilation`` refuses it a segment during the fit (2026-08-20). Both
 directions are the same category, and both are decided by the same function.
+
+*And the same scan does it a second way.* Where it does not lose a glyph it
+exchanges one: Lewy's page 161 reads "101", 211 reads "311", 544 reads "644".
+Same length, one place different, the rest counting on perfectly -- the same
+failure with a different shape, and ``plan.is_confusable`` refuses it a segment
+too (2026-09-09, ``confused-numeral``). That rule stops at the units place,
+because a change there is what an ordinary offset looks like: Carlomagno prints
+13 on its twelfth page and means it.
 """
 
 from __future__ import annotations
@@ -38,7 +46,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from scriptor.reflow.pagelabel import encode_label, ordinal_of
-from scriptor.reflow.pagination.plan import is_mutilation
+from scriptor.reflow.pagination.plan import is_confusable, is_mutilation
 
 # A year in an imprint, not a folio. Two conditions, and the second is the one
 # that carries: the number has to lie beyond the volume's own extent. A book of
@@ -104,6 +112,24 @@ def _is_truncation(label: str, predicted: str | None) -> bool:
     if predicted is None:
         return False
     return is_mutilation(label, predicted)
+
+
+def _is_confusion(label: str, predicted: str | None) -> bool:
+    """Did the extraction exchange a glyph of the volume's own numeral?
+
+    The counterpart to ``_is_truncation``, and it lives in the fit for the same
+    reason (``plan.is_confusable``): since 2026-09-09 the fit refuses such a
+    reading a segment, so the report has to call it what the fit called it.
+    A verdict that named it "unknown" would explain the rejection by no rule at
+    all.
+
+    Like there, the units place is excluded -- see ``plan.is_confusable`` for
+    the measurement. A page that prints 13 where the count says 12 is not a
+    misreading, and the fit lets it found a segment.
+    """
+    if predicted is None:
+        return False
+    return is_confusable(label, predicted)
 
 
 def _chapter_run(rejected) -> set[int]:
@@ -196,6 +222,8 @@ def _verdict_for(o, page, predicted: str | None, in_a_run: set[int],
         return "year"
     if _is_truncation(o.label, predicted):
         return "truncated-numeral"
+    if _is_confusion(o.label, predicted):
+        return "confused-numeral"
     # Only a number the footer rescue produced. That rescue reaches into the
     # apparatus by construction, so a number from it that the plan refuses is a
     # note number. A reading off the head or foot of the page is not from there
