@@ -768,3 +768,28 @@ def strip_metadata_block(text: str) -> str:
     Text with no block is returned unchanged.
     """
     return _METADATA_BLOCK.sub("", text, count=1)
+
+
+def read_metadata_block(text: str) -> dict[str, str] | None:
+    """The fields of the §4.1 metadata block, or None where the text opens without one.
+
+    The block is flat ``key: value`` lines, as ``render_metadata_block`` writes
+    them, and that is all this reads -- not YAML at large. Values stay strings; a
+    value a person put in quotes reads as its text. Fields nobody here knows are
+    kept, because the spec tells a consumer to ignore them, not this reader.
+    """
+    m = _METADATA_BLOCK.match(text)
+    if m is None:
+        return None
+    fields: dict[str, str] = {}
+    for line in m.group(0).splitlines()[1:]:
+        if line.strip() == "---":
+            break
+        key, sep, value = line.partition(":")
+        if not sep or not key.strip():
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        fields[key.strip()] = value
+    return fields
