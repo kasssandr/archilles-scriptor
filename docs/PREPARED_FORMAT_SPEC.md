@@ -342,7 +342,8 @@ The **JSON** is the machine channel:
 ```json
 {
   "version": 1,
-  "profile": {"edge": "bottom", "attested": 0.95, "band": [0.944, 0.968]},
+  "profile": {"edge": "bottom", "attested": 0.95, "inherited": 0.004,
+              "band": [0.944, 0.968]},
   "segments": [{"start_pos": 13, "start_label": "XI", "style": "roman-upper",
                 "kind": "counted"}],
   "pages": [{"pos": 13, "label": "XI", "source": "printed", "confidence": 1.0}],
@@ -366,6 +367,17 @@ The first two **corroborate**, the rest **assert**; only those two count towards
 the marker — a citation resting on a computed label is usable but weaker — and
 MUST tolerate values they do not know, treating them as asserted. The list has
 grown twice and will grow again.
+
+`profile.inherited` is the share of the volume's text, notes included, that is
+cited as another page. A page with no label gets no marker, so its text runs on
+under the label of the last page that had one (§4.2), and neither the document nor
+`pages` shows it — only the producer can count it. Text before the first labelled
+page is not included: it has no address, which is not the same as a wrong one. A
+consumer deciding whether to trust a volume's page references reads it next to
+`attested`, because the two fail apart: a volume can witness most of its numbers
+and still cite half its text as a page it is not on, where the numbers it
+witnessed stop. Sidecars written before the field existed lack it; a consumer MUST
+read its absence as unknown, never as zero.
 
 `rejected` records readings the numbering overruled, with what they were instead.
 An overruled reading is not necessarily a wrong one: where the model cannot
