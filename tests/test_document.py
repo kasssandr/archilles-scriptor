@@ -57,6 +57,31 @@ def test_parse_prepared_reads_what_it_read_before():
     assert doc.footnotes[0].definition == "Die Note."
 
 
+# definitions over several lines ---------------------------------------------
+
+def test_a_definition_keeps_its_continuation_lines():
+    """A definition runs on over the lines that follow it, up to a blank line --
+    Pandoc's lazy continuation, and the spec promises valid Pandoc. Scriptor
+    writes such definitions where a note's text kept a line break (three of
+    thirty library volumes, 39 lines); a reader that stops at the first line
+    drops the rest without a trace."""
+    text = ("Ein Satz [^1] und noch einer [^2].\n\n"
+            "[^1]: Humboldt, Kosmos, https://example.org/kosmos\n"
+            "(letzter Zugriff: 27.02.23).\n\n"
+            "[^2]: Ebenda.\n")
+    doc = parse_prepared(text)
+    assert [f.definition for f in doc.footnotes] == [
+        "Humboldt, Kosmos, https://example.org/kosmos\n(letzter Zugriff: 27.02.23).",
+        "Ebenda.",
+    ]
+    assert doc.body == "Ein Satz [^1] und noch einer [^2]."
+
+
+def test_a_definition_ends_where_the_next_one_begins():
+    doc = parse_prepared("Ein Satz [^1][^2].\n\n[^1]: Erste.\n[^2]: Zweite.\n")
+    assert [f.definition for f in doc.footnotes] == ["Erste.", "Zweite."]
+
+
 # the bundle -----------------------------------------------------------------
 
 def test_a_bundle_carries_its_declaration(tmp_path):
