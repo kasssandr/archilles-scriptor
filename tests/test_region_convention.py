@@ -319,6 +319,34 @@ def test_stripping_spares_a_horizontal_rule_further_down():
     assert strip_metadata_block(body) == body
 
 
+def test_metadata_block_reads_back_what_was_rendered():
+    from scriptor.reflow.regions import FORMAT_VERSION, read_metadata_block
+    block = render_metadata_block("scientific", "bottom edge, 95% of pages attested")
+    assert read_metadata_block(block + "\n\n[p. 1] Text.\n") == {
+        "format_version": FORMAT_VERSION,
+        "chunking_strategy": "scientific",
+        "pagination": "bottom edge, 95% of pages attested",
+    }
+
+
+def test_a_document_without_a_block_has_no_fields():
+    from scriptor.reflow.regions import read_metadata_block
+    assert read_metadata_block("[p. 1] Ein Absatz ohne Vorspann.\n") is None
+
+
+def test_a_rule_further_down_is_not_a_block():
+    from scriptor.reflow.regions import read_metadata_block
+    assert read_metadata_block("[p. 1] Absatz.\n\n---\nkey: value\n---\n") is None
+
+
+def test_hand_quoted_values_read_as_their_text():
+    # YAML lets a person quote a scalar; the value is the same either way.
+    from scriptor.reflow.regions import read_metadata_block
+    block = "---\nformat_version: \"0.3.0\"\nchunking_strategy: 'basic'\n---\n\ntext\n"
+    assert read_metadata_block(block) == {"format_version": "0.3.0",
+                                          "chunking_strategy": "basic"}
+
+
 def test_eval_adapter_ignores_the_metadata_block():
     # The harness measures the text, not the declaration: offsets must count
     # from the first word either way.
