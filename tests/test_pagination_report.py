@@ -11,6 +11,7 @@ import json
 from scriptor.reflow.core import Page
 from scriptor.reflow.pagination.report import (
     attested_share,
+    inherited_share,
     profile_line,
     render_report,
     render_sidecar,
@@ -162,3 +163,79 @@ def test_a_volume_with_nothing_to_report_still_reports_that():
     pages, verdict = _volume()
     text = render_report(pages, verdict, "band.md")
     assert "0" in text or "none" in text.lower()
+
+
+# ── text that cites as another page ──────────────────────────────────
+#
+# A marker addresses all text up to the next one (spec §4.2), and a page with no
+# label gets no marker: its text runs on under the last label before it. Neither
+# the master nor the sidecar's page list shows that, so the producer has to say
+# how much of the volume it is. Measured over thirty library volumes: nineteen
+# at zero, the rest mostly below two per cent -- and three at 49 to 89 per cent.
+
+def _labelled(index, label, words=5):
+    return Page(num=-1, body_lines=[" ".join(["Wort"] * words)], index=index, label=label)
+
+
+def _bare(index, words=5, notes=None):
+    return Page(num=-1, body_lines=[" ".join(["Wort"] * words)] if words else [],
+                footnotes=notes or {}, index=index)
+
+
+def test_an_unnumbered_page_between_numbered_ones_cites_as_the_one_before():
+    pages = [_labelled(1, "11"), _bare(2), _labelled(3, "13")]
+    assert inherited_share(pages) == 5 / 15
+
+
+def test_text_before_the_first_number_has_no_address_rather_than_a_wrong_one():
+    pages = [_bare(1, words=20), _labelled(2, "12")]
+    assert inherited_share(pages) == 0.0
+
+
+def test_a_volume_without_any_number_inherits_nothing():
+    # Its text has no address at all; the attested share already says so.
+    assert inherited_share([_bare(1), _bare(2)]) == 0.0
+
+
+def test_text_after_the_last_number_cites_as_the_last_one():
+    # Niedersachsen: 43 pages after the last number read, all under [p. 576].
+    pages = [_labelled(1, "11"), _bare(2), _bare(3)]
+    assert inherited_share(pages) == 10 / 15
+
+
+def test_a_blank_page_carries_no_text_to_misplace():
+    pages = [_labelled(1, "11"), _bare(2, words=0), _labelled(3, "13")]
+    assert inherited_share(pages) == 0.0
+
+
+def test_the_notes_of_an_unnumbered_page_cite_with_it():
+    # A note takes the address of the paragraph that anchors it.
+    pages = [_labelled(1, "11"), _bare(2, words=0, notes={1: "eins zwei drei vier fünf"})]
+    assert inherited_share(pages) == 5 / 10
+
+
+def test_an_empty_volume_inherits_nothing():
+    assert inherited_share([]) == 0.0
+
+
+def test_the_sidecar_says_how_much_text_cites_as_another_page():
+    pages, verdict = _volume()
+    assert json.loads(render_sidecar(pages, verdict))["profile"]["inherited"] == 0.0
+    pages[2].label = None            # as if the sequence could not bridge page 3
+    assert json.loads(render_sidecar(pages, verdict))["profile"]["inherited"] == 0.25
+
+
+def test_the_report_names_each_page_that_cites_as_another_with_a_sample():
+    pages, verdict = _volume()
+    pages[2].label = None
+    pages[2].body_lines = ["Ein Kapitelanfang, den man suchen kann."]
+    text = render_report(pages, verdict, "band.md")
+    assert "Ein Kapitelanfang, den man suchen kann." in text
+    line = next(ln for ln in text.splitlines() if "Kapitelanfang" in ln)
+    assert "'12'" in line            # the label its text is cited under
+
+
+def test_the_report_says_when_every_page_cites_as_itself():
+    pages, verdict = _volume()
+    text = render_report(pages, verdict, "band.md")
+    assert "earlier page's number: 0" in text

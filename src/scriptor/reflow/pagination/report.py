@@ -51,6 +51,50 @@ def attested_share(pages) -> float:
     return attested / len(pages)
 
 
+def _words(page) -> int:
+    """The words a page puts into the master: its body, and its notes, which
+    take the address of the paragraph that anchors them."""
+    return (sum(len(line.split()) for line in page.body_lines)
+            + sum(len(text.split()) for text in page.footnotes.values()))
+
+
+def _inheriting(pages):
+    """Pages whose text cites as an earlier page, each with the page it cites as.
+
+    A marker addresses all text up to the next one (spec §4.2), and a page with
+    no label gets no marker, so its text runs on under the last label before it.
+    Text before the first label is not here: it has no address at all, which is
+    a different thing from a wrong one.
+    """
+    out = []
+    last = None
+    for page in sorted(pages, key=lambda p: p.index):
+        if page.label is not None:
+            last = page
+        elif last is not None and _words(page):
+            out.append((page, last))
+    return out
+
+
+def inherited_share(pages) -> float:
+    """The share of the volume's words that cite as another page.
+
+    Nothing in the master shows it and the sidecar lists only labelled pages, so
+    a consumer cannot see it -- only the producer can count it. It is the second
+    figure a consumer weighs next to ``attested_share``: a volume can witness
+    most of its numbers and still cite half its text wrongly, if the numbers it
+    witnessed stop. Over thirty library volumes (September 2026) nineteen came
+    out at zero and most of the rest below two per cent -- chapter openings
+    without a folio, a last page, a plate; three came out at 49 to 89 per cent:
+    an EPUB conversion, a scan of two-page spreads, a volume whose numbering
+    broke off.
+    """
+    total = sum(_words(p) for p in pages)
+    if not total:
+        return 0.0
+    return sum(_words(p) for p, _from in _inheriting(pages)) / total
+
+
 def profile_line(pages, verdict) -> str:
     """The volume's pagination in one line, for the master's metadata block.
 
@@ -88,6 +132,7 @@ def render_sidecar(pages, verdict) -> str:
             "band": (None if verdict.band is None
                      else [round(verdict.band.lo, 4), round(verdict.band.hi, 4)]),
             "attested": round(attested_share(pages), 4),
+            "inherited": round(inherited_share(pages), 4),
             "description": verdict.description,
         },
         "segments": [
@@ -184,4 +229,24 @@ def render_report(pages, verdict, out_path: str) -> str:
             f"  page {p.index:>4}  {p.label!r:<10} {p.label_source:<10} "
             f"{p.label_confidence:.2f}  {_sample(p)!r}"
         )
+
+    inheriting = _inheriting(pages)
+    lines += [
+        "",
+        f"## Text under an earlier page's number: {len(inheriting)} pages, "
+        f"{inherited_share(pages):.1%} of the text",
+        "# These pages carry text but no number of their own, so they get no page",
+        "# marker, and their text is cited as the page named here. A chapter",
+        "# opening without a folio is one page off; a volume whose numbering broke",
+        "# off is off by as many pages as it runs on.",
+    ]
+    if not inheriting:
+        lines.append("  none — every page with text carries its own number")
+    for p, source in inheriting[:40]:
+        lines.append(
+            f"  page {p.index:>4}  cited as {source.label!r:<10} (page {source.index}, "
+            f"{source.label_source})  {_words(p)} words  {_sample(p)!r}"
+        )
+    if len(inheriting) > 40:
+        lines.append(f"  … and {len(inheriting) - 40} more")
     return "\n".join(lines) + "\n"
