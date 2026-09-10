@@ -700,8 +700,13 @@ def reconstruct_body(
             para_footnotes.append(cur_fn)
             para_occurrences.append(cur_occ)
             para_levels.append(level)
+            cur_fn = {}
+        # A paragraph with no text is not emitted, so the notes parked on it
+        # have not been placed yet: they wait for the next paragraph that is.
+        # The rescue below parks a note-only page's definitions exactly here,
+        # and an empty line or a chapter heading on the following page used to
+        # wipe them (Baltrusch lost all but the last of a run of note pages).
         cur_chunks = []
-        cur_fn = {}
         cur_occ = {}
         occ_index = 0
         pending_hyphen = False
@@ -745,11 +750,18 @@ def reconstruct_body(
     # has to separate two pages of this run, and depending on a field some callers
     # never populate would let the collision back in unnoticed.
     for page_pos, p in enumerate(pages):
-        if not p.body_lines or p.mode != "main":
+        # A page without body still counts when it carries notes: an endnote
+        # page set in small type under its running head reaches us as nothing
+        # but definitions, and skipping it skipped the rescue at its end too.
+        # Baltrusch lost 33 pages of notes that way.
+        if p.mode != "main" or (not p.body_lines and not p.footnotes):
             continue
 
-        # Note the page marker; insert it after any word left open
-        if p.label is not None:
+        # Note the page marker; insert it after any word left open. A page
+        # without body has no word for it to stand before -- left pending, it
+        # would be placed on the next page, and where that page has no label of
+        # its own, its text would be cited under this one.
+        if p.label is not None and p.body_lines:
             pending_page_marker = f"[p. {p.label}]"
 
         # A confirmed chapter start: close whatever paragraph is running and
@@ -881,6 +893,10 @@ def reconstruct_body(
                 target[(page_pos, num)] = p.footnotes[num]
 
     end_paragraph()
+    # Notes still parked when the document ends had no next paragraph to wait
+    # for (a note-only page closing the volume); they go to the last one.
+    if cur_fn and para_footnotes:
+        para_footnotes[-1].update(cur_fn)
     return paragraphs, para_footnotes, para_occurrences, para_levels
 
 
