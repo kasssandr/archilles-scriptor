@@ -27,9 +27,13 @@ from scriptor.reflow.pagination.report import SIDECAR_VERSION
 # Spec §5 flag grammar. Group 1: sigil (? or ??), 2: printed number,
 # 3: candidate glyph (absent on orphan flags).
 FLAG_RE = re.compile(r"\[(\?\??)FN:(\d+)(?:\|([^\]:]+)(?::0?\.\d)?)?\]")
-# Spec §4.3 / Pandoc: anchors and definitions.
+# Spec §4.3 / Pandoc: anchors and definitions. A definition runs on over the
+# lines that follow it, up to a blank line or the next definition -- Pandoc's
+# lazy continuation. Scriptor writes such lines where a note's text kept a
+# line break; reading only the first line lost them.
 ANCHOR_RE = re.compile(r"\[\^(\d+)\]")
-DEF_RE = re.compile(r"^\[\^(\d+)\]:\s*(.*)$", re.MULTILINE)
+DEF_RE = re.compile(r"^\[\^(\d+)\]:[ \t]*(.*(?:\n(?![ \t]*$)(?!\[\^\d+\]:).*)*)",
+                    re.MULTILINE)
 # Spec §8 citation spans: [text]{.cit type=r3 ref=key}
 CIT_RE = re.compile(
     r"\[([^\]]+)\]\{\.cit\s+type=(r[34])(?:\s+ref=([\w:-]+))?\}"
