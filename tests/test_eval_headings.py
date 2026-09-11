@@ -182,6 +182,15 @@ def test_a_title_two_headings_share_is_not_furniture_on_either_page():
     assert r.running_in_text == []
 
 
+def test_a_stray_digit_before_the_marker_is_not_a_sentence():
+    """7986: every page of that master opens '1 [p. N]'. A heading at the top
+    of its page stays the heading; a digit interrupts no sentence."""
+    truth = _truth(("20", 2, "", "The Question of Diffusion"), chapter_level=2)
+    r = _measure(truth, "[p. 19] my translation.\n\n1 [p. 20]{#p-20} The Question of "
+                        "Diffusion\n\nWhen adapting the structural method.\n")
+    assert r.running_in_text == []
+
+
 def test_a_letter_heading_of_an_index_is_not_sought_at_the_seams():
     """An outline lists the index letters A, B, C; one letter stands next to
     every page marker somewhere. Too short to tell a running head from prose."""

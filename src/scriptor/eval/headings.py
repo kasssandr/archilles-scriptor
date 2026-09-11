@@ -55,6 +55,7 @@ _NOISE_RES = (ANCHOR_RE, FLAG_RE, re.compile(r"\{\.cit[^}]*\}"))
 # What may stand between a sentence and what follows it without ending it.
 _TAIL_RE = re.compile(r"(?:\s|\[\^\d+\]|\[p\. [^\]]+\](?:\{#[^}]*\})?)+$")
 _SENTENCE_END = ".!?"
+_WORD_RE = re.compile(r"[^\W\d_]{2,}")
 _CLOSERS = "\"'»«“”’)]"
 # How far past a seam a running head may begin: the digits of a folio.
 _SEAM_SLACK = 3
@@ -288,17 +289,15 @@ def _occurrences(needle: str, lead: int, folded: _Folded, doc: ParsedDoc,
 def _interrupts_sentence(body: str, offset: int) -> bool:
     """Does the text at `offset` break into a sentence still running?
 
-    Not where a blank line precedes it (it opens a paragraph), nor after a
-    finished sentence; footnote anchors and page markers in between are read
-    through.
+    Not where it opens a paragraph, nor after a finished sentence; footnote
+    anchors and page markers in between are read through. A paragraph that
+    holds no words before it -- a stray folio digit -- holds no sentence.
     """
-    before = body[max(0, offset - 300):offset]
+    before = body[body.rfind("\n\n", 0, offset) + 1:offset]
     tail = _TAIL_RE.search(before)
     if tail:
-        if "\n\n" in tail.group(0) or tail.start() == 0:
-            return False
         before = before[:tail.start()]
-    if not before:
+    if len(_WORD_RE.findall(before)) < 2:
         return False
     last = before[-1]
     if last in _CLOSERS and len(before) > 1:
