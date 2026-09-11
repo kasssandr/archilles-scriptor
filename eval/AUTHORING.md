@@ -26,6 +26,17 @@ Procedure per volume — sampling, not completeness:
    and sanity-check every "misanchored"/"lost" by hand once: a metric bug
    and a real damage look identical until a human has confirmed the first
    few.
+6. Headings (optional; declared for the whole volume, like regions): one
+   [[headings]] entry per heading the volume prints, in document order —
+   page (the printed label where it stands), depth (nesting in the volume's
+   own tree, 1 = the coarsest level the body is divided on), designator (the
+   printed numbering verbatim, "A.", "I.", "Erstes Kapitel:"; omit where
+   none), title (as the page prints it), region (optional: the region the
+   heading opens). Plus one chapter_level: the depth the chapters stand on.
+   The printed contents are the tree — depth is their indent — so copy
+   from their text layer to save typing, then check every entry against
+   the page: where the contents abbreviate a title, the page wins, and a
+   heading the contents do not list still belongs in.
 
 Volumes to author, in order (S2 core set):
 - zuckerman-1972 (text PDF; the p. 39 hand-resolution case is the reason

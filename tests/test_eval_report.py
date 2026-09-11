@@ -91,3 +91,53 @@ def test_volume_without_region_truth_shows_a_dash(tmp_path: Path):
     md = render_markdown([evaluate_file(tp, cp, adapter="prepared")])
     assert "Regions" in md.splitlines()[0]
     assert md.splitlines()[2].rstrip().endswith("| — |")
+
+
+HEADING_TRUTH = TRUTH.replace('pages = ["1"]', 'pages = ["1"]\nchapter_level = 1') + """
+[[headings]]
+page = "1"
+depth = 1
+title = "Einleitung"
+
+[[headings]]
+page = "1"
+depth = 1
+title = "Schluss"
+"""
+
+HEADING_CANDIDATE = """[p. 1] A line with a note [^1] in it.
+
+# Einleitung
+
+Text.
+
+# 2. Eine These
+
+[^1]: Only note text.
+"""
+
+
+def test_report_carries_heading_placement(tmp_path: Path):
+    tp = tmp_path / "truth.toml"; tp.write_text(HEADING_TRUTH, encoding="utf-8")
+    cp = tmp_path / "s.review.md"; cp.write_text(HEADING_CANDIDATE, encoding="utf-8")
+    rep = evaluate_file(tp, cp, adapter="prepared")
+    assert (rep.headings.placed_count, rep.headings.total) == (1, 2)
+
+
+def test_markdown_names_deleted_titles_and_false_headings(tmp_path: Path):
+    """The silent defect and the visible one, each by name, not only as a rate."""
+    tp = tmp_path / "truth.toml"; tp.write_text(HEADING_TRUTH, encoding="utf-8")
+    cp = tmp_path / "s.review.md"; cp.write_text(HEADING_CANDIDATE, encoding="utf-8")
+    md = render_markdown([evaluate_file(tp, cp, adapter="prepared")])
+    assert "| Placed |" in md
+    assert "deleted" in md and "Schluss" in md
+    assert "false heading" in md and "2. Eine These" in md
+
+
+def test_volume_without_heading_truth_adds_no_heading_section(tmp_path: Path):
+    """The heading table is optional: a suite whose truths declare no headings
+    renders exactly as before."""
+    tp = tmp_path / "truth.toml"; tp.write_text(TRUTH, encoding="utf-8")
+    cp = tmp_path / "s.review.md"; cp.write_text(HEADING_CANDIDATE, encoding="utf-8")
+    md = render_markdown([evaluate_file(tp, cp, adapter="prepared")])
+    assert "Placed" not in md and "heading" not in md

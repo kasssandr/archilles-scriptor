@@ -68,10 +68,71 @@ def _region_details(r: VolumeReport) -> list[str]:
     return lines
 
 
+_HEADING_HEADER = ("| Volume | Candidate | Placed | Precision | Truncated | Depth "
+                   "| Steps | Chapter depth | Deleted | Running heads | False |"
+                   "\n|---|---|---|---|---|---|---|---|---|---|---|")
+# The rare defects are listed in full; the common ones only begin a list.
+_MISSED_SHOWN = 10
+_FALSE_SHOWN = 20
+
+
+def _heading_row(r: VolumeReport) -> str:
+    h = r.headings
+    truncated = sum(1 for p in h.placed if p.truncated)
+    depth = _pct(h.depth_exact / h.placed_count) if h.placed_count else "—"
+    steps = _pct(h.steps_kept / h.steps_total) if h.steps_total else "—"
+    found = h.chapter_depth_found if h.chapter_depth_found is not None else "—"
+    return (f"| {r.volume} | {r.candidate} | {_pct(h.recall)} "
+            f"({h.placed_count}/{h.total}) | {_pct(h.precision)} | {truncated} "
+            f"| {depth} | {steps} | {found} (truth {h.chapter_level}) "
+            f"| {len(h.deleted)} | {len(h.running_in_text)} "
+            f"| {len(h.false_headings)} |")
+
+
+def _heading_title(designator: str, title: str) -> str:
+    return f"{designator} {title}".strip()
+
+
+def _heading_details(r: VolumeReport) -> list[str]:
+    """Deleted titles and running heads by name, every one of them: they are
+    the defects no reader of the output would notice."""
+    who = f"{r.volume}/{r.candidate}"
+    h = r.headings
+    lines = [f"- {who}: title deleted from p. {t.page}: "
+             f"{_heading_title(t.designator, t.title)}" for t in h.deleted]
+    lines += [f"- {who}: running head in the text at p. {page}: "
+              f"{_heading_title(t.designator, t.title)}" for t, page in h.running_in_text]
+    lines += [f"- {who}: heading cut short on p. {p.page}: {p.text}"
+              for p in h.placed if p.truncated]
+    lines += [f"- {who}: false heading on p. {f.page or '—'}: {f.text}"
+              for f in h.false_headings[:_FALSE_SHOWN]]
+    if len(h.false_headings) > _FALSE_SHOWN:
+        lines.append(f"- {who}: … {len(h.false_headings) - _FALSE_SHOWN} "
+                     f"more false headings")
+    lines += [f"- {who}: missed on p. {t.page}: {_heading_title(t.designator, t.title)}"
+              for t in h.missed[:_MISSED_SHOWN]]
+    if len(h.missed) > _MISSED_SHOWN:
+        lines.append(f"- {who}: … {len(h.missed) - _MISSED_SHOWN} more missed")
+    return lines
+
+
+def _heading_section(reports: list[VolumeReport]) -> list[str]:
+    """Only where a truth declares headings -- the table is optional, and a
+    suite without heading truth renders exactly as it did before it existed."""
+    measured = [r for r in reports if r.headings.total]
+    if not measured:
+        return []
+    lines = ["", _HEADING_HEADER] + [_heading_row(r) for r in measured] + [""]
+    for r in measured:
+        lines.extend(_heading_details(r))
+    return lines
+
+
 def render_markdown(reports: list[VolumeReport]) -> str:
     lines = [_HEADER] + [_row(r) for r in reports] + [""]
     for r in reports:
         lines.extend(_details(r))
+    lines.extend(_heading_section(reports))
     return "\n".join(lines).rstrip() + "\n"
 
 

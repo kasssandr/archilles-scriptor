@@ -69,6 +69,25 @@ class TruthRegion:
 
 
 @dataclass(frozen=True)
+class TruthHeading:
+    """One heading the volume prints, as its contents and its page give it.
+
+    Declared for the whole volume like a region, and for the same reason: a
+    footnote sample carries few headings, and recall needs all of them. The
+    entries run in document order, which is what tells two headings with the
+    same title apart. `depth` is nesting in the volume's own tree (1 = the
+    coarsest level the body is divided on); `designator` is the printed
+    numbering verbatim ("A.", "I.", "Erstes Kapitel:"), empty where none is
+    printed; `region` names the region the heading opens, if its title names one.
+    """
+    page: str
+    depth: int
+    title: str
+    designator: str = ""
+    region: str | None = None
+
+
+@dataclass(frozen=True)
 class GroundTruth:
     volume: str
     pages: list[str]
@@ -76,6 +95,8 @@ class GroundTruth:
     citations: list[TruthCitation] = field(default_factory=list)
     bibliography: list[TruthBibEntry] = field(default_factory=list)
     regions: list[TruthRegion] = field(default_factory=list)
+    headings: list[TruthHeading] = field(default_factory=list)
+    chapter_level: int | None = None   # the depth the chapters stand on
 
 
 def _require(cond: bool, msg: str) -> None:
@@ -142,8 +163,37 @@ def loads_truth(text: str) -> GroundTruth:
         if cit.resolves_to is not None:
             _require(cit.resolves_to in bib_keys,
                      f"citation resolves_to {cit.resolves_to!r} has no bibliography entry")
+    headings, chapter_level = _headings(raw)
     return GroundTruth(str(raw["volume"]), pages, footnotes, citations,
-                       bibliography, regions)
+                       bibliography, regions, headings, chapter_level)
+
+
+def _headings(raw: dict) -> tuple[list[TruthHeading], int | None]:
+    headings = []
+    for h in raw.get("headings", []):
+        head = TruthHeading(
+            page=str(h["page"]), depth=int(h["depth"]), title=h["title"],
+            designator=h.get("designator", ""), region=h.get("region"),
+        )
+        _require(head.depth >= 1,
+                 f"heading {head.title!r} on p. {head.page}: depth starts at 1")
+        _require(head.title.strip() != "",
+                 f"heading on p. {head.page} prints no title")
+        _require(head.region is None or head.region in REGION_NAMES,
+                 f"heading {head.title!r} opens unknown region {head.region!r}")
+        headings.append(head)
+
+    level = raw.get("chapter_level")
+    if not headings:
+        _require(level is None, "chapter_level is declared but no heading is")
+        return headings, None
+    _require(level is not None,
+             "headings are declared without chapter_level -- the depth the "
+             "chapters stand on is part of the division, not a guess")
+    level = int(level)
+    _require(level in {h.depth for h in headings},
+             f"chapter_level {level} is a depth no heading has")
+    return headings, level
 
 
 def load_truth(path: Path) -> GroundTruth:
