@@ -33,6 +33,7 @@ pages = [
   "111", "112", "126", "127", "133", "137", "138", "144",
 ]
 empty_pages = []
+chapter_level = 1
 
 # Every printed folio in this volume equals its physical page; the catalogue is
 # off by one throughout and is therefore no help here. Read off the foot of the
@@ -702,3 +703,1335 @@ name = "main"
 [[regions]]
 from_page = "325"   # "Literaturverzeichnis" to the end of the volume (347)
 name = "bibliography"
+
+# Headings (Gliederung G2), declared for the whole volume like the regions, in
+# document order. The printed contents (PDF pages 9-16) are the tree: depth is
+# their indent -- Kapitel > A. > I. > 1. > a) > aa) > (1), seven depths --
+# the designator is printed verbatim, the page is the one the contents give.
+# Read twice, independently: once from the text layer of the contents pages,
+# once typed by hand from the page; 217 of 219 entries agreed, and the text
+# layer settled the two slips. Vorwort (p. 7) and Inhaltsverzeichnis (p. 9)
+# are headings the pages print and the contents do not list.
+
+[[headings]]
+page = "7"
+depth = 1
+title = "Vorwort"
+region = "preface"
+
+[[headings]]
+page = "9"
+depth = 1
+title = "Inhaltsverzeichnis"
+region = "contents"
+
+[[headings]]
+page = "17"
+depth = 1
+title = "Abbildungsverzeichnis"
+
+[[headings]]
+page = "19"
+depth = 1
+title = "Einleitung"
+
+[[headings]]
+page = "19"
+depth = 2
+designator = "A."
+title = "Problemaufriss: Aneignung als urheberrechtlich relevante Handlung"
+
+[[headings]]
+page = "23"
+depth = 2
+designator = "B."
+title = "Gang der Darstellung"
+
+[[headings]]
+page = "24"
+depth = 1
+designator = "Erstes Kapitel:"
+title = "Die bildliche Aneignung"
+
+[[headings]]
+page = "24"
+depth = 2
+designator = "A."
+title = "Bildliche Aneignung – eine Definition"
+
+[[headings]]
+page = "24"
+depth = 3
+designator = "I."
+title = "Aneignung als Rechtsbegriff"
+
+[[headings]]
+page = "27"
+depth = 3
+designator = "II."
+title = "Aneignung als kultureller Begriff"
+
+[[headings]]
+page = "28"
+depth = 4
+designator = "1."
+title = "Aneignung als allgemeinsprachlicher Begriff"
+
+[[headings]]
+page = "28"
+depth = 4
+designator = "2."
+title = "Aneignung als philosophischer Begriff"
+
+[[headings]]
+page = "30"
+depth = 4
+designator = "3."
+title = "Aneignung als soziologischer Begriff"
+
+[[headings]]
+page = "31"
+depth = 4
+designator = "4."
+title = "Aneignung als kulturwissenschaftlicher Begriff"
+
+[[headings]]
+page = "32"
+depth = 3
+designator = "III."
+title = "Begriffsbestimmung für die Zwecke dieser Arbeit"
+
+[[headings]]
+page = "33"
+depth = 3
+designator = "IV."
+title = "Begriffliche Einordnung der Aneignung als Sammelbegriff"
+
+[[headings]]
+page = "42"
+depth = 3
+designator = "V."
+title = "Begriff des Bildlichen"
+
+[[headings]]
+page = "42"
+depth = 4
+designator = "1."
+title = "Bild als Darstellung"
+
+[[headings]]
+page = "45"
+depth = 4
+designator = "2."
+title = "Zwei- oder Dreidimensionalität"
+
+[[headings]]
+page = "45"
+depth = 3
+designator = "VI."
+title = "Fazit: Aneignung als umfassender Sammelbegriff"
+
+[[headings]]
+page = "46"
+depth = 2
+designator = "B."
+title = "Untersuchungsgegenstände"
+
+[[headings]]
+page = "46"
+depth = 3
+designator = "I."
+title = "Aneignung in der Kunst: Appropriation Art"
+
+[[headings]]
+page = "47"
+depth = 4
+designator = "1."
+title = "Aneignung als künstlerisches Konzept"
+
+[[headings]]
+page = "50"
+depth = 4
+designator = "2."
+title = "Künstler der Appropriation Art"
+
+[[headings]]
+page = "51"
+depth = 5
+designator = "a)"
+title = "Elaine Sturtevant"
+
+[[headings]]
+page = "52"
+depth = 5
+designator = "b)"
+title = "Sherrie Levine"
+
+[[headings]]
+page = "54"
+depth = 5
+designator = "c)"
+title = "Richard Prince"
+
+[[headings]]
+page = "56"
+depth = 5
+designator = "d)"
+title = "Jeff Koons"
+
+[[headings]]
+page = "57"
+depth = 4
+designator = "3."
+title = "Die Rechtsfälle"
+
+[[headings]]
+page = "58"
+depth = 5
+designator = "a)"
+title = "Rogers v. Koons"
+
+[[headings]]
+page = "59"
+depth = 5
+designator = "b)"
+title = "Blanch v. Koons"
+
+[[headings]]
+page = "60"
+depth = 5
+designator = "c)"
+title = "Cariou v. Prince"
+
+[[headings]]
+page = "61"
+depth = 5
+designator = "d)"
+title = "Gray v. Koons"
+
+[[headings]]
+page = "62"
+depth = 5
+designator = "e)"
+title = "Graham v. Prince"
+
+[[headings]]
+page = "64"
+depth = 5
+designator = "f)"
+title = "Weitere Klagen aufgrund der „New Portraits“ gegen Prince"
+
+[[headings]]
+page = "67"
+depth = 5
+designator = "g)"
+title = "Bauret v. Koons"
+
+[[headings]]
+page = "69"
+depth = 3
+designator = "II."
+title = "Aneignung durch digitale Technologien"
+
+[[headings]]
+page = "70"
+depth = 4
+designator = "1."
+title = "Phänomene"
+
+[[headings]]
+page = "70"
+depth = 5
+designator = "a)"
+title = "Teilen von Bildern in sozialen Netzwerken"
+
+[[headings]]
+page = "72"
+depth = 5
+designator = "b)"
+title = "Das Museumselfie"
+
+[[headings]]
+page = "74"
+depth = 5
+designator = "c)"
+title = "Memes"
+
+[[headings]]
+page = "76"
+depth = 5
+designator = "d)"
+title = "GIFs"
+
+[[headings]]
+page = "77"
+depth = 5
+designator = "e)"
+title = "Die Bildmontage von Kunstwerken"
+
+[[headings]]
+page = "79"
+depth = 5
+designator = "f)"
+title = "Virale Hypes"
+
+[[headings]]
+page = "81"
+depth = 4
+designator = "2."
+title = "Funktionsweise: kommunikativer Kontext"
+
+[[headings]]
+page = "83"
+depth = 1
+designator = "Zweites Kapitel:"
+title = "Die veränderte Nutzung von Aneignungen"
+
+[[headings]]
+page = "84"
+depth = 2
+designator = "A."
+title = "Historische Nutzung der Aneignung"
+
+[[headings]]
+page = "84"
+depth = 3
+designator = "I."
+title = "Die Antike: Aneignung als wertschätzende Auseinandersetzung mit der Vorlage"
+
+[[headings]]
+page = "84"
+depth = 4
+designator = "1."
+title = "Platon und die Nachahmung der Wirklichkeit"
+
+[[headings]]
+page = "84"
+depth = 4
+designator = "2."
+title = "Aristoteles und die Nachahmung als Natur des Menschen"
+
+[[headings]]
+page = "85"
+depth = 4
+designator = "3."
+title = "Bildhauerei im Römischen Reich: Aneignung griechischer Skulpturen"
+
+[[headings]]
+page = "86"
+depth = 4
+designator = "4."
+title = "Imitatio und aemulatio: die wettstreitende Aneignung"
+
+[[headings]]
+page = "87"
+depth = 3
+designator = "II."
+title = "Das Mittelalter und die Renaissance: Aneignung der Antike"
+
+[[headings]]
+page = "87"
+depth = 4
+designator = "1."
+title = "Das Mittelalter und Aneignungen im handwerklichen Lehrverhältnis"
+
+[[headings]]
+page = "88"
+depth = 4
+designator = "2."
+title = "Renaissance: die Aneignung der Antike"
+
+[[headings]]
+page = "90"
+depth = 4
+designator = "3."
+title = "Rennaissance-Humanismus und die Individualität der Künstlerpersönlichkeit"
+
+[[headings]]
+page = "91"
+depth = 3
+designator = "III."
+title = "Die Neuzeit: Eigenschöpferisches und Geniekult statt Aneignung"
+
+[[headings]]
+page = "91"
+depth = 4
+designator = "1."
+title = "Geniekult in Aufklärung und Sturm und Drang"
+
+[[headings]]
+page = "93"
+depth = 4
+designator = "2."
+title = "Klassizismus: abermals Aneignung der Antike"
+
+[[headings]]
+page = "94"
+depth = 3
+designator = "IV."
+title = "Die Moderne: Aneignung als künstlerisches Mittel und Unabhängigkeit von der Vorlage"
+
+[[headings]]
+page = "94"
+depth = 4
+designator = "1."
+title = "Die Klassische Moderne und die Entwicklung zur Abstraktion"
+
+[[headings]]
+page = "95"
+depth = 4
+designator = "2."
+title = "Die Collage: Aneignung vorgefundenen Materials"
+
+[[headings]]
+page = "96"
+depth = 4
+designator = "3."
+title = "Ready-mades: Aneignung von Alltagsgegenständen"
+
+[[headings]]
+page = "98"
+depth = 4
+designator = "4."
+title = "Walter Benjamin und die Aura des Originals"
+
+[[headings]]
+page = "99"
+depth = 4
+designator = "5."
+title = "Pop Art: die Aneignung der Massenkultur"
+
+[[headings]]
+page = "100"
+depth = 4
+designator = "6."
+title = "Konzeptkunst: Aneignung als bloß erneute Ausführung"
+
+[[headings]]
+page = "101"
+depth = 4
+designator = "7."
+title = "Poststrukturalismus und der Tod des Autors"
+
+[[headings]]
+page = "103"
+depth = 4
+designator = "8."
+title = "Baudrillards Simulationstheorie: Aneignungen als Simulacra"
+
+[[headings]]
+page = "104"
+depth = 2
+designator = "B."
+title = "Heutige Nutzung: Aneignung als Kommunikationsform"
+
+[[headings]]
+page = "104"
+depth = 3
+designator = "I."
+title = "Iconic turn und die digitale Bilderflut"
+
+[[headings]]
+page = "107"
+depth = 3
+designator = "II."
+title = "Das Bild als Medium der Kommunikation im Digitalen"
+
+[[headings]]
+page = "109"
+depth = 3
+designator = "III."
+title = "Prosumer und ihre produktive Nutzung von Bildern"
+
+[[headings]]
+page = "113"
+depth = 3
+designator = "IV."
+title = "Gleichzeitige Steigerung des Kultes von Originalität"
+
+[[headings]]
+page = "115"
+depth = 2
+designator = "C."
+title = "Fazit: Entwicklung der Aneignung zum Massenphänomen"
+
+[[headings]]
+page = "118"
+depth = 1
+designator = "Drittes Kapitel:"
+title = "Die urheberrechtliche Einordnung bildlicher Aneignungen"
+
+[[headings]]
+page = "118"
+depth = 2
+designator = "A."
+title = "Urheberrechtlich geschützte Werke als Gegenstand von Aneignungen Dritter"
+
+[[headings]]
+page = "119"
+depth = 3
+designator = "I."
+title = "Schutz des angeeigneten Werkes gem. § 2 Abs. 1, 2 UrhG"
+
+[[headings]]
+page = "120"
+depth = 4
+designator = "1."
+title = "Persönliche geistige Schöpfung"
+
+[[headings]]
+page = "121"
+depth = 5
+designator = "a)"
+title = "Schutz der kleinen Münze"
+
+[[headings]]
+page = "122"
+depth = 5
+designator = "b)"
+title = "Folgen für Bilder"
+
+[[headings]]
+page = "124"
+depth = 4
+designator = "2."
+title = "Bildschnipsel: Schutz von Werkteilen"
+
+[[headings]]
+page = "124"
+depth = 4
+designator = "3."
+title = "Aneignung des Ready-made: Schutz der Idee?"
+
+[[headings]]
+page = "129"
+depth = 4
+designator = "4."
+title = "Schutz des Stils eines Künstlers und des Motivs eines Bildes"
+
+[[headings]]
+page = "131"
+depth = 4
+designator = "5."
+title = "Schutzdauer gem. § 64 UrhG"
+
+[[headings]]
+page = "132"
+depth = 3
+designator = "II."
+title = "Exkurs: verwandte Schutzrechte"
+
+[[headings]]
+page = "132"
+depth = 4
+designator = "1."
+title = "Lichtbilder"
+
+[[headings]]
+page = "133"
+depth = 4
+designator = "2."
+title = "Laufbilder"
+
+[[headings]]
+page = "134"
+depth = 4
+designator = "3."
+title = "Ausübende Künstler und Filmhersteller"
+
+[[headings]]
+page = "134"
+depth = 3
+designator = "III."
+title = "Fazit"
+
+[[headings]]
+page = "135"
+depth = 2
+designator = "B."
+title = "Eingriff in Persönlichkeitsrechte des Urhebers durch Aneignungen Dritter"
+
+[[headings]]
+page = "136"
+depth = 3
+designator = "I."
+title = "Recht auf Anerkennung der Urheberschaft und Namensnennung gem. § 13 UrhG"
+
+[[headings]]
+page = "139"
+depth = 3
+designator = "II."
+title = "Schutz vor Entstellung gem. § 14 UrhG"
+
+[[headings]]
+page = "142"
+depth = 2
+designator = "C."
+title = "Eingriff in Verwertungsrechte des Urhebers durch Aneignungen Dritter"
+
+[[headings]]
+page = "142"
+depth = 3
+designator = "I."
+title = "Vervielfältigungsrecht gem. § 16 UrhG"
+
+[[headings]]
+page = "143"
+depth = 4
+designator = "1."
+title = "Upload und Download"
+
+[[headings]]
+page = "143"
+depth = 4
+designator = "2."
+title = "Digitaler Werkgenuss"
+
+[[headings]]
+page = "144"
+depth = 4
+designator = "3."
+title = "Abgrenzung zur Bearbeitung"
+
+[[headings]]
+page = "145"
+depth = 4
+designator = "4."
+title = "Fazit"
+
+[[headings]]
+page = "145"
+depth = 3
+designator = "II."
+title = "Verbreitungsrecht gem. § 17 UrhG"
+
+[[headings]]
+page = "146"
+depth = 3
+designator = "III."
+title = "Recht der öffentlichen Zugänglichmachung gem. § 19a UrhG"
+
+[[headings]]
+page = "147"
+depth = 4
+designator = "1."
+title = "Die Rechtsprechung des EuGH zum Recht der öffentlichen Wiedergabe"
+
+[[headings]]
+page = "148"
+depth = 4
+designator = "2."
+title = "Beurteilung von Frame-Links nach nationalem Recht"
+
+[[headings]]
+page = "149"
+depth = 5
+designator = "a)"
+title = "Verletzung des § 19a UrhG durch Frame-Links"
+
+[[headings]]
+page = "149"
+depth = 5
+designator = "b)"
+title = "Verletzung des unbenannten Rechts der öffentlichen Wiedergabe gem. § 15 Abs. 2 UrhG durch Frame- Links"
+
+[[headings]]
+page = "150"
+depth = 6
+designator = "aa)"
+title = "Unbestimmte Zahl potenzieller Adressaten und recht viele Personen"
+
+[[headings]]
+page = "152"
+depth = 6
+designator = "bb)"
+title = "Neues technisches Verfahren oder Publikum bei mit Erlaubnis des Urhebers im Internet veröffentlichten Werken"
+
+[[headings]]
+page = "154"
+depth = 6
+designator = "cc)"
+title = "Neues technisches Verfahren oder Publikum bei ohne Erlaubnis des Urhebers im Internet veröffentlichten Werken"
+
+[[headings]]
+page = "159"
+depth = 6
+designator = "dd)"
+title = "Fazit"
+
+[[headings]]
+page = "160"
+depth = 4
+designator = "3."
+title = "Upload eines Bildes als öffentliche Wiedergabe gem. § 19a UrhG"
+
+[[headings]]
+page = "160"
+depth = 5
+designator = "a)"
+title = "Neues technisches Verfahren oder neues Publikum"
+
+[[headings]]
+page = "162"
+depth = 5
+designator = "b)"
+title = "Bewertung"
+
+[[headings]]
+page = "164"
+depth = 4
+designator = "4."
+title = "Fazit"
+
+[[headings]]
+page = "165"
+depth = 3
+designator = "IV."
+title = "Aneignung als Bearbeitung gem. § 23 UrhG"
+
+[[headings]]
+page = "167"
+depth = 2
+designator = "D."
+title = "Rechtfertigung der urheberrechtlichen Eingriffshandlungen"
+
+[[headings]]
+page = "168"
+depth = 3
+designator = "I."
+title = "Aneignung als freie Benutzung gem. § 24 UrhG"
+
+[[headings]]
+page = "169"
+depth = 4
+designator = "1."
+title = "Neues, selbständiges Werk"
+
+[[headings]]
+page = "170"
+depth = 5
+designator = "a)"
+title = "Idee, Inhalt und Form im Urheberrecht"
+
+[[headings]]
+page = "171"
+depth = 6
+designator = "aa)"
+title = "Inhalt und Form als konkretisierte Interessenabwägung"
+
+[[headings]]
+page = "172"
+depth = 6
+designator = "bb)"
+title = "Inhalt und Form als fehlende Individualität"
+
+[[headings]]
+page = "173"
+depth = 6
+designator = "cc)"
+title = "Begrifflichkeiten: Idee, Inhalt und Form"
+
+[[headings]]
+page = "176"
+depth = 6
+designator = "dd)"
+title = "Abkehr von der Dichotomie von Inhalt und Form"
+
+[[headings]]
+page = "178"
+depth = 6
+designator = "ee)"
+title = "Zwischenfazit"
+
+[[headings]]
+page = "178"
+depth = 5
+designator = "b)"
+title = "Schutz der Idee bei Appropriation Art?"
+
+[[headings]]
+page = "182"
+depth = 5
+designator = "c)"
+title = "Bei viralen Hypes: Schutz des Konzepts?"
+
+[[headings]]
+page = "183"
+depth = 5
+designator = "d)"
+title = "Schutz des Metatextes eines Memes?"
+
+[[headings]]
+page = "183"
+depth = 5
+designator = "e)"
+title = "Fazit"
+
+[[headings]]
+page = "184"
+depth = 4
+designator = "2."
+title = "Verblassen"
+
+[[headings]]
+page = "187"
+depth = 4
+designator = "3."
+title = "Innerer Abstand"
+
+[[headings]]
+page = "187"
+depth = 5
+designator = "a)"
+title = "Entwicklung des inneren Abstandes für die Parodie"
+
+[[headings]]
+page = "189"
+depth = 6
+designator = "aa)"
+title = "Appropriation Art als Parodie"
+
+[[headings]]
+page = "190"
+depth = 6
+designator = "bb)"
+title = "Memes als Parodie"
+
+[[headings]]
+page = "192"
+depth = 6
+designator = "cc)"
+title = "Bildmontagen von klassischen Kunstwerken als Parodie"
+
+[[headings]]
+page = "192"
+depth = 5
+designator = "b)"
+title = "Kunstspezifische Auslegung des § 24 Abs. 1 UrhG"
+
+[[headings]]
+page = "195"
+depth = 6
+designator = "aa)"
+title = "Kunstspezifische Auslegung für Werke der Appropriation Art"
+
+[[headings]]
+page = "195"
+depth = 7
+designator = "(1)"
+title = "Kunstbegriff des Art. 5 Abs. 3 GG"
+
+[[headings]]
+page = "197"
+depth = 7
+designator = "(2)"
+title = "Überwiegen der Kunstfreiheit"
+
+[[headings]]
+page = "199"
+depth = 7
+designator = "(3)"
+title = "Einschränkungen zur Verhinderung von Missbrauch: keine Konkurrenz zum Original"
+
+[[headings]]
+page = "202"
+depth = 7
+designator = "(4)"
+title = "Grenze: Interessenabwägung im Rahmen des § 14 UrhG?"
+
+[[headings]]
+page = "206"
+depth = 6
+designator = "bb)"
+title = "Kunstspezifische Auslegung für kommunikative Aneignungen?"
+
+[[headings]]
+page = "208"
+depth = 6
+designator = "cc)"
+title = "Parallele Wertung des § 23 Abs. 1 Nr. 4 KUG"
+
+[[headings]]
+page = "209"
+depth = 4
+designator = "4."
+title = "Fazit"
+
+[[headings]]
+page = "209"
+depth = 4
+designator = "5."
+title = "Quellenangabe gem. § 63 UrhG"
+
+[[headings]]
+page = "210"
+depth = 4
+designator = "6."
+title = "Verhältnis von § 24 UrhG und Art. 5 Abs. 3 der InfoSoc- RL"
+
+[[headings]]
+page = "211"
+depth = 3
+designator = "II."
+title = "Aneignung als Zitat gem. § 51 UrhG"
+
+[[headings]]
+page = "211"
+depth = 4
+designator = "1."
+title = "Zitatzweck"
+
+[[headings]]
+page = "214"
+depth = 4
+designator = "2."
+title = "Umfang"
+
+[[headings]]
+page = "215"
+depth = 4
+designator = "3."
+title = "Selbständigkeit des zitierenden Werkes"
+
+[[headings]]
+page = "216"
+depth = 4
+designator = "4."
+title = "Änderungsverbot und Quellenangabe gem. §§ 62, 63 UrhG"
+
+[[headings]]
+page = "218"
+depth = 3
+designator = "III."
+title = "Panoramafreiheit gem. § 59 UrhG"
+
+[[headings]]
+page = "220"
+depth = 3
+designator = "IV."
+title = "Gesetzlich erlaubte Nutzungen für Unterricht, Wissenschaft und Institutionen gem. § 60a ff. UrhG"
+
+[[headings]]
+page = "220"
+depth = 3
+designator = "V."
+title = "Einverständnis des Rechteinhabers"
+
+[[headings]]
+page = "222"
+depth = 2
+designator = "E."
+title = "Fazit: Diskrepanz von Recht und Rechtswirklichkeit bei Aneignungen"
+
+[[headings]]
+page = "227"
+depth = 1
+designator = "Viertes Kapitel:"
+title = "Strategien zur Freiraumschaffung für Aneignungen"
+
+[[headings]]
+page = "228"
+depth = 2
+designator = "A."
+title = "Fokus auf den individuellen Urheber"
+
+[[headings]]
+page = "228"
+depth = 3
+designator = "I."
+title = "Definition"
+
+[[headings]]
+page = "230"
+depth = 3
+designator = "II."
+title = "Individualistische Rechtfertigungsgründe des Urheberrechtsschutzes als Grundlage"
+
+[[headings]]
+page = "231"
+depth = 4
+designator = "1."
+title = "Arbeitstheoretische Rechtfertigung"
+
+[[headings]]
+page = "233"
+depth = 4
+designator = "2."
+title = "Personalistische Rechtfertigung"
+
+[[headings]]
+page = "233"
+depth = 5
+designator = "a)"
+title = "Identifikationstheoretisch"
+
+[[headings]]
+page = "234"
+depth = 5
+designator = "b)"
+title = "Entwicklungstheoretisch"
+
+[[headings]]
+page = "236"
+depth = 4
+designator = "3."
+title = "Werk-basierte Rechtfertigung"
+
+[[headings]]
+page = "236"
+depth = 3
+designator = "III."
+title = "Ausgestaltung eines individualistischen Ansatzes"
+
+[[headings]]
+page = "236"
+depth = 4
+designator = "1."
+title = "Angemessene Beteiligung des Urhebers"
+
+[[headings]]
+page = "238"
+depth = 4
+designator = "2."
+title = "Grundsatz der engen Auslegung von Schrankenbestimmungen?"
+
+[[headings]]
+page = "241"
+depth = 3
+designator = "IV."
+title = "Kritische Würdigung"
+
+[[headings]]
+page = "243"
+depth = 3
+designator = "V."
+title = "Folgen für Aneignungshandlungen"
+
+[[headings]]
+page = "243"
+depth = 2
+designator = "B."
+title = "Privilegierung des Künstlerischen"
+
+[[headings]]
+page = "243"
+depth = 3
+designator = "I."
+title = "Definition"
+
+[[headings]]
+page = "245"
+depth = 3
+designator = "II."
+title = "Kunstförderung als Rechtfertigung des Urheberrechtsschutzes"
+
+[[headings]]
+page = "245"
+depth = 4
+designator = "1."
+title = "Kultur-basierte Rechtfertigung nach Fisher"
+
+[[headings]]
+page = "246"
+depth = 4
+designator = "2."
+title = "Der kulturelle Imperativ nach Senftleben"
+
+[[headings]]
+page = "248"
+depth = 3
+designator = "III."
+title = "Ausgestaltung des künstlerischen Ansatzes"
+
+[[headings]]
+page = "248"
+depth = 4
+designator = "1."
+title = "Neudefinition des Werkbegriffs"
+
+[[headings]]
+page = "250"
+depth = 4
+designator = "2."
+title = "Verfassungskonforme Auslegung im Lichte der Kunstfreiheit gem. Art. 5 Abs. 3 GG"
+
+[[headings]]
+page = "251"
+depth = 3
+designator = "IV."
+title = "Kritische Würdigung"
+
+[[headings]]
+page = "253"
+depth = 3
+designator = "V."
+title = "Folgen für Aneignungshandlungen"
+
+[[headings]]
+page = "254"
+depth = 2
+designator = "C."
+title = "Kommunikativer Ansatz"
+
+[[headings]]
+page = "254"
+depth = 3
+designator = "I."
+title = "Definition"
+
+[[headings]]
+page = "256"
+depth = 3
+designator = "II."
+title = "Kollektivistische Rechtfertigungsgründe des Urheberrechtsschutzes als Grundlage"
+
+[[headings]]
+page = "257"
+depth = 4
+designator = "1."
+title = "Schranken-basierte Rechtfertigung"
+
+[[headings]]
+page = "258"
+depth = 4
+designator = "2."
+title = "Effizienz-basierte Rechtfertigung"
+
+[[headings]]
+page = "260"
+depth = 4
+designator = "3."
+title = "Demokratie-basierte Rechtfertigung nach Netanel"
+
+[[headings]]
+page = "263"
+depth = 4
+designator = "4."
+title = "Universalistisch-transzendentale Rechtfertigung nach Stallberg"
+
+[[headings]]
+page = "265"
+depth = 3
+designator = "III."
+title = "Ausgestaltung des kommunikativen Verständnisses von Urheberrecht innerhalb des bestehenden Rechts"
+
+[[headings]]
+page = "265"
+depth = 4
+designator = "1."
+title = "Verfassungskonforme Auslegung des § 24 Abs. 1 UrhG anhand des Kommunikationsgrundrechts aus Art. 5 Abs. 1 GG"
+
+[[headings]]
+page = "265"
+depth = 5
+designator = "a)"
+title = "Kommunikationsfreiheit als Meinungsfreiheit gem. Art. 5 Abs. 1 GG"
+
+[[headings]]
+page = "268"
+depth = 5
+designator = "b)"
+title = "Ausgestaltung der verfassungskonformen Auslegung"
+
+[[headings]]
+page = "270"
+depth = 5
+designator = "c)"
+title = "Kritische Würdigung"
+
+[[headings]]
+page = "271"
+depth = 4
+designator = "2."
+title = "Einwilligungslösung: Ausweitung der Vorschaubilder- Rechtsprechung"
+
+[[headings]]
+page = "274"
+depth = 3
+designator = "IV."
+title = "Kritische Würdigung"
+
+[[headings]]
+page = "275"
+depth = 3
+designator = "V."
+title = "Folgen für Aneignungshandlungen"
+
+[[headings]]
+page = "276"
+depth = 2
+designator = "D."
+title = "Fazit"
+
+[[headings]]
+page = "278"
+depth = 1
+designator = "Fünftes Kapitel:"
+title = "Regelungsvorschläge für Aneignungen"
+
+[[headings]]
+page = "278"
+depth = 2
+designator = "A."
+title = "Neugestaltung des § 24 UrhG anhand der Vorgaben des Art. 5 Abs. 3 der InfoSoc-RL"
+
+[[headings]]
+page = "279"
+depth = 3
+designator = "I."
+title = "Das EuGH-Urteil Pelham/Hütter"
+
+[[headings]]
+page = "281"
+depth = 3
+designator = "II."
+title = "Folgen des Urteils für die Geltung des § 24 UrhG"
+
+[[headings]]
+page = "284"
+depth = 3
+designator = "III."
+title = "Umsetzung der Pastiche-Schranke des Art. 5 Abs. 3 lit. k InfoSoc-RL"
+
+[[headings]]
+page = "285"
+depth = 4
+designator = "1."
+title = "Begriff des Pastiche"
+
+[[headings]]
+page = "288"
+depth = 4
+designator = "2."
+title = "Aneignungen als Pastiche"
+
+[[headings]]
+page = "289"
+depth = 2
+designator = "B."
+title = "Regelungsvorschlag für den kommunikativen Bildergebrauch"
+
+[[headings]]
+page = "290"
+depth = 3
+designator = "I."
+title = "Einschränkbarkeit der Ausschließlichkeitsrechte des Urhebers"
+
+[[headings]]
+page = "291"
+depth = 4
+designator = "1."
+title = "Freistellung"
+
+[[headings]]
+page = "292"
+depth = 4
+designator = "2."
+title = "Gesetzliche Lizenz"
+
+[[headings]]
+page = "292"
+depth = 4
+designator = "3."
+title = "Zwangslizenz"
+
+[[headings]]
+page = "292"
+depth = 4
+designator = "4."
+title = "Sonstige Regelungen"
+
+[[headings]]
+page = "293"
+depth = 3
+designator = "II."
+title = "Neue Schrankenregelung"
+
+[[headings]]
+page = "294"
+depth = 4
+designator = "1."
+title = "Freistellung im nicht-kommerziellen Gebrauch"
+
+[[headings]]
+page = "298"
+depth = 4
+designator = "2."
+title = "Gesetzliche Lizenz mit Vergütungspflicht im kommerziellen Gebrauch"
+
+[[headings]]
+page = "299"
+depth = 4
+designator = "3."
+title = "Grenzen: Urheberpersönlichkeitsrechte, Quellenangabe gem. § 63 UrhG und Drei-Stufen-Test"
+
+[[headings]]
+page = "301"
+depth = 3
+designator = "III."
+title = "Vereinbarkeit mit EU-Recht"
+
+[[headings]]
+page = "302"
+depth = 2
+designator = "C."
+title = "Regelungsvorschlag zur Umsetzung des Art. 17 der DSM-RL in nationales Recht"
+
+[[headings]]
+page = "303"
+depth = 3
+designator = "I."
+title = "Die Regelung des Art. 17 der DSM-RL"
+
+[[headings]]
+page = "303"
+depth = 4
+designator = "1."
+title = "Verantwortlichkeit der Diensteanbieter"
+
+[[headings]]
+page = "305"
+depth = 4
+designator = "2."
+title = "Der Einsatz von Upload-Filtern"
+
+[[headings]]
+page = "307"
+depth = 5
+designator = "a)"
+title = "Absicherung von Schranken gem. Art. 17 Abs. 7 DSM-RL"
+
+[[headings]]
+page = "309"
+depth = 5
+designator = "b)"
+title = "Gefahr des Overblocking"
+
+[[headings]]
+page = "312"
+depth = 5
+designator = "c)"
+title = "Grundrechtsverletzung durch Art. 17 DSM-RL"
+
+[[headings]]
+page = "312"
+depth = 3
+designator = "II."
+title = "Spielraum zur Umsetzung der DSM-RL"
+
+[[headings]]
+page = "313"
+depth = 3
+designator = "III."
+title = "Vorschläge zur Umsetzung des Art. 17 DSM-RL in nationales Recht"
+
+[[headings]]
+page = "317"
+depth = 1
+title = "Zusammenfassende Thesen"
+
+[[headings]]
+page = "325"
+depth = 1
+title = "Literaturverzeichnis"
+region = "bibliography"
