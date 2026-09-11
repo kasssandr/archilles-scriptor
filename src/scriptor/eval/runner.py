@@ -9,6 +9,7 @@ from scriptor.eval.anchors import AnchorResult, evaluate_anchors
 from scriptor.eval.citations import CitationResult, evaluate_citations
 from scriptor.eval.flags import FlagResult, evaluate_flags
 from scriptor.eval.ground_truth import load_truth
+from scriptor.eval.headings import HeadingResult, evaluate_headings
 from scriptor.eval.labels import LabelResult, evaluate_labels
 from scriptor.eval.regions import RegionResult, evaluate_regions
 
@@ -22,6 +23,7 @@ class VolumeReport:
     flags: FlagResult
     citations: CitationResult
     regions: RegionResult
+    headings: HeadingResult
 
 
 def evaluate_file(truth_path: Path, candidate_path: Path, adapter: str) -> VolumeReport:
@@ -36,6 +38,7 @@ def evaluate_file(truth_path: Path, candidate_path: Path, adapter: str) -> Volum
         flags=evaluate_flags(truth, doc),
         citations=evaluate_citations(truth, doc),
         regions=evaluate_regions(truth, doc),
+        headings=evaluate_headings(truth, doc),
     )
 
 

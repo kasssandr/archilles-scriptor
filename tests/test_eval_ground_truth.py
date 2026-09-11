@@ -164,3 +164,83 @@ def test_repeated_boundary_page_is_refused():
 
 def test_volume_without_regions_declares_none():
     assert loads_truth(MINIMAL).regions == []
+
+
+# headings ------------------------------------------------------------------
+# The division of the volume as its printed contents give it: every heading
+# with the page it stands on, its depth in the volume's own tree, the printed
+# designator verbatim and the title. Declared for the whole volume like the
+# regions, in document order, plus the depth on which the chapters stand.
+
+HEADINGS = """
+volume = "d"
+pages = ["31"]
+chapter_level = 1
+
+[[headings]]
+page = "19"
+depth = 1
+title = "Einleitung"
+
+[[headings]]
+page = "24"
+depth = 1
+designator = "Erstes Kapitel:"
+title = "Die bildliche Aneignung"
+
+[[headings]]
+page = "24"
+depth = 2
+designator = "A."
+title = "Bildliche Aneignung – eine Definition"
+
+[[headings]]
+page = "303"
+depth = 1
+title = "Literaturverzeichnis"
+region = "bibliography"
+"""
+
+
+def test_headings_are_read_in_document_order():
+    t = loads_truth(HEADINGS)
+    assert [(h.page, h.depth, h.designator, h.title) for h in t.headings] == [
+        ("19", 1, "", "Einleitung"),
+        ("24", 1, "Erstes Kapitel:", "Die bildliche Aneignung"),
+        ("24", 2, "A.", "Bildliche Aneignung – eine Definition"),
+        ("303", 1, "", "Literaturverzeichnis"),
+    ]
+    assert t.chapter_level == 1
+
+
+def test_a_heading_may_name_the_region_it_opens():
+    t = loads_truth(HEADINGS)
+    assert [h.region for h in t.headings] == [None, None, None, "bibliography"]
+
+
+def test_heading_page_need_not_be_a_sampled_page():
+    """Like a region boundary: p. 303 is nowhere in `pages` and is legal."""
+    assert loads_truth(HEADINGS).headings[-1].page == "303"
+
+
+@pytest.mark.parametrize("old, new", [
+    ('depth = 2', 'depth = 0'),                          # depth starts at 1
+    ('chapter_level = 1', 'chapter_level = 0'),          # so does the chapter level
+    ('chapter_level = 1', 'chapter_level = 3'),          # a depth no heading has
+    ('chapter_level = 1\n', ''),                         # headings need a chapter level
+    ('title = "Einleitung"', 'title = " "'),             # a heading prints a title
+    ('region = "bibliography"', 'region = "backmatter"'),  # closed vocabulary
+])
+def test_malformed_headings_are_refused(old, new):
+    with pytest.raises(TruthError):
+        loads_truth(HEADINGS.replace(old, new, 1))
+
+
+def test_a_chapter_level_without_headings_is_refused():
+    with pytest.raises(TruthError):
+        loads_truth('chapter_level = 1\n' + MINIMAL)
+
+
+def test_volume_without_headings_declares_none():
+    t = loads_truth(MINIMAL)
+    assert t.headings == [] and t.chapter_level is None
