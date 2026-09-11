@@ -9,7 +9,8 @@ because the failures do not cost the same (Gliederungsmodell §3.6):
   page? precision: does each ``#`` line stand in the truth? Keyed by page
   label and title, folded as ``outline._norm`` folds and compared at its
   ratio. A heading cut off at the end of its printed line still stands where
-  it belongs; it counts as placed and is marked ``truncated``.
+  it belongs; it counts as placed and is marked ``truncated``. So does a line
+  that carries the whole title and runs on past it.
 * **depth** -- exact per placed heading, and the *steps*: wherever the truth
   turns deeper or shallower from one placed heading to the next, does the
   output turn the same way? A systematic offset keeps every step; flattening
@@ -59,6 +60,9 @@ _CLOSERS = "\"'»«“”’)]"
 _SEAM_SLACK = 3
 # A cut heading must still carry half its title before it counts as placed.
 _MIN_PREFIX = 8
+# Below this a wording is too short to tell a running head from prose: the
+# letter heads of an index stand next to every page marker somewhere.
+_MIN_WORDING = 5
 
 
 @dataclass
@@ -166,7 +170,11 @@ def _match(heads: list[TruthHeading],
             got = folded[j]
             ratio = max(SequenceMatcher(None, got, full).ratio(),
                         SequenceMatcher(None, got, title).ratio())
-            if ratio >= MATCH_RATIO:
+            if ratio >= MATCH_RATIO or any(
+                    len(t) >= max(_MIN_PREFIX, len(got) // 2) and got.startswith(t)
+                    for t in (full, title)):
+                # The line carries the whole title, and perhaps more: outlines
+                # cut long titles, and a heading may run into its paragraph.
                 pairs.append((ratio, i, j, False))
             elif any(len(got) >= max(_MIN_PREFIX, len(t) // 2) and t.startswith(got)
                      for t in (full, title)):
@@ -317,6 +325,8 @@ def _search_titles(heads: list[TruthHeading], doc: ParsedDoc,
     for head in heads:
         wordings.setdefault(_fold(f"{head.designator} {head.title}"), []).append(head)
     for needle, same in wordings.items():
+        if len(needle) < _MIN_WORDING:
+            continue
         pages = {h.page for h in same}
         for o in _occurrences(needle, 0, folded, doc, spans):
             if o.at_seam and (_interrupts_sentence(doc.body, o.offset)

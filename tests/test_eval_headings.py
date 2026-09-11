@@ -182,6 +182,15 @@ def test_a_title_two_headings_share_is_not_furniture_on_either_page():
     assert r.running_in_text == []
 
 
+def test_a_letter_heading_of_an_index_is_not_sought_at_the_seams():
+    """An outline lists the index letters A, B, C; one letter stands next to
+    every page marker somewhere. Too short to tell a running head from prose."""
+    truth = _truth(("300", 2, "", "A"), chapter_level=2)
+    r = _measure(truth, "[p. 300] x\n\n## A\n\nAbel.\n\n[p. 301] and so the "
+                        "argument [p. 302] a claim runs on.\n")
+    assert r.running_in_text == []
+
+
 def test_a_heading_cut_at_the_end_of_its_line_is_placed_but_truncated():
     """Bauer §2.4: the rest of the title opens the paragraph below."""
     truth = _truth(("40", 4, "3.",
@@ -191,6 +200,16 @@ def test_a_heading_cut_at_the_end_of_its_line_is_placed_but_truncated():
                         "Künstlerpersönlichkeit Durch das Aufkommen.\n")
     assert r.placed_count == 1 and r.placed[0].truncated
     assert r.deleted == []
+
+
+def test_a_heading_line_that_runs_on_past_the_title_is_placed():
+    """The reference may be shorter than the line: outlines cut long titles
+    ('... überhau'), and a heading may carry words of its paragraph."""
+    truth = _truth(("6", 2, "", "Ueber den Begriff der Wissenschafts"),
+                   chapter_level=2)
+    r = _measure(truth, "[p. 6] x\n\n## Ueber den Begriff der Wissenschaftslehre "
+                        "überhaupt und seine Grenzen\n\nText.\n")
+    assert r.placed_count == 1 and not r.placed[0].truncated
 
 
 def test_a_numbered_line_the_contents_do_not_know_is_a_false_heading():
