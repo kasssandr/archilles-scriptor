@@ -121,6 +121,16 @@ def test_a_title_missing_from_its_page_is_deleted():
     assert [h.title for h in r.deleted] == ["Einleitung"]
 
 
+def test_a_placed_heading_is_never_deleted():
+    """The contents region is not searched for titles -- but the printed head
+    of the contents stands there as a heading, and a placed heading is there."""
+    r = _measure(_truth(("V", 1, "", "Inhaltsverzeichnis")),
+                 "[region: contents]\n\n[p. V]\n\n## Inhaltsverzeichnis\n\n"
+                 "- [Einleitung](#p-1) — p. 1\n\n[region: main]\n\n[p. 1] Text.\n")
+    assert r.placed_count == 1
+    assert r.deleted == []
+
+
 def test_a_running_head_glued_into_the_text_at_the_page_seam_is_found():
     """Bauer §2.1, p. 23: the running head names the section that begins on the
     page and lands in the reading flow at the seam, inside a hyphenated word."""
@@ -188,6 +198,32 @@ def test_a_stray_digit_before_the_marker_is_not_a_sentence():
     truth = _truth(("20", 2, "", "The Question of Diffusion"), chapter_level=2)
     r = _measure(truth, "[p. 19] my translation.\n\n1 [p. 20]{#p-20} The Question of "
                         "Diffusion\n\nWhen adapting the structural method.\n")
+    assert r.running_in_text == []
+
+
+def test_a_bare_title_in_prose_at_a_seam_is_not_a_running_head():
+    """863: 'durch natürliche [p. 774] Auslese bedingt' is a sentence. A title
+    without designator needs a second witness that the words are a head line."""
+    truth = _truth(("700", 2, "", "Natürliche Auslese"), chapter_level=2)
+    r = _measure(truth, "[p. 773] die für uns ganz offensichtlich durch natürliche "
+                        "[p. 774] Auslese bedingt sind.\n")
+    assert r.running_in_text == []
+
+
+def test_a_bare_running_head_beside_its_folio_is_found():
+    """6464: the index's running heads stayed in the text with their folios."""
+    truth = _truth(("300", 1, "", "Index"), chapter_level=1)
+    r = _measure(truth, "[p. 308] support for Aufbau, 14, 137, 276 with, 128 [p. 309] "
+                        "Index 309 [^1244][p. 310] 310 Index Imperial Flag, 104\n")
+    assert sorted(page for _, page in r.running_in_text) == ["309", "310"]
+
+
+def test_a_footnote_number_after_the_full_stop_ends_the_sentence():
+    """10465: 'Männer.42 [p. 420] 3. Rassismus …' -- the heading at the top of
+    its page, after a sentence closed by a note number."""
+    truth = _truth(("420", 2, "3.", "Rassismus und Sexismus"), chapter_level=2)
+    r = _measure(truth, "[p. 419] das Ideal westlicher Männer.42 [p. 420] 3. Rassismus "
+                        "und Sexismus Dieses Kapitel hat.\n")
     assert r.running_in_text == []
 
 

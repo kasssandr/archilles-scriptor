@@ -29,6 +29,9 @@ because the failures do not cost the same (Gliederungsmodell §3.6):
   head *interrupts* a sentence that runs on across the page; a heading
   follows a finished one. Where the page broke between paragraphs, only the
   page can tell: an occurrence on a page no heading of that wording stands on.
+  A head line carries a second witness -- the printed designator, or the
+  folio beside the words; a bare title without either is too often a phrase
+  of the prose ("durch natürliche [p. 774] Auslese") and is not counted.
 * **false headings** -- ``#`` lines the truth does not know, with their text.
 
 A heading that opens a page stands before that page's marker (spec 0.4.0
@@ -56,6 +59,10 @@ _NOISE_RES = (ANCHOR_RE, FLAG_RE, re.compile(r"\{\.cit[^}]*\}"))
 _TAIL_RE = re.compile(r"(?:\s|\[\^\d+\]|\[p\. [^\]]+\](?:\{#[^}]*\})?)+$")
 _SENTENCE_END = ".!?"
 _WORD_RE = re.compile(r"[^\W\d_]{2,}")
+# A sentence closed and then given its note number the converter left as digits.
+_NOTE_AFTER_END = re.compile(r"[.!?][\"'»«“”’)\]]*\d{1,3}$")
+# How near the words a folio may stand to count as the rest of their head line.
+_FOLIO_REACH = 12
 _CLOSERS = "\"'»«“”’)]"
 # How far past a seam a running head may begin: the digits of a folio.
 _SEAM_SLACK = 3
@@ -133,7 +140,7 @@ def evaluate_headings(truth: GroundTruth, doc: ParsedDoc) -> HeadingResult:
     result.false_headings = [h for j, h in enumerate(output) if j not in used]
 
     _measure_depth(result)
-    _search_titles(truth.headings, doc, spans, result)
+    _search_titles(truth.headings, set(matched), doc, spans, result)
     return result
 
 
@@ -253,6 +260,7 @@ def _contents_spans(doc: ParsedDoc) -> list[tuple[int, int]]:
 @dataclass
 class _Occurrence:
     offset: int                     # in the body
+    end: int
     page: str
     in_heading: bool
     at_seam: bool
@@ -270,20 +278,30 @@ def _occurrences(needle: str, lead: int, folded: _Folded, doc: ParsedDoc,
     k = folded.text.find(needle)
     while needle and k >= 0:
         end = k + len(needle)
-        offset = folded.origin[k]
+        offset, stop = folded.origin[k], folded.origin[end - 1] + 1
         h = bisect_right(starts, offset) - 1
         if h >= 0 and offset < spans[h][1]:
-            found.append(_Occurrence(offset, spans[h][2].page, True, False))
+            found.append(_Occurrence(offset, stop, spans[h][2].page, True, False))
         else:
             # A seam inside the needle, or just before it -- where a folio of
             # a running head would stand.
             s = bisect_right(folded.seams, k - lead - _SEAM_SLACK - 1)
             if s < len(folded.seams) and folded.seams[s] < end:
-                found.append(_Occurrence(offset, folded.seam_labels[s], False, True))
+                found.append(_Occurrence(offset, stop, folded.seam_labels[s], False, True))
             else:
-                found.append(_Occurrence(offset, page_at(doc, offset), False, False))
+                found.append(_Occurrence(offset, stop, page_at(doc, offset), False, False))
         k = folded.text.find(needle, k + 1)
     return found
+
+
+def _beside_folio(body: str, start: int, end: int, label: str) -> bool:
+    """Does the page's printed number stand right by the words -- the other
+    half of a head line? Markers and note anchors in between are read through."""
+    number = re.compile(rf"(?<!\w){re.escape(label)}(?!\w)", re.IGNORECASE)
+    before = ANCHOR_RE.sub(" ", _MARKER_RE.sub(" ", body[max(0, start - 60):start]))
+    after = ANCHOR_RE.sub(" ", _MARKER_RE.sub(" ", body[end:end + 60]))
+    return bool(number.search(before.rstrip()[-_FOLIO_REACH:])
+                or number.search(after.lstrip()[:_FOLIO_REACH]))
 
 
 def _interrupts_sentence(body: str, offset: int) -> bool:
@@ -297,7 +315,7 @@ def _interrupts_sentence(body: str, offset: int) -> bool:
     tail = _TAIL_RE.search(before)
     if tail:
         before = before[:tail.start()]
-    if len(_WORD_RE.findall(before)) < 2:
+    if len(_WORD_RE.findall(before)) < 2 or _NOTE_AFTER_END.search(before):
         return False
     last = before[-1]
     if last in _CLOSERS and len(before) > 1:
@@ -305,12 +323,16 @@ def _interrupts_sentence(body: str, offset: int) -> bool:
     return last not in _SENTENCE_END
 
 
-def _search_titles(heads: list[TruthHeading], doc: ParsedDoc,
+def _search_titles(heads: list[TruthHeading], placed: set[int], doc: ParsedDoc,
                    spans: list[tuple[int, int, OutputHeading]],
                    result: HeadingResult) -> None:
     folded = _fold_body(doc)
     marked = {label for label, _ in doc.page_marks}
-    for head in heads:
+    for i, head in enumerate(heads):
+        if i in placed:
+            # Its line stands on its page -- in the contents region, too,
+            # which the search below leaves out.
+            continue
         found = _occurrences(_fold(head.title), len(_fold(head.designator)),
                              folded, doc, spans)
         own = [o for o in found if o.page == head.page]
@@ -327,7 +349,11 @@ def _search_titles(heads: list[TruthHeading], doc: ParsedDoc,
         if len(needle) < _MIN_WORDING:
             continue
         pages = {h.page for h in same}
+        designated = any(h.designator for h in same)
         for o in _occurrences(needle, 0, folded, doc, spans):
-            if o.at_seam and (_interrupts_sentence(doc.body, o.offset)
-                              or o.page not in pages):
+            if not o.at_seam:
+                continue
+            if not (_interrupts_sentence(doc.body, o.offset) or o.page not in pages):
+                continue
+            if designated or _beside_folio(doc.body, o.offset, o.end, o.page):
                 result.running_in_text.append((same[0], o.page))
