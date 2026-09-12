@@ -34,6 +34,7 @@ from scriptor.reflow.outline import (
     match_prefix_lines,
     match_title_lines,
 )
+from scriptor.structure import PACKAGING_WORDS
 
 # A title that numbers itself below a top level: "II.1", "2.3.1.", "1.1.". The
 # entry says what it is and no count can overrule it -- a volume may well carry
@@ -44,22 +45,9 @@ _SUBSECTION = re.compile(r"^\s*(?:[IVXLCivxlc]+|\d{1,3})\s*\.\s*\d")
 
 # What the binder wrapped around the book. These are not parts of a book's
 # division, so a level made of nothing else is the level on which the finished
-# object was assembled -- not the level on which it is organised. Measured on
-# level 1: "Cover" and "Half Title" (Oxford Handbook), "Cubierta" and "Portada"
-# (Libros), "Cover" (Asclepios, Libros, bauer-aneignung, De eerste minister),
-# and at mehr-themistios the bare ISBN, twice. The rest are the immediate
-# neighbours of those in the corpus languages.
-_PACKAGING = re.compile(
-    r"^(?:"
-    r"front\s*cover|back\s*cover|cover|half[-\s]*title|title\s*page|"
-    r"umschlag|schutzumschlag|titelblatt|titelei|impressum|kolophon|"
-    r"omslag|voorplat|achterplat|titelpagina|colofon|"
-    r"cubierta|portada|portadilla|colof[óo]n|cr[ée]ditos|"
-    r"copertina|frontespizio|colophon|couverture|page\s*de\s*titre|"
-    r"capa|folha\s*de\s*rosto|ficha\s*t[ée]cnica"
-    r")$|^\d[\d\s-]{6,}$",   # ... and a bare ISBN is not a title at all
-    re.IGNORECASE,
-)
+# object was assembled -- not the level on which it is organised. The list and
+# its evidence live in scriptor.structure, which every path shares.
+_PACKAGING = PACKAGING_WORDS
 
 
 
