@@ -335,6 +335,14 @@ def _search_titles(heads: list[TruthHeading], placed: set[int], doc: ParsedDoc,
             continue
         found = _occurrences(_fold(head.title), len(_fold(head.designator)),
                              folded, doc, spans)
+        if head.designator:
+            # The bare title alone is too often a word of the prose (Bauer
+            # p. 46, 'Untersuchungsgegenstände'). It survives with its
+            # designator, or where it does not break into a running sentence.
+            found = _occurrences(_fold(f"{head.designator} {head.title}"), 0,
+                                 folded, doc, spans) + [
+                o for o in found
+                if o.in_heading or not _interrupts_sentence(doc.body, o.offset)]
         own = [o for o in found if o.page == head.page]
         if not (own if head.page in marked else found):
             result.deleted.append(head)

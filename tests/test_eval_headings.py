@@ -121,6 +121,26 @@ def test_a_title_missing_from_its_page_is_deleted():
     assert [h.title for h in r.deleted] == ["Einleitung"]
 
 
+def test_a_one_word_title_in_the_prose_of_its_page_does_not_save_it():
+    """Bauer p. 46: 'B. Untersuchungsgegenstände' went as a running head, and
+    the page still says 'Diese Unterteilung der Untersuchungsgegenstände
+    ergibt sich'. A designated title survives with its designator, or where it
+    opens a sentence -- never from inside one."""
+    truth = _truth(("46", 2, "B.", "Untersuchungsgegenstände"), chapter_level=2)
+    r = _measure(truth, "[p. 46] Diese Unterteilung der Untersuchungsgegenstände "
+                        "ergibt sich aus der Nutzung.\n")
+    assert [h.title for h in r.deleted] == ["Untersuchungsgegenstände"]
+
+
+def test_a_designated_title_that_lost_its_designator_but_opens_a_paragraph_stays():
+    """The text layer may drop a hanging designator; the heading line is
+    still there, and nothing was deleted."""
+    truth = _truth(("46", 2, "B.", "Untersuchungsgegenstände"), chapter_level=2)
+    r = _measure(truth, "[p. 46] Der Satz endet hier.\n\nUntersuchungsgegenstände "
+                        "Untersuchungsgegenstand dieser Arbeit sind Bilder.\n")
+    assert r.deleted == []
+
+
 def test_a_placed_heading_is_never_deleted():
     """The contents region is not searched for titles -- but the printed head
     of the contents stands there as a heading, and a placed heading is there."""
