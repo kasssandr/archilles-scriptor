@@ -133,27 +133,73 @@ def from_outline(
 FALLBACK_CONFIDENCE = 0.6
 
 
+def heads_a_contents(page) -> bool:
+    """Does this page print the heading a volume sets over its contents?
+
+    The heading has to be looked for in two places. Where the outline names
+    the contents and the page confirms it, ``chapter_headings`` has already
+    lifted the title out of the body and into ``Page.heading`` -- Asclepios'
+    and Artificial Humanities' "Inhoudsopgave" / "Contents" are gone from the
+    text by the time anyone gets here.
+    """
+    from scriptor.reflow.toc import is_contents_heading
+
+    if page.heading and is_contents_heading(page.heading):
+        return True
+    return any(is_contents_heading(ln) for ln in page.body_lines[:4])
+
+
+def list_openings(pages: list) -> dict[int, str]:
+    """Which pages of a run open a list of their own: {index in run: name}.
+
+    A volume's contents divides it; a list of illustrations behind it does
+    not. Both are taken by ``contents_pages`` -- the second goes on listing,
+    which is all that rule asks -- and telling them apart matters twice: the
+    renderer prints one heading per list, and the placement reads the entries
+    of the contents as headings. Artificial Humanities set twenty figure
+    captions into its text before this.
+
+    They are told apart by the name printed over them, and a new name only
+    counts where it *stays*: over the page after it, or -- on the last page of
+    the run -- where it names a contents in its own right. The first line of a
+    contents page is otherwise as often the wrapped half of a title, and
+    L'Empire heads its verso pages with the book's title, so that the names
+    down its table des matières read "TABLE DES MATIÈRES", "l'empire
+    chrétien", "TABLE DES MATIÈRES" … Cutting at either lost sixty of its
+    hundred headings.
+    """
+    from scriptor.reflow.outline import fold, similar
+    from scriptor.reflow.toc import printed_heading
+
+    names = [printed_heading(page) for page in pages]
+    folded = [fold(name) if name else "" for name in names]
+    opens: dict[int, str] = {}
+    for k in range(1, len(pages)):
+        if not names[k] or any(similar(folded[k], f) for f in folded[:k] if f):
+            continue
+        stays = (similar(folded[k], folded[k + 1]) if k + 1 < len(pages)
+                 else heads_a_contents(pages[k]))
+        if stays:
+            opens[k] = names[k]
+    return opens
+
+
+def first_list(pages: list) -> list:
+    """The pages up to the second list of a run: the volume's contents."""
+    opens = list_openings(pages)
+    return pages[: min(opens)] if opens else list(pages)
+
+
 def contents_pages(pages) -> list:
     """The pages of the volume's table of contents, wherever they stand.
 
     The heading decides. A page that reads like a contents list may be a name
     register (Themistios, De eerste minister) or a bibliography (the Oxford
     Handbook, Artificial Humanities); what no register carries is "Índice" or
-    its equivalent written over it. The pages after it are taken as long as
-    they go on listing.
-
-    The heading has to be looked for in two places. Where the outline names the
-    contents and the page confirms it, ``chapter_headings`` has already lifted
-    the title out of the body and into ``Page.heading`` -- Asclepios' and
-    Artificial Humanities' "Inhoudsopgave" / "Contents" are gone from the text
-    by the time anyone gets here.
+    its equivalent written over it (``heads_a_contents``). The pages after it
+    are taken as long as they go on listing.
     """
-    from scriptor.reflow.toc import is_contents_heading, is_toc_page
-
-    def heads_a_contents(page) -> bool:
-        if page.heading and is_contents_heading(page.heading):
-            return True
-        return any(is_contents_heading(ln) for ln in page.body_lines[:4])
+    from scriptor.reflow.toc import is_toc_page
 
     out: list = []
     taking = False

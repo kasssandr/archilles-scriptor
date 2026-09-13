@@ -7,11 +7,14 @@ because the failures do not cost the same (Gliederungsmodell §3.6):
 
 * **placement** -- recall: does each heading stand as a ``#`` line on its
   page? precision: does each ``#`` line stand in the truth? Keyed by page
-  label and title, folded as ``outline._norm`` folds and compared at its
+  label and title, folded as ``outline.fold`` folds and compared at its
   ratio. A heading cut off at the end of its printed line still stands where
   it belongs; it counts as placed and is marked ``truncated``. So does a line
   that carries the whole title and runs on past it.
-* **depth** -- exact per placed heading, and the *steps*: wherever the truth
+* **depth** -- exact per placed heading, against ``min(depth, 6)``: Markdown
+  has six levels, a volume may have more (Bauer prints seven), and a deeper
+  one is written with six by decision, its true depth travelling in the
+  structure sidecar (Briefing §8.3). And the *steps*: wherever the truth
   turns deeper or shallower from one placed heading to the next, does the
   output turn the same way? A systematic offset keeps every step; flattening
   the tree loses them. Steps between siblings are not counted -- most
@@ -49,6 +52,7 @@ from scriptor.document import FLAG_RE
 from scriptor.eval.adapters import ANCHOR_RE, ParsedDoc, page_at
 from scriptor.eval.ground_truth import GroundTruth, TruthHeading
 from scriptor.reflow.outline import MATCH_RATIO
+from scriptor.structure import MAX_MARKDOWN_DEPTH
 
 HEADING_LINE_RE = re.compile(r"^(#{1,6})[ \t]+(\S[^\n]*?)[ \t]*$", re.MULTILINE)
 # The block after a heading run opens with the page marker the run belongs to.
@@ -157,7 +161,7 @@ def _heading_spans(doc: ParsedDoc) -> list[tuple[int, int, OutputHeading]]:
 
 
 def _fold(text: str) -> str:
-    """Letters and digits, case-folded -- ``outline._norm``, one character at a
+    """Letters and digits, case-folded -- ``outline.fold``, one character at a
     time, so that folding the body can keep where each character came from."""
     return "".join(lc for c in text for lc in c.lower() if lc.isalnum())
 
@@ -197,10 +201,23 @@ def _match(heads: list[TruthHeading],
     return matched
 
 
+def _written(depth: int) -> int:
+    """The depth an ATX heading can carry.
+
+    Markdown and HTML have six levels and a volume may have more: Bauer prints
+    seven. A deeper node is written with six and its true depth travels in the
+    structure sidecar (Briefing §8.3), so six is what the truth is compared
+    against until a reader of that sidecar exists (B4). Measuring the
+    unwritable difference would count a decision as a defect.
+    """
+    return min(depth, MAX_MARKDOWN_DEPTH)
+
+
 def _measure_depth(result: HeadingResult) -> None:
-    result.depth_exact = sum(1 for p in result.placed if p.depth == p.truth.depth)
+    result.depth_exact = sum(1 for p in result.placed
+                             if p.depth == _written(p.truth.depth))
     for a, b in zip(result.placed, result.placed[1:]):
-        turn = _sign(b.truth.depth - a.truth.depth)
+        turn = _sign(_written(b.truth.depth) - _written(a.truth.depth))
         if turn:
             result.steps_total += 1
             result.steps_kept += turn == _sign(b.depth - a.depth)

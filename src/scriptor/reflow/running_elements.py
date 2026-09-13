@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from difflib import SequenceMatcher
 
+from scriptor.reflow.heads import HeadCandidates, without_edge_number
+from scriptor.reflow.outline import KnownTitles
 from scriptor.reflow.rescued import RescuedFolios
 
 
@@ -158,6 +160,9 @@ def remove_running_headers(
     running_headers: list[str],
     rescued: RescuedFolios,
     similarity_threshold: float = 0.85,
+    known: KnownTitles | None = None,
+    heads: HeadCandidates | None = None,
+    lists: frozenset[int] | set[int] = frozenset(),
 ) -> list[str]:
     """Strip the running head, adding the folios that shared its lines to
     ``rescued``.
@@ -167,9 +172,28 @@ def remove_running_headers(
     heads its pages twice, with a download banner ending in the year 2025 and
     with the chapter's running head ending in the folio; keeping only the first
     threw the folio away and left the year to speak for the page.
+
+    ``known`` are the titles the volume's own lists name. *Every* head-region
+    line is asked, not only the ones this stripper would have deleted: Bauer
+    prints "B. Gang der Darstellung" over page 23 and again in the middle of
+    it, and the wording occurs twice in the volume, one short of the three
+    repetitions that make a running head. The line stayed, and the word it
+    broke ("kommunika|tive") stayed broken. Such a line is recorded in
+    ``heads`` and the placement decides (Gliederungsmodell §5.2, rule 6).
+    Without both arguments the stripper deletes as it always did.
+
+    ``lists`` are the pages of the volume's own contents (0-based). Nothing at
+    the head of those is text this stripper may take: the first line of Bauer's
+    contents is its own heading, and the second is the entry
+    "Abbildungsverzeichnis 17", which reads as the running head of the list of
+    figures eight pages on. Stripping there cost the contents its heading and
+    an entry its page number. The line stays whole -- with its number, which
+    belongs to the entry -- and is still handed to the consensus as a rescued
+    folio, because what the pagination was told must not change with this.
     """
     cleaned_pages = []
     for index, page_text in enumerate(pages_text):
+        a_list = index in lists
         lines = page_text.strip().split("\n")
         cleaned_lines: list[str] = []
         lines_checked = 0
@@ -178,19 +202,46 @@ def remove_running_headers(
                 cleaned_lines.append(line)
                 continue
             normalized = _normalize_header_line(line)
+            in_head = lines_checked < 3 and bool(normalized)
             is_header = False
-            if lines_checked < 3 and normalized:
+            if in_head:
                 lines_checked += 1
                 for header in running_headers:
                     if _strings_are_similar(normalized, header, similarity_threshold):
                         is_header = True
                         break
+            title = (known.of(line)
+                     if in_head and known is not None and heads is not None
+                     else None)
+            if a_list and is_header and heads is not None:
+                # On a contents page the deletion waits, and the line waits
+                # whole: its number is the entry's page, not the page's folio.
+                rescued.add(index, "top", _extract_edge_page_number(line))
+                heads.add(index, len(cleaned_lines), line, title or line.strip())
+                cleaned_lines.append(line)
+                continue
+            if title is not None:
+                # A title the volume names is not this stripper's to decide
+                # about, whether or not the wording repeats often enough to be
+                # read as furniture: on the page that opens the section it is
+                # the heading, and three occurrences elsewhere say nothing
+                # about this one. Where the stripper *had* judged it -- the
+                # wording matched a detected head -- the folio it carried is
+                # rescued and taken off the line, as it always was, so that
+                # the page is not read as printing that number twice.
+                folio = _extract_edge_page_number(line) if is_header else None
+                if is_header:
+                    rescued.add(index, "top", folio)
+                stays = without_edge_number(line, folio) if is_header else line
+                heads.add(index, len(cleaned_lines), stays, title, is_header)
+                cleaned_lines.append(stays)
+                continue
             if not is_header:
                 cleaned_lines.append(line)
-            else:
-                # The title goes, and so does the number's place in the text;
-                # the number itself is handed on as a witness.
-                rescued.add(index, "top", _extract_edge_page_number(line))
+                continue
+            # The title goes, and so does the number's place in the text;
+            # the number itself is handed on as a witness.
+            rescued.add(index, "top", _extract_edge_page_number(line))
         cleaned_pages.append("\n".join(cleaned_lines))
     return cleaned_pages
 
@@ -322,6 +373,9 @@ def strip_running_elements(
     footer_min: int | None = None,
     similarity_threshold: float = 0.85,
     foot_blocks: list[list[str] | None] | None = None,
+    known: KnownTitles | None = None,
+    heads: HeadCandidates | None = None,
+    lists: frozenset[int] | set[int] = frozenset(),
 ) -> tuple[list[str], list[str], list[str]]:
     """Convenience: detect + remove headers and footers in one call.
 
@@ -335,13 +389,17 @@ def strip_running_elements(
     consensus to weigh. A caller with no use for them may leave it out; the
     numbers are then dropped with the lines they stood in.
 
+    ``known`` and ``heads`` pass to ``remove_running_headers``: with both, a
+    head line bearing a title the volume names is deferred to the placement
+    rather than deleted here.
+
     Returns (cleaned_pages, detected_headers, detected_footers).
     """
     if rescued is None:
         rescued = RescuedFolios(len(pages_text))
     headers = detect_running_headers(pages_text, header_min, similarity_threshold)
     cleaned = remove_running_headers(
-        pages_text, headers, rescued, similarity_threshold)
+        pages_text, headers, rescued, similarity_threshold, known, heads, lists)
     whole_pages = cleaned
     if foot_blocks is not None:
         whole_pages = [

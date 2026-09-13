@@ -364,15 +364,30 @@ def learn_schemes(entries: Sequence[Entry]) -> Learnt:
         depths.append(stack.index(s) + 1)
         last_numbered, last_word = depths[-1], s in WORD_SCHEMES
 
+    schemes = [s for s, _, _ in parsed]
+    return Learnt(table_from(depths, schemes), depths, schemes)
+
+
+def table_from(depths: Sequence[int], schemes: Sequence[str]) -> SchemeTable:
+    """The scheme table of entries whose depths are already known.
+
+    Each scheme takes the depth most of its entries stand on: one lost
+    contents line can make an 'a)' jump a level, the table does not. Rows in
+    the order of depth, ties in the order the volume first uses them.
+
+    Learning the depths is one question (``learn_schemes``) and having them
+    another: where a volume's outline *is* its contents, its levels are the
+    nesting already read out (Befund §5.1), and the table is built from those.
+    """
     by_scheme: dict[str, Counter] = {}
     first_seen: dict[str, int] = {}
-    for k, ((s, _, _), d) in enumerate(zip(parsed, depths)):
-        if s:
-            by_scheme.setdefault(s, Counter())[d] += 1
-            first_seen.setdefault(s, k)
+    for k, (scheme, depth) in enumerate(zip(schemes, depths)):
+        if scheme:
+            by_scheme.setdefault(scheme, Counter())[depth] += 1
+            first_seen.setdefault(scheme, k)
     rows = [SchemeRow(s, c.most_common(1)[0][0], sum(c.values())) for s, c in by_scheme.items()]
     rows.sort(key=lambda r: (r.depth, first_seen[r.scheme]))
-    return Learnt(SchemeTable(rows), depths, [s for s, _, _ in parsed])
+    return SchemeTable(rows)
 
 
 @dataclass(frozen=True)

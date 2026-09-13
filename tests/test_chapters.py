@@ -310,3 +310,46 @@ def test_a_register_offers_no_title_any_chapter_page_spells_out():
     pages = {1: ["Register"], 77: ["Gewone tekst zonder titel."],
              93: ["Nog meer tekst."], 215: ["En hier ook."]}
     assert from_toc(register, pages, toc_positions={1}) == []
+
+
+# --- where one list ends and the next begins ---------------------------------
+
+def _contents_page(*lines):
+    from scriptor.reflow.core import Page
+    return Page(num=-1, body_lines=list(lines))
+
+
+def test_a_second_list_opens_where_its_name_stays():
+    """Bauer sets a list of figures behind its contents, headed
+    "Abbildungsverzeichnis" on both of its pages. That is a list of its own:
+    the renderer gives it its own heading, and the placement does not read its
+    captions as headings of the volume."""
+    from scriptor.reflow.chapters import list_openings
+
+    pages = [_contents_page("Inhaltsverzeichnis", "Einleitung 19"),
+             _contents_page("Inhaltsverzeichnis", "A. Problemaufriss 19"),
+             _contents_page("Abbildungsverzeichnis", "Abb. 5.1.: Graham 20"),
+             _contents_page("Abbildungsverzeichnis", "Abb. 9.1.: Bauret 68")]
+    assert list_openings(pages) == {2: "Abbildungsverzeichnis"}
+
+
+def test_the_book_title_over_a_verso_page_opens_nothing():
+    """L'Empire heads its verso pages with the volume's title, so the names
+    down its table des matières alternate. A name that does not stay is not a
+    list -- cutting there cost sixty of its hundred headings."""
+    from scriptor.reflow.chapters import list_openings
+
+    pages = [_contents_page("TABLE DES MATIÈRES", "Préface vii 1"),
+             _contents_page("l’empire chrétien", "I. Constantin en 325 27"),
+             _contents_page("TABLE DES MATIÈRES", "II. Les crimes 37"),
+             _contents_page("l’empire chrétien", "III. Le Danube 49")]
+    assert list_openings(pages) == {}
+
+
+def test_a_wrapped_half_at_the_head_of_a_page_opens_nothing():
+    from scriptor.reflow.chapters import list_openings
+
+    pages = [_contents_page("Contents", "Kapitel eins 9"),
+             _contents_page("und die Folgen für das Recht", "Kapitel zwei 25"),
+             _contents_page("Kapitel drei 40", "Kapitel vier 55")]
+    assert list_openings(pages) == {}
