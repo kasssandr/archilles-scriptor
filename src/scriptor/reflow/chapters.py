@@ -149,28 +149,45 @@ def heads_a_contents(page) -> bool:
     return any(is_contents_heading(ln) for ln in page.body_lines[:4])
 
 
-def first_list(pages: list) -> list:
-    """The pages of the first list in a contents run.
+def list_openings(pages: list) -> dict[int, str]:
+    """Which pages of a run open a list of their own: {index in run: name}.
 
     A volume's contents divides it; a list of illustrations behind it does
     not. Both are taken by ``contents_pages`` -- the second goes on listing,
-    which is all that rule asks -- and telling them apart matters where the
-    entries are read as headings: Artificial Humanities set twenty figure
-    captions into its text that way. They are told apart the way the renderer
-    tells them apart, by the name printed over them.
+    which is all that rule asks -- and telling them apart matters twice: the
+    renderer prints one heading per list, and the placement reads the entries
+    of the contents as headings. Artificial Humanities set twenty figure
+    captions into its text before this.
+
+    They are told apart by the name printed over them, and a new name only
+    counts where it *stays*: over the page after it, or -- on the last page of
+    the run -- where it names a contents in its own right. The first line of a
+    contents page is otherwise as often the wrapped half of a title, and
+    L'Empire heads its verso pages with the book's title, so that the names
+    down its table des matières read "TABLE DES MATIÈRES", "l'empire
+    chrétien", "TABLE DES MATIÈRES" … Cutting at either lost sixty of its
+    hundred headings.
     """
+    from scriptor.reflow.outline import fold, similar
     from scriptor.reflow.toc import printed_heading
 
-    if not pages:
-        return []
-    head = printed_heading(pages[0])
-    out = [pages[0]]
-    for page in pages[1:]:
-        name = printed_heading(page)
-        if head and name and name != head:
-            break
-        out.append(page)
-    return out
+    names = [printed_heading(page) for page in pages]
+    folded = [fold(name) if name else "" for name in names]
+    opens: dict[int, str] = {}
+    for k in range(1, len(pages)):
+        if not names[k] or any(similar(folded[k], f) for f in folded[:k] if f):
+            continue
+        stays = (similar(folded[k], folded[k + 1]) if k + 1 < len(pages)
+                 else heads_a_contents(pages[k]))
+        if stays:
+            opens[k] = names[k]
+    return opens
+
+
+def first_list(pages: list) -> list:
+    """The pages up to the second list of a run: the volume's contents."""
+    opens = list_openings(pages)
+    return pages[: min(opens)] if opens else list(pages)
 
 
 def contents_pages(pages) -> list:

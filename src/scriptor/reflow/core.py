@@ -1276,20 +1276,20 @@ def render_entries(pages: list[Page], start_re: re.Pattern[str]) -> list[str]:
     return entries
 
 
-def _opens_another_list(first: Page, page: Page) -> str | None:
-    """Does ``page`` open a second list, under a heading of its own?
+def _list_starts(pages: list[Page], i: int, j: int) -> int:
+    """Where the run of contents pages ``pages[i:j]`` opens its second list.
 
     A contents runs over several pages and heads each of them with the same
     words; that is one list. A volume that follows its contents with a list of
     figures prints a different name over it, and that is where one list ends
     and the next begins -- the only thing in the text that says so. The name
-    of the second need not name a region: a "Abbildungsverzeichnis" is a list
+    of the second need not name a region: an "Abbildungsverzeichnis" is a list
     of its own and the region vocabulary knows no region for it (Anhang B1).
     """
-    from scriptor.reflow.toc import printed_heading
+    from scriptor.reflow.chapters import list_openings
 
-    name, running = printed_heading(page), printed_heading(first)
-    return name if name and name != running else None
+    opens = list_openings(pages[i:j])
+    return i + min(opens) if opens else j
 
 
 def render_book(
@@ -1343,10 +1343,9 @@ def render_book(
             # group there rendered "## Contents" three times over ten pages.
             # The region of a contents page is `contents`; how many pages the
             # zone had put elsewhere is reported rather than shown.
-            j += 1
-            while (j < len(pages) and pages[j].mode == mode
-                   and not _opens_another_list(pages[i], pages[j])):
+            while j < len(pages) and pages[j].mode == mode:
                 j += 1
+            j = _list_starts(pages, i, j)
             split_contents += sum(1 for p in pages[i:j] if p.region != region)
             region = "contents"
         else:
