@@ -94,6 +94,23 @@ def test_depth_counts_exact_and_steps_count_order():
     assert (offset.depth_exact, offset.steps_total, offset.steps_kept) == (0, 2, 2)
 
 
+def test_a_seventh_level_is_measured_against_the_sixth_it_is_written_with():
+    """Markdown has six levels and Bauer has seven.
+
+    The seventh is written with six by decision (Briefing §8.3); its true
+    depth travels in the structure sidecar, not in the '#' line. Measuring
+    against seven would count that decision as a defect -- and would report a
+    step where the truth turns deeper and the writable depth cannot.
+    """
+    truth = _truth(("1", 6, "aa)", "Sechste Ebene"), ("1", 7, "(1)", "Siebte Ebene"),
+                   chapter_level=6)
+    r = _measure(truth, "[p. 1] x\n\n###### aa) Sechste Ebene\n\ny\n\n"
+                        "###### (1) Siebte Ebene\n\nz\n")
+    assert r.placed_count == 2
+    assert r.depth_exact == 2
+    assert (r.steps_total, r.steps_kept) == (0, 0)
+
+
 def test_the_depth_of_the_chapters_is_read_off_the_placed_chapters():
     truth = _truth(("1", 1, "Erster Teil:", "Grundlagen"),
                    ("1", 2, "Erstes Kapitel:", "Begriffe"),

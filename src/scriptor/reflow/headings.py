@@ -45,6 +45,40 @@ MAX_HEADING_CHARS = 90
 # strips it off the line it reads.
 MARK = ""
 
+# The second mark, and the one that carries an answer rather than an
+# observation: the placement rule has judged this line (``reflow.placement``).
+# It is always followed by one digit -- the depth the volume's own lists give
+# the heading, or "0" where those lists know the numbering of the line and name
+# no entry standing here, which says the line is not a heading at all
+# (Gliederungsmodell §5.4). A character of its own, because MARK's text may
+# itself begin with a digit ("3.2.1 Lexical Search") and one mark carrying two
+# meanings could not be read back.
+PLACED = ""
+
+# ATX headings have six levels. A deeper node is written with six and its true
+# depth travels in the structure sidecar (Briefing §8.3); until B4 the metric
+# compares min(depth, 6).
+MAX_MARK_DEPTH = 6
+
+
+def mark_placed(text: str, depth: int) -> str:
+    """The line with the placement's verdict on it: its depth, or 0 for refused."""
+    return f"{PLACED}{min(max(depth, 0), MAX_MARK_DEPTH)}{text}"
+
+
+def read_mark(line: str) -> tuple[str, bool, int | None]:
+    """(text, set apart, depth) of a line, with its marks taken off.
+
+    ``depth`` is None where no placement judged the line -- the text is then
+    all there is to go by, as before. A depth of 0 is a judgement too, and the
+    one reading that says "not a heading".
+    """
+    if line.startswith(PLACED) and line[1:2].isdigit():
+        return line[2:], True, int(line[1])
+    if line.startswith(MARK):
+        return line.lstrip(MARK), True, None
+    return line, False, None
+
 
 # How much larger than the body a line must be set before its type alone makes it
 # a heading. Sen et al. sets "Abstract", "References" and the appendix head at

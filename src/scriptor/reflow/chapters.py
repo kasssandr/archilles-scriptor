@@ -133,27 +133,32 @@ def from_outline(
 FALLBACK_CONFIDENCE = 0.6
 
 
+def heads_a_contents(page) -> bool:
+    """Does this page print the heading a volume sets over its contents?
+
+    The heading has to be looked for in two places. Where the outline names
+    the contents and the page confirms it, ``chapter_headings`` has already
+    lifted the title out of the body and into ``Page.heading`` -- Asclepios'
+    and Artificial Humanities' "Inhoudsopgave" / "Contents" are gone from the
+    text by the time anyone gets here.
+    """
+    from scriptor.reflow.toc import is_contents_heading
+
+    if page.heading and is_contents_heading(page.heading):
+        return True
+    return any(is_contents_heading(ln) for ln in page.body_lines[:4])
+
+
 def contents_pages(pages) -> list:
     """The pages of the volume's table of contents, wherever they stand.
 
     The heading decides. A page that reads like a contents list may be a name
     register (Themistios, De eerste minister) or a bibliography (the Oxford
     Handbook, Artificial Humanities); what no register carries is "Índice" or
-    its equivalent written over it. The pages after it are taken as long as
-    they go on listing.
-
-    The heading has to be looked for in two places. Where the outline names the
-    contents and the page confirms it, ``chapter_headings`` has already lifted
-    the title out of the body and into ``Page.heading`` -- Asclepios' and
-    Artificial Humanities' "Inhoudsopgave" / "Contents" are gone from the text
-    by the time anyone gets here.
+    its equivalent written over it (``heads_a_contents``). The pages after it
+    are taken as long as they go on listing.
     """
-    from scriptor.reflow.toc import is_contents_heading, is_toc_page
-
-    def heads_a_contents(page) -> bool:
-        if page.heading and is_contents_heading(page.heading):
-            return True
-        return any(is_contents_heading(ln) for ln in page.body_lines[:4])
+    from scriptor.reflow.toc import is_toc_page
 
     out: list = []
     taking = False

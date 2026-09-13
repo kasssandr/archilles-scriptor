@@ -102,6 +102,11 @@ class Page:
     # A chapter title the outline states for this page and the page confirmed
     # (reflow/outline.py). Rendered as a heading before the page's text.
     heading: str | None = None
+    # Where that heading stands. The placement (reflow/placement.py) marks the
+    # heading on the line it found it on and names it here as well, because
+    # assign_modes, assign_regions and the contents search read this field and
+    # know nothing of marks. It is then not rendered a second time.
+    heading_in_body: bool = False
     # Small-type lines above the first definition of this page's footnote
     # block: the tail of a note that began on the previous page. Consumed by
     # attach_continuations, None afterwards.
@@ -633,6 +638,8 @@ BULLET_RE = re.compile(r"^[•▪◦‣]\s*\S")
 
 # Imported by value so the hot line loop does not import per line.
 from scriptor.reflow.headings import MARK as HEADING_MARK  # noqa: E402
+from scriptor.reflow.headings import PLACED as PLACED_MARK  # noqa: E402
+from scriptor.reflow.headings import read_mark  # noqa: E402
 from scriptor.reflow.tables import BREAK as TABLE_BREAK  # noqa: E402
 
 
@@ -657,6 +664,16 @@ def heading_level(line: str, *, marked: bool = False) -> int:
     if not m:
         return 0
     return (m.group(1) or m.group(2)).count(".") + 1
+
+
+def _level_of(text: str, marked: bool, placed: int | None) -> int:
+    """The depth of a line: the placement's, where one judged it.
+
+    A judgement of 0 is the placement saying "not a heading" (§5.4) and
+    outranks the text, which would read Bauer's eleven theses as four levels
+    down. Where nothing judged the line, the text decides as it always did.
+    """
+    return placed if placed is not None else heading_level(text, marked=marked)
 
 
 def reconstruct_body(
@@ -767,7 +784,10 @@ def reconstruct_body(
         # A confirmed chapter start: close whatever paragraph is running and
         # set the title as its own heading block. The page marker is not
         # pulled into the heading — it stays noted for the following text.
-        if p.heading:
+        # Where the heading stands in the body it is rendered from there, with
+        # the depth the placement gave it; naming it here as well would print
+        # it twice.
+        if p.heading and not p.heading_in_body:
             end_paragraph()
             saved_marker = pending_page_marker
             pending_page_marker = None
@@ -780,10 +800,10 @@ def reconstruct_body(
 
         n = len(p.body_lines)
         for i, ln in enumerate(p.body_lines):
-            stripped = ln.rstrip()
-            # The typographic mark travels with the line and never into the text.
-            marked = stripped.startswith(HEADING_MARK)
-            stripped = stripped.lstrip(HEADING_MARK)
+            # Both marks travel with the line and never into the text: the one
+            # the typesetter's measurements left, and the placement's verdict
+            # with the depth it decided on (reflow/headings.py).
+            stripped, marked, placed = read_mark(ln.rstrip())
             if not stripped.strip():
                 # Empty line in the middle of the body -> end of paragraph
                 end_paragraph()
@@ -793,7 +813,7 @@ def reconstruct_body(
             # paragraph still running. Columns end mid-sentence often enough that
             # requiring an empty paragraph would swallow half the headings.
             if marked and not pending_hyphen and cur_chunks:
-                if heading_level(stripped, marked=True) > 0:
+                if _level_of(stripped, True, placed) > 0:
                     saved_marker = pending_page_marker
                     pending_page_marker = None
                     end_paragraph()
@@ -814,7 +834,7 @@ def reconstruct_body(
             # A pending page marker is NOT pulled into the heading, but stays
             # noted for the following paragraph.
             if not cur_chunks and not pending_hyphen:
-                lvl = heading_level(stripped, marked=marked)
+                lvl = _level_of(stripped, marked, placed)
                 if lvl > 0:
                     saved_marker = pending_page_marker
                     pending_page_marker = None
@@ -1232,6 +1252,22 @@ def render_entries(pages: list[Page], start_re: re.Pattern[str]) -> list[str]:
     return entries
 
 
+def _opens_another_list(first: Page, page: Page) -> str | None:
+    """Does ``page`` open a second list, under a heading of its own?
+
+    A contents runs over several pages and heads each of them with the same
+    words; that is one list. A volume that follows its contents with a list of
+    figures prints a different name over it, and that is where one list ends
+    and the next begins -- the only thing in the text that says so. The name
+    of the second need not name a region: a "Abbildungsverzeichnis" is a list
+    of its own and the region vocabulary knows no region for it (Anhang B1).
+    """
+    from scriptor.reflow.toc import printed_heading
+
+    name, running = printed_heading(page), printed_heading(first)
+    return name if name and name != running else None
+
+
 def render_book(
     pages: list[Page],
     threshold: int,
@@ -1270,12 +1306,29 @@ def render_book(
     from scriptor.reflow.regions import marker as region_marker
 
     emitted_region: str | None = None
+    split_contents = 0
     while i < len(pages):
         mode = pages[i].mode
         region = pages[i].region
         j = i
-        while j < len(pages) and pages[j].mode == mode and pages[j].region == region:
+        if mode == "toc":
+            # A contents is one list and prints one heading over it. Its pages
+            # can fall on both sides of a region boundary — the front-matter
+            # zone reaches a tenth of the way into a volume (regions.py:561)
+            # and Bauer's contents is longer than that — and breaking the
+            # group there rendered "## Contents" three times over ten pages.
+            # The region of a contents page is `contents`; how many pages the
+            # zone had put elsewhere is reported rather than shown.
             j += 1
+            while (j < len(pages) and pages[j].mode == mode
+                   and not _opens_another_list(pages[i], pages[j])):
+                j += 1
+            split_contents += sum(1 for p in pages[i:j] if p.region != region)
+            region = "contents"
+        else:
+            while (j < len(pages) and pages[j].mode == mode
+                   and pages[j].region == region):
+                j += 1
         group = pages[i:j]
 
         # md only: the TXT profile is for reading, not for consuming. "main"
@@ -1305,16 +1358,24 @@ def render_book(
 
         i = j
 
+    if split_contents:
+        print(
+            f"Contents pages the front-matter zone named otherwise: "
+            f"{split_contents} (rendered as one list under one heading)",
+            file=sys.stderr,
+        )
     result = "\n\n".join(out_blocks).rstrip()
     if fmt == "md" and state["defs"]:
         result += "\n\n" + "\n\n".join(state["defs"])
     if fmt == "md" and anchor_targets:
         result = inject_page_anchors(result, anchor_targets)
-    # Both internal marks are resolved here, where every render path meets. The
-    # heading mark is dropped (reconstruct_body has read it off the line it
-    # belongs to); a folded table's row breaks become the newlines they stand
-    # for, and the table needs a blank line around it to be one in Markdown.
+    # The internal marks are resolved here, where every render path meets. The
+    # heading marks are dropped (reconstruct_body has read them off the lines
+    # they belong to, and the placement's carries its depth digit with it); a
+    # folded table's row breaks become the newlines they stand for, and the
+    # table needs a blank line around it to be one in Markdown.
     result = result.replace(HEADING_MARK, "")
+    result = re.sub(rf"{PLACED_MARK}\d", "", result)
     if TABLE_BREAK in result:
         result = re.sub(
             rf"[ \t]*{TABLE_BREAK}[ \t]*", "\n", result
@@ -1543,6 +1604,7 @@ def main(
     pos_by_phys = {sp.index: pos for pos, sp in enumerate(source_pages)}
     headings_by_pos: dict[int, str] = {}
     chapter_starts: list = []
+    outline_positional: list = []
     if entries and outline_mod.credible(entries):
         # Every level, for the structure. Where a chapter opens is where the
         # printed count may jump, and publishers put "Cover" or the ISBN on
@@ -1557,6 +1619,7 @@ def main(
             for e in entries
             if e.page in pos_by_phys
         ]
+        outline_positional = all_positional
         chapter_starts = from_outline(all_positional, page_lines)
         if chapter_starts:
             from scriptor.reflow.chapters import principal_rank
@@ -1606,9 +1669,44 @@ def main(
     # the consensus reads it once at the end (reflow/rescued.py).
     from scriptor.reflow.rescued import RescuedFolios
     rescued = RescuedFolios(len(page_lines))
+
+    # What this volume calls its own headings, read before anything strips a
+    # line. A stripper about to delete a head-region line has to know whether
+    # the words on it are a title the volume names: then the line is not its
+    # to delete, and the placement decides later (§5.5a, reflow/heads.py).
+    #
+    # The contents is parsed twice, and once here, early. A provisional page
+    # list is enough for it: contents_pages reads body lines, a page's heading
+    # and the shape of a page, and all three are already in hand.
+    from scriptor.reflow.chapters import contents_pages
+    from scriptor.reflow.heads import HeadCandidates
+    from scriptor.reflow.outline import KnownTitles
+    from scriptor.reflow.toc import parse_toc
+
+    early_pages = [
+        Page(num=-1, body_lines=[ln for ln in lines if ln.strip()],
+             heading=headings_by_pos.get(k), index=k + 1)
+        for k, lines in enumerate(page_lines)
+    ]
+    early = contents_pages(early_pages)
+    # Where the volume's own list stands. Neither stripper touches those pages
+    # (running_elements.remove_running_headers), and the placement does not
+    # search them: every title of the volume is printed there.
+    lists = {p.index - 1 for p in early}
+    known = KnownTitles(
+        [e.title for e in parse_toc(early).entries]
+        + [e.title for e in outline_positional]
+    )
+    heads = HeadCandidates(len(page_lines))
+    if known:
+        print(f"Titles this volume names: {len(known)} "
+              f"({plural(len(early), 'contents page')}, "
+              f"{plural(len(outline_positional), 'outline entry')})",
+              file=sys.stderr)
+
     if chapter_titles:
         page_lines, contested = outline_mod.strip_running_titles(
-            page_lines, chapter_titles, rescued)
+            page_lines, chapter_titles, rescued, heads, lists)
         if contested:
             print(
                 f"Chapter running heads carrying a number at both edges: "
@@ -1617,6 +1715,18 @@ def main(
             )
 
     raw_texts = ["\n".join(lines) for lines in page_lines]
+    # The channel the chapter search reads is the one it always read: without
+    # the running heads strip_running_titles has just deferred. A title the
+    # outline names stands on the page that opens it *and* at the head of
+    # every page after it, the opening's own line having been lifted into
+    # Page.heading -- so leaving those lines in would move every such find one
+    # page on (chapters.from_toc, eighteen of them at De eerste minister).
+    deferred = {(c.page_index, c.line_index)
+                for i in range(len(page_lines)) for c in heads.at(i)}
+    search_texts = [
+        [line for k, line in enumerate(lines) if (i, k) not in deferred]
+        for i, lines in enumerate(page_lines)
+    ]
 
     # Remove running heads and footers document-wide, before parse_page runs.
     # Where the geometry cut an apparatus, the foot of the page went with it:
@@ -1641,7 +1751,8 @@ def main(
     # ending in the folio. Choosing between them here would be deciding on one
     # source while a second exists; the fit is where that belongs.
     cleaned, headers, footers = strip_running_elements(
-        raw_texts, rescued, foot_blocks=fn_blocks)
+        raw_texts, rescued, foot_blocks=fn_blocks, known=known, heads=heads,
+        lists=lists)
     fn_blocks = remove_running_footers_from_blocks(fn_blocks, footers, rescued)
     rescued_by_ordinal = rescued.by_position()
     if headers:
@@ -1709,25 +1820,29 @@ def main(
     # opening still spells its title out. Empty lines are dropped because
     # mark_indent_breaks injects them and match_prefix_lines only ever looks at
     # HEAD_REGION + 2 lines (outline.py) -- a blank would spend that window.
-    from scriptor.reflow.chapters import contents_pages, from_toc
-    from scriptor.reflow.toc import parse_toc
+    from scriptor.reflow.chapters import from_toc
 
+    raw_by_pos = {
+        pg.index: [ln for ln in raw_texts[pg.index - 1].splitlines() if ln.strip()]
+        for pg in pages
+    }
+    search_by_pos = {
+        pg.index: [ln for ln in search_texts[pg.index - 1] if ln.strip()]
+        for pg in pages
+    }
     toc_pages = contents_pages(pages)
+    contents_entries: list = []
     if toc_pages:
         parsed = parse_toc(toc_pages)
+        contents_entries = parsed.entries
         if parsed.entries:
-            raw_by_pos = {
-                pg.index: [ln for ln in raw_texts[pg.index - 1].splitlines()
-                           if ln.strip()]
-                for pg in pages
-            }
             found = from_toc(
                 parsed.entries,
-                raw_by_pos,
+                search_by_pos,
                 {p.index for p in toc_pages},
             )
-            known = {c.pos for c in chapter_starts}
-            fresh = [c for c in found if c.pos not in known]
+            taken = {c.pos for c in chapter_starts}
+            fresh = [c for c in found if c.pos not in taken]
             if fresh:
                 chapter_starts = sorted(chapter_starts + fresh,
                                         key=lambda c: c.pos)
@@ -1792,6 +1907,71 @@ def main(
             file=sys.stderr,
         )
 
+    # Where the headings stand (Gliederungsmodell §5.2). After the verdict,
+    # because rules 2 and 3 read the labels it decided on, and after the
+    # folios have been restored and cut, because only then is the body what
+    # the reader will see. Before assign_modes, because what a page is headed
+    # is part of what a page is.
+    from scriptor.reflow import placement as placement_mod
+    from scriptor.reflow.regions import region_of_heading
+    from scriptor.structure import Entry, is_roman_volume, learn_schemes
+
+    contents_wants: list = []
+    if contents_entries:
+        learnt = learn_schemes([
+            Entry(text=e.text, page=e.page if e.page >= 0 else None,
+                  region=region_of_heading(e.title))
+            for e in contents_entries
+        ])
+        contents_wants = [
+            placement_mod.Want(
+                text=e.text, title=e.text, depth=depth,
+                page=str(e.page) if e.page >= 0 else None, source="contents",
+                region=region_of_heading(e.title))
+            for e, depth in zip(contents_entries, learnt.depths)
+        ]
+    outline_wants = [
+        placement_mod.Want(text=e.title, title=e.title, depth=e.level,
+                           pos=e.page, source="outline",
+                           region=region_of_heading(e.title))
+        for e in outline_positional
+    ]
+    sources = placement_mod.merge(contents_wants, outline_wants)
+    if sources.wants:
+        placement = placement_mod.place(
+            sources.wants, raw_by_pos,
+            {p.index: (p.label, p.label_source) for p in pages},
+            skip={p.index for p in toc_pages},
+        )
+        applied = placement_mod.apply(pages, placement, heads,
+                                      skip={p.index for p in toc_pages})
+        by_rule = Counter(p.rule for p in placement.placed)
+        print(
+            f"Headings placed: {len(placement.placed)} of "
+            f"{plural(len(sources.wants), 'entry')} "
+            f"(on the page named {by_rule[2] + by_rule[3]}, by reading order "
+            f"{by_rule[4]}); {len(placement.unplaced)} found on no page, "
+            f"{len(placement.rejected)} declined, {len(applied.lost)} gone "
+            f"from the body",
+            file=sys.stderr,
+        )
+        if sources.matched or outline_wants:
+            print(
+                f"Contents and outline: {sources.matched} of "
+                f"{plural(len(outline_wants), 'outline entry')} also named by "
+                f"the contents — "
+                + ("one list, the outline states the depths"
+                   if sources.same_list else "two lists, both heard"),
+                file=sys.stderr,
+            )
+        if applied.heads_kept or applied.heads_removed:
+            print(
+                f"Head-region lines carrying a known title: "
+                f"{applied.heads_kept} confirmed as the heading, "
+                f"{applied.heads_removed} removed as running heads",
+                file=sys.stderr,
+            )
+
     assign_modes(pages)
     mode_counts = Counter(p.mode for p in pages)
     print(f"Mode distribution: {dict(mode_counts)}", file=sys.stderr)
@@ -1803,6 +1983,22 @@ def main(
         f"Regions named: {dict(named) if named else 'none — the document reads as running text'}",
         file=sys.stderr,
     )
+
+    # The numbered lines no entry placed, judged against the volume's own
+    # table of schemes (§5.4). After the regions, so that a contents page or a
+    # bibliography is not asked; before the calibration, because a line that
+    # has become a heading is no longer a line of running text.
+    if sources.wants:
+        numbering = placement_mod.judge_numbering(
+            pages, sources.table,
+            roman=is_roman_volume(w.text for w in sources.wants))
+        if numbering.refused or numbering.promoted:
+            print(
+                f"Numbered lines judged: {len(numbering.refused)} refused as "
+                f"headings the contents does not name, {len(numbering.promoted)} "
+                f"taken as the level below it",
+                file=sys.stderr,
+            )
 
     threshold, hist = calibrate_threshold(pages)
     print(f"Calibration (main pages only): threshold <= {threshold} chars", file=sys.stderr)

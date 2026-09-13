@@ -135,9 +135,11 @@ def test_render_toc_clean_produces_linked_hierarchy():
     res = render_toc(pages, available_pages={"15", "18", "42"})
     text = "\n".join(res.blocks)
     assert "## Contents" in text   # no heading printed -> tool fallback
-    assert "- [Die Krise](#p-15) — p. 15" in text
-    assert "  - [Vorgeschichte](#p-18) — p. 18" in text
-    assert "- [Der Wandel](#p-42) — p. 42" in text
+    # The designator stands in the list, as the page prints it: the rebuilt
+    # contents is the volume's own, not a paraphrase of it.
+    assert "- [1. Die Krise](#p-15) — p. 15" in text
+    assert "  - [1.1 Vorgeschichte](#p-18) — p. 18" in text
+    assert "- [2. Der Wandel](#p-42) — p. 42" in text
     assert res.anchor_targets == {"15", "18", "42"}
 
 
@@ -149,9 +151,9 @@ def test_render_toc_roman_over_arabic_indentation():
     ], {})]
     res = render_toc(pages, available_pages={"9", "25", "30"})
     text = "\n".join(res.blocks)
-    assert "- [Erster Teil](#p-9) — p. 9" in text
-    assert "- [Zweiter Teil](#p-25) — p. 25" in text
-    assert "  - [Das Kapitel](#p-30) — p. 30" in text
+    assert "- [I. Erster Teil](#p-9) — p. 9" in text
+    assert "- [II. Zweiter Teil](#p-25) — p. 25" in text
+    assert "  - [1. Das Kapitel](#p-30) — p. 30" in text
 
 
 def test_render_toc_entry_without_body_page_has_no_link():

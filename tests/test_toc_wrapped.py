@@ -65,12 +65,31 @@ def test_a_heading_line_is_not_joined_either():
     assert titles == ["Nota preliminar", "Introducción"]
 
 
-def test_only_the_line_directly_above_is_joined():
-    # Two orphan lines in a row are not one entry: a contents that wraps twice
-    # is rare, and joining a run of them would swallow whatever stands above.
-    page = _page(["Erste Waise", "Zweite Waise", "Ein Titel | 12"])
+def test_an_entry_may_wrap_over_three_lines():
+    # Reversed after G3. Only the line directly above an entry used to be
+    # joined, on the grounds that a run of them is not one title -- and Bauer
+    # sets 36 of its entries over three lines, each of which then lost its
+    # head: "b) Verletzung des unbenannten Rechts der öffentlichen" stayed
+    # behind while "Wiedergabe gem. § 15 ..." became the entry.
+    page = _page(["b) Verletzung des unbenannten Rechts",
+                  "der öffentlichen Wiedergabe",
+                  "gem. § 15 Abs. 2 UrhG | 231"])
     entries = parse_toc([page]).entries
-    assert [e.title for e in entries] == ["Zweite Waise Ein Titel"]
+    # "b)" stays in the title: _split_numbering knows arabic, roman and the
+    # bullet, and a letter is none of them. What matters here is that the
+    # first line is part of the entry at all.
+    assert [e.title for e in entries] == [
+        "b) Verletzung des unbenannten Rechts der öffentlichen Wiedergabe "
+        "gem. § 15 Abs. 2 UrhG"]
+
+
+def test_a_run_of_orphans_longer_than_a_wrapped_entry_is_not_joined_whole():
+    # Two halves is where it stops. A longer run is not one title, and
+    # folding it into the next number would swallow whatever stands above it.
+    page = _page(["Erste Waise", "Zweite Waise", "Dritte Waise",
+                  "Ein Titel | 12"])
+    entries = parse_toc([page]).entries
+    assert [e.title for e in entries] == ["Zweite Waise Dritte Waise Ein Titel"]
 
 
 # --- what the typography says about an entry's rank ---------------------------

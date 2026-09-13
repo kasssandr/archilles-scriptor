@@ -39,6 +39,18 @@ class TocEntry:
     title: str
     page: int          # printed page number per the TOC; -1 if none
     level: int         # 1-based; 1 = top level
+    designator: str = ""   # the number the contents prints, verbatim
+
+    @property
+    def text(self) -> str:
+        """The entry as the volume prints it: designator and title.
+
+        ``title`` is what a search looks for on a page and has its number
+        taken off, because a page may set it differently or not at all. The
+        printed form is what the rebuilt contents shows and what the scheme
+        table is learnt from -- a level is a level by its number.
+        """
+        return f"{self.designator} {self.title}".strip()
 
 
 @dataclass
@@ -117,29 +129,38 @@ def is_toc_page(
 _BULLET_PREFIX = re.compile(r"^\s*[•▪◦‣*]\s*(?P<rest>\S.*)$")
 
 
-def _split_numbering(title: str, *, roman_present: bool) -> tuple[int, str]:
-    """(level, title_without_number). Unnumbered -> (1, title).
+def _split_numbering(title: str, *, roman_present: bool) -> tuple[int, str, str]:
+    """(level, designator, title_without_number). Unnumbered -> (1, "", title).
 
     When the TOC uses roman-numeral outlining (``roman_present``), roman
     numbers form the top level and arabic numbering shifts one level deeper.
     Without roman numbers, arabic numbering stays 1-based as before.
+
+    The designator is handed back rather than thrown away. It is what the
+    volume printed, so the rebuilt contents shows it -- Bauer's link list read
+    "Aneignung als Rechtsbegriff" where the page reads "I. Aneignung als
+    Rechtsbegriff", and 120 of its 178 entries had lost their number that way.
     """
     bullet = _BULLET_PREFIX.match(title)
     if bullet:
-        # One level below whatever the volume calls its top -- and the bullet
-        # itself is not part of the title, which is set without it on the page.
-        inner_level, inner = _split_numbering(bullet.group("rest"),
-                                              roman_present=roman_present)
-        return max(inner_level, 1) + 1, inner
+        # One level below whatever the volume calls its top. The bullet is not
+        # part of the title -- the page is set without it -- but it is part of
+        # what the contents prints, and it is the only thing stating the rank.
+        inner_level, inner_designator, inner = _split_numbering(
+            bullet.group("rest"), roman_present=roman_present)
+        mark = title.strip()[0]
+        return (max(inner_level, 1) + 1,
+                f"{mark} {inner_designator}".strip(), inner)
     if roman_present:
         rm = _ROMAN_PREFIX.match(title)
         if rm:
-            return 1, rm.group("rest").strip()
+            return 1, f"{rm.group('rom')}.", rm.group("rest").strip()
     m = _NUM_PREFIX.match(title)
     if m:
         depth = m.group(1).count(".") + 1
-        return depth + (1 if roman_present else 0), m.group("rest").strip()
-    return 1, title
+        designator = title[: m.start("rest")].strip()
+        return depth + (1 if roman_present else 0), designator, m.group("rest").strip()
+    return 1, "", title
 
 
 # A line without a page number that is a thing in its own right, not the first
@@ -180,16 +201,51 @@ def _stands_alone(line: str) -> bool:
     return bool(_CHAPTER_MARK.match(line)) or is_contents_heading(line)
 
 
-def parse_toc(pages: list[Page]) -> TocParse:
-    raw: list[tuple[str, int]] = []   # (title_with_number, page)
+# How many wrapped halves may stand over one entry. A three-line entry is a
+# real shape -- Bauer's "b) Verletzung des unbenannten Rechts der öffentlichen /
+# Wiedergabe gem. § 15 Abs. 2 ... / ... 231" -- and joining only the line
+# directly above it left its head standing as an entry of its own. Two is where
+# it stops: a run longer than that is not one title but a block of lines the
+# parser has no business folding into the next number it sees.
+_MAX_WRAP_LINES = 2
+
+
+@dataclass
+class _Line:
+    """One line of the contents, before anything is decided about it."""
+
+    text: str                 # the line as it stands
+    title: str                # its title part, where it ends in a page number
+    page: int | None          # that number
+    alone: bool               # a thing in its own right, never half an entry
+    opens_page: bool = False
+
+
+def _demote_dips(lines: list[_Line]) -> int:
+    """Take the number off a line whose page falls below both its neighbours.
+
+    A contents rises. "b) ... nach § 24 Abs. 1" reads as an entry on page 1
+    between entries on 230 and 231, and the shape of that mistake is exactly a
+    single step down and back up -- a series that genuinely restarts (an
+    appendix numbered afresh) does not, because the entries after it are low
+    too. Bauer loses part of 36 entries this way, and the parser had no
+    plausibility check of the sequence at all.
+    """
+    numbered = [line for line in lines if line.page is not None]
+    demoted = 0
+    for before, here, after in zip(numbered, numbered[1:], numbered[2:]):
+        if here.page < before.page and here.page < after.page:
+            here.page, here.title = None, ""
+            here.alone = _stands_alone(here.text)
+            demoted += 1
+    return demoted
+
+
+def _read_lines(pages: list[Page]) -> tuple[list[_Line], int]:
+    out: list[_Line] = []
     non_empty = 0
-    # The line above, when it carried no page number and could be the first
-    # half of an entry that wrapped. Between a quarter and a half of the lines
-    # in this corpus' contents lists have no number, and wrapped titles are the
-    # largest group among them: Masones loses nine of its fourteen chapters
-    # that way, leaving "Escocesa | 36" and "cia | 107" behind.
-    pending: str | None = None
     for p in pages:
+        opens = True
         for ln in p.body_lines:
             s = ln.strip()
             if not s:
@@ -201,13 +257,6 @@ def parse_toc(pages: list[Page]) -> TocParse:
                 continue
             non_empty += 1
             m = _ENTRY_RE.match(s)
-            if not m or not m.group("title").strip():
-                # No number: the first half of a wrapped entry, or a line that
-                # belongs to nobody. Only the line *directly* above an entry is
-                # ever joined -- a run of them is not one title, and joining
-                # would swallow whatever stands over it.
-                pending = None if _stands_alone(s) else s
-                continue
             # Leaders run from the title to its number, and not only as dots:
             # Masones sets a pipe ("Nota preliminar | 10"), others a middle dot
             # or an ellipsis. None of them is part of the title.
@@ -216,22 +265,49 @@ def parse_toc(pages: list[Page]) -> TocParse:
             # states a rank (_BULLET_PREFIX), and stripping it here would throw
             # that away before anyone asks -- which is how six of Carlomagno's
             # sections came out as chapters.
-            title = m.group("title").strip(" .·|–—…\t")
-            if pending:
-                title = f"{pending} {title}".strip()
-                pending = None
-            if title:
-                raw.append((title, int(m.group("page"))))
-        pending = None      # a wrap does not cross a page break
+            title = m.group("title").strip(" .·|–—…\t") if m else ""
+            out.append(_Line(text=s, title=title,
+                             page=int(m.group("page")) if m and title else None,
+                             alone=_stands_alone(s), opens_page=opens))
+            opens = False
+    return out, non_empty
+
+
+def parse_toc(pages: list[Page]) -> TocParse:
+    lines, non_empty = _read_lines(pages)
+    _demote_dips(lines)
+
+    raw: list[tuple[str, int]] = []   # (title_with_number, page)
+    # The lines above, where they carried no page number and could be the
+    # first halves of an entry that wrapped. Between a quarter and a half of
+    # the lines in this corpus' contents lists have no number, and wrapped
+    # titles are the largest group among them: Masones loses nine of its
+    # fourteen chapters that way, leaving "Escocesa | 36" and "cia | 107".
+    pending: list[str] = []
+    for line in lines:
+        if line.opens_page:
+            pending.clear()         # a wrap does not cross a page break
+        if line.page is None:
+            if line.alone:
+                pending.clear()
+            else:
+                pending.append(line.text)
+                del pending[:-_MAX_WRAP_LINES]
+            continue
+        title = " ".join(pending + [line.title]).strip()
+        pending.clear()
+        if title:
+            raw.append((title, line.page))
 
     # Only assume a roman-numeral scheme if >=2 entries start that way
     # (a lone "M." is more likely an initial than a chapter number).
     roman_present = sum(1 for t, _ in raw if _ROMAN_PREFIX.match(t)) >= 2
     entries: list[TocEntry] = []
     for t, pg in raw:
-        level, title = _split_numbering(t, roman_present=roman_present)
+        level, designator, title = _split_numbering(t, roman_present=roman_present)
         if title:
-            entries.append(TocEntry(title=title, page=pg, level=level))
+            entries.append(TocEntry(title=title, page=pg, level=level,
+                                    designator=designator))
 
     confidence = len(entries) / non_empty if non_empty else 0.0
     seq = [e.page for e in entries if e.page >= 0]
@@ -258,16 +334,21 @@ FALLBACK_HEADING = "Contents"
 _MAX_HEADING_LEN = 50
 
 
-def _printed_heading(pages: list[Page]) -> str | None:
-    """The heading the book prints above its TOC entries, or None.
+def printed_heading(page: Page) -> str | None:
+    """The heading this page prints above its TOC entries, or None.
 
-    Conservative: only the first non-empty line of the first page, only when it
-    is not itself an entry, is short, and carries letters. ``parse_toc`` still
-    counts the line among the non-entry lines, so the confidence heuristic is
-    unaffected by this.
+    Conservative: only the first non-empty line, only when it is not itself an
+    entry, is short, and carries letters. ``parse_toc`` still counts the line
+    among the non-entry lines, so the confidence heuristic is unaffected.
     """
-    if not pages:
-        return None
+    pages = [page]
+    if pages[0].heading and is_contents_heading(pages[0].heading):
+        # The outline named it and the page confirmed it, so chapter_headings
+        # lifted the line out of the body before anyone got here. It is still
+        # the heading this volume prints over its list, and dropping it costs
+        # the contents its own name -- Bauer's "Inhaltsverzeichnis" and
+        # "Abbildungsverzeichnis" both went that way.
+        return pages[0].heading.strip()
     for ln in pages[0].body_lines:
         s = ln.strip()
         if not s:
@@ -291,13 +372,13 @@ def render_toc(pages: list[Page], available_pages: set[str]) -> TocRender:
             # shared anchor id would send the link into the front matter.
             label = str(e.page)
             if e.page >= 0 and label in available_pages:
-                lines.append(f"{indent}- [{e.title}](#p-{label}) — p. {label}")
+                lines.append(f"{indent}- [{e.text}](#p-{label}) — p. {label}")
                 targets.add(label)
             elif e.page >= 0:
-                lines.append(f"{indent}- {e.title} — p. {label}")
+                lines.append(f"{indent}- {e.text} — p. {label}")
             else:
-                lines.append(f"{indent}- {e.title}")
-        heading = _printed_heading(pages) or FALLBACK_HEADING
+                lines.append(f"{indent}- {e.text}")
+        heading = (printed_heading(pages[0]) if pages else None) or FALLBACK_HEADING
         return TocRender(blocks=[f"## {heading}", "\n".join(lines)],
                          anchor_targets=targets)
 
