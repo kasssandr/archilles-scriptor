@@ -136,6 +136,7 @@ def parse_page(
     fn_block: list[str] | None = None,
     *,
     geometry_verified: bool = False,
+    deferred_top: int = 0,
 ) -> Page | None:
     """Parse a single page file. Returns None if empty.
 
@@ -143,6 +144,13 @@ def parse_page(
     verified it (small type at the bottom, see ``split_small_type_block``).
     Inside such a block the ``NN.`` convention is trusted alongside ``NN)``;
     on bare text it never is.
+
+    ``deferred_top`` is how many leading lines the strippers left standing for
+    the placement to judge (``reflow.heads``). They are furniture in waiting,
+    and the page's own folio stands below them: a volume that prints its
+    number on a line of its own under the running head had that number read
+    until the head stopped being deleted here, and would otherwise lose the
+    printed reading for the pages concerned -- 49 of Militarizing Men's 276.
 
     ``geometry_verified`` says the page was reassembled from measured lines.
     Then ``split_small_type_block`` has already looked for a footnote block and
@@ -174,12 +182,13 @@ def parse_page(
             candidates.append(
                 FolioCandidate(len(lines) - 1, lines[-1], lb, "bottom"))
             lines.pop()
-    if lines:
-        lt = detect_page_label(lines[0])
+    if len(lines) > deferred_top:
+        lt = detect_page_label(lines[deferred_top])
         if lt is not None:
             label_top = lt
-            candidates.append(FolioCandidate(0, lines[0], lt, "top"))
-            lines.pop(0)
+            candidates.append(
+                FolioCandidate(deferred_top, lines[deferred_top], lt, "top"))
+            lines.pop(deferred_top)
             # The bottom candidate moves up by one, and so does its home.
             candidates = [
                 FolioCandidate(c.line_index - 1, c.text, c.label, c.edge)
@@ -664,6 +673,21 @@ def heading_level(line: str, *, marked: bool = False) -> int:
     if not m:
         return 0
     return (m.group(1) or m.group(2)).count(".") + 1
+
+
+def _leading(text: str, deferred: set[str]) -> int:
+    """How many lines this page opens with that a stripper left for later.
+
+    Matched by their wording rather than by the index the channel noted: the
+    two strippers count in two different page lists, and what both of them
+    agree on is what stands there.
+    """
+    k = 0
+    for line in text.strip().split("\n"):
+        if line.strip() not in deferred:
+            break
+        k += 1
+    return k
 
 
 def _level_of(text: str, marked: bool, placed: int | None) -> int:
@@ -1771,7 +1795,9 @@ def main(
     for ordinal, (text, raw, fn_block, sp, rec) in enumerate(
         zip(cleaned, raw_texts, fn_blocks, source_pages, reconstructions), start=1
     ):
-        pg = parse_page(text, fn_block=fn_block, geometry_verified=rec.measured)
+        deferred = {c.text.strip() for c in heads.at(ordinal - 1)}
+        pg = parse_page(text, fn_block=fn_block, geometry_verified=rec.measured,
+                        deferred_top=_leading(text, deferred))
         if pg is None and rescued_by_ordinal.get(ordinal):
             # The page was not empty: everything it carried was furniture, and
             # the strippers took it. That is not the same as a blank leaf, and

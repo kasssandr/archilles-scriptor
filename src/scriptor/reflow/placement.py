@@ -43,7 +43,7 @@ from dataclasses import dataclass, field, replace
 from statistics import median
 from typing import Iterable, Sequence
 
-from scriptor.reflow.headings import PLACED, mark_placed, read_mark
+from scriptor.reflow.headings import mark_placed, read_mark
 from scriptor.reflow.heads import HeadCandidates
 from scriptor.reflow.outline import HEAD_REGION, fold, folded_spans, similar
 from scriptor.structure import (
@@ -525,7 +525,9 @@ def judge_numbering(pages, table: SchemeTable, *, roman: bool) -> Applied:
                     if ordinal is not None:
                         runs.setdefault(scheme, []).append((page, i, text, ordinal))
             previous = text
-        flush()
+        # A page break ends no run: La masonería sets seventeen of these in a
+        # row over thirty-one pages (G6). Only a heading does.
+    flush()
 
     for page, i, text, _ordinal_value in keep:
         page.body_lines[i] = mark_placed(text, deepest + 1)

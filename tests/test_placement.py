@@ -315,3 +315,15 @@ def test_a_long_line_is_not_a_heading_however_it_is_numbered():
                                 roman=False)
 
     assert result.promoted == []
+
+
+def test_a_run_of_the_lowest_level_is_not_broken_by_a_page_end():
+    """La masonería sets seventeen of them over thirty-one pages (G6). What
+    ends a run is a heading, not a leaf of paper."""
+    first = _page(80, "80", *_prose(3), "1. EL MITO DEL ANTICLERICALISMO")
+    second = _page(81, "81", *_prose(3), "2. LA LEYENDA NEGRA")
+    result = pl.judge_numbering([first, second], _table(("roman-upper", 1)),
+                                roman=True)
+
+    assert [r["text"] for r in result.promoted] == [
+        "1. EL MITO DEL ANTICLERICALISMO", "2. LA LEYENDA NEGRA"]
