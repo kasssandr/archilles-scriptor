@@ -149,6 +149,30 @@ def heads_a_contents(page) -> bool:
     return any(is_contents_heading(ln) for ln in page.body_lines[:4])
 
 
+def first_list(pages: list) -> list:
+    """The pages of the first list in a contents run.
+
+    A volume's contents divides it; a list of illustrations behind it does
+    not. Both are taken by ``contents_pages`` -- the second goes on listing,
+    which is all that rule asks -- and telling them apart matters where the
+    entries are read as headings: Artificial Humanities set twenty figure
+    captions into its text that way. They are told apart the way the renderer
+    tells them apart, by the name printed over them.
+    """
+    from scriptor.reflow.toc import printed_heading
+
+    if not pages:
+        return []
+    head = printed_heading(pages[0])
+    out = [pages[0]]
+    for page in pages[1:]:
+        name = printed_heading(page)
+        if head and name and name != head:
+            break
+        out.append(page)
+    return out
+
+
 def contents_pages(pages) -> list:
     """The pages of the volume's table of contents, wherever they stand.
 

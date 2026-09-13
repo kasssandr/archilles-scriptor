@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 from scriptor.reflow.core import Page, render_frontmatter
 from scriptor.reflow.pagelabel import PAGE_MARKER_RE
+from scriptor.structure import scheme_of
 
 TOC_LINK_THRESHOLD = 0.7
 
@@ -300,7 +301,16 @@ def parse_toc(pages: list[Page]) -> TocParse:
                 pending.append(line.text)
                 del pending[:-_MAX_WRAP_LINES]
             continue
-        title = " ".join(pending + [line.title]).strip()
+        # A line that opens with a designator of its own opens an entry, and
+        # an entry is not the second half of the one above it. Without that
+        # test a contents whose page numbers the parser cannot read -- roman
+        # numerals, a tab instead of leaders -- folds whole runs of its
+        # entries into the next number it does read (Artificial Humanities
+        # merged "2.6.1", "2.6.2" and "Chapter 3" into one).
+        if pending and not scheme_of(line.title, roman_volume=True)[0]:
+            title = " ".join(pending + [line.title]).strip()
+        else:
+            title = line.title
         pending.clear()
         if title:
             raw.append((title, line.page))

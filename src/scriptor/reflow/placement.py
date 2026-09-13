@@ -254,8 +254,12 @@ def place(
         if not found:
             result.unplaced.append(want)
             continue
-        expected = ({want.pos} if want.pos is not None
-                    else set(by_label.get(str(want.page).strip(), ())))
+        if want.pos is not None:
+            expected = {want.pos}           # the outline states a position
+        elif want.page is not None:
+            expected = set(by_label.get(str(want.page).strip(), ()))
+        else:
+            expected = set()                # the list names no page at all
         on_page = [f for f in found if f.pos in expected]
         below = [f for f in on_page if not f.in_head]
         after = [f for f in found if (f.pos, f.line) > cursor]
@@ -493,7 +497,11 @@ def judge_numbering(pages, table: SchemeTable, *, roman: bool) -> Applied:
     def flush() -> None:
         for run in runs.values():
             ordinals = [c[3] for c in run]
-            if len(run) >= 2 and all(a < b for a, b in zip(ordinals, ordinals[1:])):
+            # In sequence, and G6 means it: a), b), c) and 1., 2., 3. -- every
+            # step of one. Merely ascending admits a run of numbered
+            # quotations (15., 20., 23., 28. in Artificial Humanities), which
+            # counts but does not divide.
+            if len(run) >= 2 and all(b - a == 1 for a, b in zip(ordinals, ordinals[1:])):
                 keep.extend(run)
         runs.clear()
 

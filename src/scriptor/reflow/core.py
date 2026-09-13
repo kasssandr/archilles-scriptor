@@ -1725,7 +1725,7 @@ def main(
     if known:
         print(f"Titles this volume names: {len(known)} "
               f"({plural(len(early), 'contents page')}, "
-              f"{plural(len(outline_positional), 'outline entry')})",
+              f"{plural(len(outline_positional), 'outline entry', 'outline entries')})",
               file=sys.stderr)
 
     if chapter_titles:
@@ -1846,7 +1846,7 @@ def main(
     # opening still spells its title out. Empty lines are dropped because
     # mark_indent_breaks injects them and match_prefix_lines only ever looks at
     # HEAD_REGION + 2 lines (outline.py) -- a blank would spend that window.
-    from scriptor.reflow.chapters import from_toc
+    from scriptor.reflow.chapters import first_list, from_toc
 
     raw_by_pos = {
         pg.index: [ln for ln in raw_texts[pg.index - 1].splitlines() if ln.strip()]
@@ -1860,7 +1860,11 @@ def main(
     contents_entries: list = []
     if toc_pages:
         parsed = parse_toc(toc_pages)
-        contents_entries = parsed.entries
+        # The placement hears the volume's contents, not every list behind it:
+        # a list of illustrations divides nothing, and its captions are not
+        # headings. The chapter search below keeps reading all of them, as it
+        # always has, so the pagination verdict is told the same thing.
+        contents_entries = parse_toc(first_list(toc_pages)).entries
         if parsed.entries:
             found = from_toc(
                 parsed.entries,
@@ -1974,7 +1978,7 @@ def main(
         by_rule = Counter(p.rule for p in placement.placed)
         print(
             f"Headings placed: {len(placement.placed)} of "
-            f"{plural(len(sources.wants), 'entry')} "
+            f"{plural(len(sources.wants), 'entry', 'entries')} "
             f"(on the page named {by_rule[2] + by_rule[3]}, by reading order "
             f"{by_rule[4]}); {len(placement.unplaced)} found on no page, "
             f"{len(placement.rejected)} declined, {len(applied.lost)} gone "
@@ -1984,7 +1988,7 @@ def main(
         if sources.matched or outline_wants:
             print(
                 f"Contents and outline: {sources.matched} of "
-                f"{plural(len(outline_wants), 'outline entry')} also named by "
+                f"{plural(len(outline_wants), 'outline entry', 'outline entries')} also named by "
                 f"the contents — "
                 + ("one list, the outline states the depths"
                    if sources.same_list else "two lists, both heard"),
