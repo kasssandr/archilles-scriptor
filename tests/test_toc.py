@@ -370,3 +370,17 @@ def test_toc_lines_use_tool_voice_for_the_page_reference():
     assert "- [Da](#p-15) — p. 15" in text
     assert "- Fehlt — p. 77" in text     # unlinked entry keeps the reference
     assert " S. " not in text            # no German abbreviation in tool prose
+
+
+def test_render_toc_keeps_the_designator_a_volume_prints():
+    """Bauer's link list read "Aneignung als Rechtsbegriff" where the page
+    reads "I. Aneignung als Rechtsbegriff": 120 of 178 entries had lost their
+    number. A letter keeps it by another road -- _split_numbering does not
+    know "A.", so it never took it off the title in the first place."""
+    pages = [Page(-1, [
+        "I. Aneignung als Rechtsbegriff .... 24",
+        "A. Bildliche Aneignung ............ 25",
+    ], {})]
+    text = "\n".join(render_toc(pages, available_pages={"24", "25"}).blocks)
+    assert "- [I. Aneignung als Rechtsbegriff](#p-24) — p. 24" in text
+    assert "- [A. Bildliche Aneignung](#p-25) — p. 25" in text
