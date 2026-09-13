@@ -138,6 +138,18 @@ def build_parser() -> argparse.ArgumentParser:
     tp.add_argument("src", type=Path, help="Markdown master (e.g. book.md)")
     tp.add_argument("--out", type=Path, required=True, help="translation-ready .md")
 
+    hd = sub.add_parser(
+        "headings",
+        help="write a volume's own division into an already edited master "
+             "(reads its contents list; writes '#' lines and the structure sidecar)",
+    )
+    hd.add_argument("src", type=Path, help="prepared Markdown master (e.g. book.md)")
+    hd.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report what would be written without touching the master",
+    )
+
     ln = sub.add_parser(
         "learn",
         help="decision sidecars -> OCR profile (which glyph a corrected corpus calls which digit)",
@@ -287,6 +299,8 @@ def _dispatch(args, parser) -> int:
         briefing_path = pipeline.translate_prep(args.src, args.out)
         print(f"Translation-ready file written: {args.out}", file=sys.stderr)
         print(f"Briefing: {briefing_path}", file=sys.stderr)
+    elif args.cmd == "headings":
+        pipeline.headings(args.src, dry_run=args.dry_run)
     elif args.cmd == "learn":
         prof = pipeline.learn(args.src, args.out)
         print(f"Written: {args.out}", file=sys.stderr)
