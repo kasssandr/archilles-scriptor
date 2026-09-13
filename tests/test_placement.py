@@ -341,3 +341,16 @@ def test_only_a_scheme_the_list_actually_placed_may_refuse():
     page = _page(100, "100", *_prose(2), "2. Ein Abschnitt")
     loud = pl.judge_numbering([page], table, roman=False, leads={"arabic"})
     assert [r["text"] for r in loud.refused] == ["2. Ein Abschnitt"]
+
+
+def test_a_list_of_six_entries_refuses_nothing():
+    """Volume 10482 of the G2 (c) sample: a contents of six entries declared
+    forty numbered lines to be text, and its outline names thirty of them as
+    headings. A list that short does not speak for the volume."""
+    wants = [_want(f"{k}. Ein Abschnitt", 2, page="10") for k in range(1, 7)]
+    placement = pl.Placement(placed=[
+        pl.Placed(w, 10, 0, 1, False, 2, 0) for w in wants])
+    assert pl.placed_schemes(placement, roman=False) == set()
+
+    placement.placed += [pl.Placed(w, 11, 0, 1, False, 2, 0) for w in wants]
+    assert pl.placed_schemes(placement, roman=False) == {"arabic"}

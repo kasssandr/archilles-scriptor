@@ -63,6 +63,13 @@ MIN_TITLE = 4
 # all. A shorter one stands inside too many other words once folded.
 _GATE_WORD = 6
 
+# How many headings a list has to have placed before it may declare a numbered
+# line *not* a heading (§5.4). Volume 10482 of the G2 (c) sample carries a
+# contents of six entries and refused forty lines on their strength, thirty of
+# which its outline names as headings; a list that short is not a list of the
+# volume's divisions. Bauer places 214, 2484 places 92.
+MIN_PLACED_TO_REFUSE = 10
+
 # Of the outline's titles, how many the contents has to name before the outline
 # counts as the contents itself and its levels replace the learnt depths
 # (Befund §5.1; the threshold is the Befund's, still unmeasured).
@@ -481,8 +488,12 @@ def placed_schemes(placement: Placement, *, roman: bool) -> set[str]:
     the volume prints without page numbers, leads every level and places
     nothing, and refusing on its word would take the headings away twice over.
     Measured on the sixty-one blind runs of G2 (c), where the contents is
-    often all there is.
+    often all there is -- and where a list of six entries refused forty lines.
+    A list has to have placed ``MIN_PLACED_TO_REFUSE`` headings before it
+    speaks for the volume at all.
     """
+    if len(placement.placed) < MIN_PLACED_TO_REFUSE:
+        return set()
     return {scheme_of(p.want.text, roman)[0] for p in placement.placed} - {""}
 
 
