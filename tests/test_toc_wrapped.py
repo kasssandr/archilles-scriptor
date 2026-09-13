@@ -123,3 +123,27 @@ def test_a_bulleted_entry_ranks_below_an_unbulleted_one():
 def test_the_bullet_does_not_survive_into_the_title():
     page = _page(["• La humanidad de Carlos | 63"])
     assert parse_toc([page]).entries[0].title == "La humanidad de Carlos"
+
+
+def test_a_page_number_that_dips_below_both_neighbours_belongs_to_the_title():
+    """A contents rises. Bauer sets "... nach § 24 Abs. 1" at the end of a
+    wrapped title, and the parser read "1" as the page of an entry standing
+    between page 230 and page 231. One step down and back up is not a page
+    number; a series that genuinely restarts does not look like this, because
+    the entries after it are low too."""
+    page = _page(["a) Der Anwendungsbereich | 230",
+                  "b) Die Verletzung des Rechts nach § 24 Abs. 1",
+                  "UrhG | 231"])
+    entries = parse_toc([page]).entries
+    assert [(e.title, e.page) for e in entries] == [
+        ("a) Der Anwendungsbereich", 230),
+        ("b) Die Verletzung des Rechts nach § 24 Abs. 1 UrhG", 231),
+    ]
+
+
+def test_a_series_that_restarts_keeps_its_entries():
+    """An appendix numbered afresh steps down and stays down: the entry after
+    it does not reach the one before, so this is a series and not a dip."""
+    page = _page(["I. Erster Band | 230", "Anhang A | 1", "Anhang B | 2"])
+    entries = parse_toc([page]).entries
+    assert [e.page for e in entries] == [230, 1, 2]

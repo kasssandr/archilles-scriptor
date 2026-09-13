@@ -225,16 +225,22 @@ def _demote_dips(lines: list[_Line]) -> int:
     """Take the number off a line whose page falls below both its neighbours.
 
     A contents rises. "b) ... nach § 24 Abs. 1" reads as an entry on page 1
-    between entries on 230 and 231, and the shape of that mistake is exactly a
-    single step down and back up -- a series that genuinely restarts (an
-    appendix numbered afresh) does not, because the entries after it are low
-    too. Bauer loses part of 36 entries this way, and the parser had no
-    plausibility check of the sequence at all.
+    between entries on 230 and 231, and the shape of that mistake is a single
+    step out of the running sequence and straight back into it. A series that
+    genuinely restarts -- an appendix numbered afresh -- steps down and stays
+    down, so the entry after it does not reach the one before. Bauer loses
+    part of 36 entries this way, and the parser had no plausibility check of
+    the sequence at all.
     """
     numbered = [line for line in lines if line.page is not None]
     demoted = 0
-    for before, here, after in zip(numbered, numbered[1:], numbered[2:]):
-        if here.page < before.page and here.page < after.page:
+    for k in range(1, len(numbered) - 1):
+        here, after = numbered[k], numbered[k + 1]
+        # The running sequence is what is left of it: a line demoted a moment
+        # ago states no page any more and cannot be the one this rises from.
+        before = next((x for x in reversed(numbered[:k]) if x.page is not None),
+                      None)
+        if before is not None and here.page < before.page <= after.page:
             here.page, here.title = None, ""
             here.alone = _stands_alone(here.text)
             demoted += 1
