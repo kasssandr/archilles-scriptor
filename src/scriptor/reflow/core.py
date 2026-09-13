@@ -2019,9 +2019,10 @@ def main(
     # bibliography is not asked; before the calibration, because a line that
     # has become a heading is no longer a line of running text.
     if sources.wants:
+        roman = is_roman_volume(w.text for w in sources.wants)
         numbering = placement_mod.judge_numbering(
-            pages, sources.table,
-            roman=is_roman_volume(w.text for w in sources.wants))
+            pages, sources.table, roman=roman,
+            leads=placement_mod.placed_schemes(placement, roman=roman))
         if numbering.refused or numbering.promoted:
             print(
                 f"Numbered lines judged: {len(numbering.refused)} refused as "

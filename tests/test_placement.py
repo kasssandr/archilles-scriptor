@@ -327,3 +327,17 @@ def test_a_run_of_the_lowest_level_is_not_broken_by_a_page_end():
 
     assert [r["text"] for r in result.promoted] == [
         "1. EL MITO DEL ANTICLERICALISMO", "2. LA LEYENDA NEGRA"]
+
+
+def test_only_a_scheme_the_list_actually_placed_may_refuse():
+    """A contents the parser read badly leads every level and places nothing.
+    Refusing on its word would take the headings away twice over: once by not
+    placing them, once by declaring them text."""
+    page = _page(100, "100", *_prose(2), "2. Ein Abschnitt")
+    table = _table(("arabic", 2))
+    quiet = pl.judge_numbering([page], table, roman=False, leads=set())
+    assert quiet.refused == []
+
+    page = _page(100, "100", *_prose(2), "2. Ein Abschnitt")
+    loud = pl.judge_numbering([page], table, roman=False, leads={"arabic"})
+    assert [r["text"] for r in loud.refused] == ["2. Ein Abschnitt"]

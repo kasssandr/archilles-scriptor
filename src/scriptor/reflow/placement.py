@@ -29,11 +29,13 @@ A page label the contents itself supplied does not confirm an expected page
 (§5.9, question 4): that would be the contents agreeing with itself. There
 rules 2 and 3 do not apply and rule 4 decides.
 
-Nothing here reads a ``Page``: the search runs on the raw channel, the lines
-as they stood before the strippers, because that is where a chapter opening
-still spells its title out. ``apply`` is the one function that touches the
-document, and it writes the verdict onto the lines as a mark
-(``reflow.headings.PLACED``), which is all ``reconstruct_body`` has to read.
+The search itself reads no ``Page``: it runs on the raw channel, the lines as
+they stood before the strippers, because that is where a chapter opening still
+spells its title out. Two functions touch the document afterwards -- ``apply``
+writes the placement onto the lines it found, ``judge_numbering`` decides the
+numbered lines no entry placed (§5.4) -- and both say what they decided by
+marking the line (``reflow.headings.PLACED``), which is all
+``reconstruct_body`` has to read.
 """
 
 from __future__ import annotations
@@ -470,7 +472,22 @@ SHORT_LINE = 0.75
 _SENTENCE_END = re.compile(r"[.!?][\"'»«“”’)\]]*$")
 
 
-def judge_numbering(pages, table: SchemeTable, *, roman: bool) -> Applied:
+def placed_schemes(placement: Placement, *, roman: bool) -> set[str]:
+    """The numbering schemes the volume's list actually placed a heading in.
+
+    The positive list refuses a numbered line because the list *leads* that
+    level and names no entry here. That argument holds only where the list
+    demonstrably works for the level: a contents the parser read badly, or one
+    the volume prints without page numbers, leads every level and places
+    nothing, and refusing on its word would take the headings away twice over.
+    Measured on the sixty-one blind runs of G2 (c), where the contents is
+    often all there is.
+    """
+    return {scheme_of(p.want.text, roman)[0] for p in placement.placed} - {""}
+
+
+def judge_numbering(pages, table: SchemeTable, *, roman: bool,
+                    leads: set[str] | None = None) -> Applied:
     """The numbered lines no entry placed: refuse them, or take the level the
     list never wrote down (Gliederungsmodell §5.4).
 
@@ -486,6 +503,11 @@ def judge_numbering(pages, table: SchemeTable, *, roman: bool) -> Applied:
 
     A line the typesetter set apart is left to both: type is a witness of its
     own (§5.1), and text may not overrule it here.
+
+    ``leads`` are the schemes the list actually placed a heading in
+    (``placed_schemes``); only those may refuse. Without it every scheme of
+    the table refuses, which is right where the contents was read well and
+    wrong everywhere else.
     """
     result = Applied()
     if not table.rows:
@@ -522,13 +544,15 @@ def judge_numbering(pages, table: SchemeTable, *, roman: bool) -> Applied:
                 pass                # the type has spoken; text does not argue
             else:
                 scheme, designator, _title = scheme_of(text, roman)
-                if scheme and table.depth_of(scheme) is not None:
+                if (scheme and table.depth_of(scheme) is not None
+                        and (leads is None or scheme in leads)):
                     if _reads_as_heading(text):
                         page.body_lines[i] = mark_placed(text, 0)
                         result.refused.append({"page": page.label, "text": text,
                                                "reason": "not-in-contents"})
-                elif scheme and _short(text, width) and (
-                        not previous or _SENTENCE_END.search(previous.strip())):
+                elif (scheme and table.depth_of(scheme) is None
+                        and _short(text, width) and (
+                        not previous or _SENTENCE_END.search(previous.strip()))):
                     ordinal = _ordinal(designator)
                     if ordinal is not None:
                         runs.setdefault(scheme, []).append((page, i, text, ordinal))

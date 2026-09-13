@@ -13,11 +13,12 @@ direction the evidence order asks for, and this channel has the shape
 ``RescuedFolios`` has: one list per page, added to by more than one stage,
 read once.
 
-The folio such a line carries is rescued on the spot, exactly as before --
-the consensus counts it before the judgement runs -- and it is taken out of
-the line that stays. A number left at the edge of a line that is still in the
-text would be read a second time, as this page's own printed label, and the
-pagination would answer a question the page never asked twice.
+Where a stripper had judged such a line furniture of its own accord, the folio
+it carries is rescued on the spot, exactly as before -- the consensus counts it
+before the judgement runs -- and taken out of the line that stays, so that the
+same number is not read twice. Where only the known title brought the line
+here, nothing is rescued and nothing is taken off it: the line was not going to
+be deleted at all, and the pagination must hear what it heard before.
 """
 
 from __future__ import annotations
