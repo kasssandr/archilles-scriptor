@@ -124,6 +124,45 @@ def test_a_level_the_list_never_wrote_down_is_taken_as_the_one_below_it():
     assert deep.depth == 3 and [w.source for w in deep.sources] == ["numbering"]
 
 
+def test_a_wording_inside_a_sentence_does_not_become_a_heading():
+    """A volume whose chapters are called "Samuel", "Saul", "David" names them
+    again in every other sentence; without the pages there is nothing but the
+    line break to tell the heading from the prose (M1h 8081)."""
+    master = MASTER.replace("- [II. Der Text](#p-20) — p. 20",
+                            "- [Der Laurentianus](#p-20) — p. 20")
+    master = master.replace(
+        "[p. 20] II. Der Text Hier beginnt",
+        "[p. 20] Zu nennen ist hier Der Laurentianus, und danach beginnt")
+    out, _structure, report = mark_headings(master)
+    assert "# Der Laurentianus" not in out
+    assert report.placed == 2
+
+
+def test_nothing_is_written_into_a_marker_or_a_note():
+    """A volume whose contents names a chapter "Notes" had '# notes' written
+    into '[region: notes]' (M1h 4631). Declaration is not text."""
+    master = MASTER.replace("- [II. Der Text](#p-20) — p. 20",
+                            "- [Der Laurentianus steht](#p-20) — p. 20")
+    master = master.replace(
+        "[p. 20] II. Der Text Hier beginnt der zweite Teil der Untersuchung voellig neu.",
+        "[region: notes]\n\n[^1]: Der Laurentianus steht am Rand der Seite.")
+    out, _structure, _report = mark_headings(master)
+    assert "[region: notes]" in out and "# notes" not in out
+    assert "[^1]: Der Laurentianus steht am Rand der Seite." in out
+
+
+def test_a_heading_written_before_a_marker_is_found_on_its_page_again():
+    """The heading moves in front of the marker, so the page it belongs to has
+    to follow it there -- otherwise the second run looks for the entry on the
+    next page and places it in the prose (spec §4.2)."""
+    master = MASTER.replace(
+        "Ein zweiter Absatz, der nichts weiter mit der Gliederung zu schaffen hat hier.",
+        "Ein zweiter Absatz, der von I. Die Ueberlieferung noch einmal spricht hier.")
+    once, _s, _r = mark_headings(master)
+    twice, _s2, report = mark_headings(once)
+    assert twice == once and report.changed is False
+
+
 def test_the_block_declares_the_division_it_found():
     out, _structure, _report = mark_headings(MASTER)
     assert "structure: 2 levels, chapters on level 1, 4 headings" in out

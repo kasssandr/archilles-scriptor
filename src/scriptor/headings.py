@@ -53,6 +53,9 @@ _ENTRY_RE = re.compile(
 _HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(\S.*)$")
 # A page marker, anchored or not, at the head of a piece of text.
 _OPENING_MARKER_RE = re.compile(r"^(\[p\. [^\]]+\](?:\{#[^}]*\})?)[ \t]*")
+# Lines that are declaration or apparatus rather than the volume's text: a
+# region marker (§4.4) and a footnote definition (§4.3). No heading goes in.
+_DECLARATION_RE = re.compile(r"^\[region:\s*[a-z-]+\]\s*$|^\[\^\d+\]:")
 
 
 @dataclass
@@ -74,15 +77,21 @@ def _split_block(text: str) -> tuple[str, str]:
     return (m.group(0), text[m.end():]) if m else ("", text)
 
 
-def _contents_span(body: str) -> tuple[int, int]:
-    """Where the ``contents`` region stands in ``body``; (0, 0) where none does."""
-    start = None
-    for m in REGION_LINE_RE.finditer(body):
-        if start is not None:
-            return start, m.start()
-        if m.group(1) == "contents":
-            start = m.end()
-    return (start, len(body)) if start is not None else (0, 0)
+def _contents_spans(body: str) -> list[tuple[int, int]]:
+    """Every ``contents`` region of ``body``, in reading order.
+
+    A volume lists more than its chapters: Bauer follows its contents with a
+    list of figures, and that is a ``contents`` region too. The entries are
+    read from the first (§5.2: the placement hears the volume's own list, not
+    every list behind it), and all of them are kept out of the text the
+    placement searches -- every title stands in a list.
+    """
+    spans: list[tuple[int, int]] = []
+    marks = [(m.group(1), m.start(), m.end()) for m in REGION_LINE_RE.finditer(body)]
+    for i, (name, _start, end) in enumerate(marks):
+        if name == "contents":
+            spans.append((end, marks[i + 1][1] if i + 1 < len(marks) else len(body)))
+    return spans
 
 
 @dataclass(frozen=True)
@@ -129,20 +138,25 @@ class _Piece:
     text: str
 
 
-def _pieces(body: str, skip: tuple[int, int]) -> list[_Piece]:
-    """The body as lines, with the contents region left out.
+def _pieces(body: str, skip: list[tuple[int, int]]) -> list[_Piece]:
+    """The body as lines: the text a heading may be written into, and no more.
 
     A master's paragraph is one long line, so a title the reflow never found
     stands inside one rather than on top of one. The cuts that make it
     findable come next (``_cut_at_titles``); here the text is only broken
     where it already breaks, and in front of every page marker, so that a
     heading opening a page can be told from one standing inside it.
+
+    Left out: the contents regions, where every title stands; the region
+    markers, which are declaration and not text (a volume whose contents names
+    a chapter "Notes" had ``# notes`` written into ``[region: notes]``); and
+    the footnote definitions, where a title is quoted, not printed.
     """
     pieces: list[_Piece] = []
     for m in re.finditer(r"[^\n]*", body):
         if m.start() == m.end() and m.start() != len(body):
             continue
-        if skip[0] <= m.start() < skip[1]:
+        if any(a <= m.start() < b for a, b in skip) or _DECLARATION_RE.match(m.group(0)):
             continue
         at = m.start()
         line = m.group(0)
@@ -203,15 +217,32 @@ def _paginate(pieces: list[_Piece]) -> tuple[dict[int, list[str]], dict[int, tup
     labels: dict[int, tuple[str, str]] = {}
     where: dict[tuple[int, int], _Piece] = {}
     pos = 0
+    held: list[_Piece] = []
+
+    def emit(piece: _Piece, at: int) -> None:
+        raw.setdefault(at, [])
+        where[(at, len(raw[at]))] = piece
+        raw[at].append(piece.text)
+
     for piece in pieces:
         m = _OPENING_MARKER_RE.match(piece.text)
         if m:
             pos += 1
             labels[pos] = (PAGE_MARKER_RE.match(piece.text).group(1), "printed")
             raw.setdefault(pos, [])
-        raw.setdefault(pos, [])
-        where[(pos, len(raw[pos]))] = piece
-        raw[pos].append(piece.text)
+        elif _HEADING_RE.match(piece.text):
+            # A heading standing in front of a marker opens that page (§4.2),
+            # so it waits to see whether one follows. Without this a second run
+            # does not find the heading the first one wrote on the page it
+            # belongs to, and places the entry somewhere else instead.
+            held.append(piece)
+            continue
+        for piece_held in held:
+            emit(piece_held, pos)
+        held = []
+        emit(piece, pos)
+    for piece_held in held:
+        emit(piece_held, pos)
     return raw, labels, where
 
 
@@ -224,14 +255,73 @@ class _Write:
     depth: int
 
 
-def _span_of(piece: _Piece) -> tuple[int, int] | None:
-    """Where the piece's wording stands in the body, trailing space dropped.
+# Below this many folded characters a tail is too short to say that the piece
+# after a break carries the rest of a title rather than opening a sentence.
+_MIN_TAIL = 4
+# How much more than its wording a heading's run may cover before it is no
+# heading but a stretch of the text the pieces happen to be adjacent in.
+_SPAN_SLACK = 40
 
-    The cut has already made the piece the title and nothing else, so this is
-    the piece; what it takes off is the space the fold never saw.
+
+# What may stand in front of a heading: the end of a sentence, of a marker, or
+# of a line. A word may not -- print sets a heading on a line of its own, and a
+# wording found inside a sentence is the volume using its own words again.
+_BEFORE_A_HEADING = set(".!?:;»”’\"')]}–—*_")
+
+
+def _stands_alone(body: str, start: int) -> bool:
+    """Does a heading written at ``start`` begin where a line could begin?
+
+    The one guard the master cannot take from the print. A volume whose
+    chapters are called "Samuel", "Saul", "David" names them again in every
+    other sentence, and on the right page the placement has nothing to tell
+    the heading from the prose: the head region it uses for that is gone.
     """
-    text = piece.text.rstrip()
-    return (piece.start, piece.start + len(text)) if text else None
+    k = start - 1
+    while k >= 0 and body[k] in " \t":
+        k -= 1
+    return k < 0 or body[k] == "\n" or body[k] in _BEFORE_A_HEADING
+
+
+def _at(where: dict, pos: int) -> dict[int, _Piece]:
+    """The pieces of one page, by their line number."""
+    return {line: piece for (p, line), piece in where.items() if p == pos}
+
+
+def _span_of(body: str, at: dict[int, _Piece], placed, title: str) -> tuple[int, int] | None:
+    """Where the heading stands in the body, in the body's own offsets.
+
+    The placement answers with a *run* of pieces, and the run is the heading:
+    the cut leaves a designator standing alone whenever the list prints its
+    entries without one ("I." / "Iconic turn und die digitale Bilderflut"),
+    and taking only the first piece would write the designator and leave the
+    title in the prose. A page marker at the head of the run belongs to the
+    page, not to the heading, and stays behind. And where the title broke
+    across a paragraph -- the master keeps the break the print made (§8.5) --
+    the piece after the run opens with the rest of the wording, and the
+    heading reaches to where that ends: only that far, only where the tail is
+    long enough to be a title's and not a sentence's.
+    """
+    first = at.get(placed.line)
+    last = at.get(placed.line + placed.n_lines - 1, first)
+    if first is None or last is None:
+        return None
+    start, text = first.start, first.text
+    m = _OPENING_MARKER_RE.match(text)
+    if m:
+        start, text = start + m.end(), text[m.end():]
+    end = last.start + len(last.text.rstrip())
+    if end <= start or end - start > len(title) * 2 + _SPAN_SLACK:
+        return None
+    needle = fold(title)
+    after = at.get(placed.line + placed.n_lines)
+    if after is None or not needle or fold(body[start:end]).endswith(needle[-_MIN_TAIL:]):
+        return start, end
+    folded, idx = _fold_with_offsets(after.text)
+    for k in range(min(len(needle), len(folded)), _MIN_TAIL - 1, -1):
+        if folded.startswith(needle[-k:]):
+            return start, after.start + idx[k - 1] + 1
+    return start, end
 
 
 def _apply(body: str, writes: list[_Write]) -> str:
@@ -256,8 +346,11 @@ def _apply(body: str, writes: list[_Write]) -> str:
             marker = _OPENING_MARKER_RE.fullmatch(tail).group(1) + " "
             before = head + sep
         hashes = "#" * min(w.depth, MAX_MARKDOWN_DEPTH)
+        # A title that broke across a paragraph becomes one line again: that
+        # is the break the print made, and a heading is a line.
+        title = " ".join(body[w.start:w.end].split())
         out.append(before.rstrip(" \t"))
-        out.append(f"\n\n{hashes} {body[w.start:w.end].strip()}\n\n{marker}")
+        out.append(f"\n\n{hashes} {title}\n\n{marker}")
         at = w.end
         while at < len(body) and body[at] in " \t":
             at += 1
@@ -278,8 +371,8 @@ def mark_headings(text: str):
         raise ValueError("not a prepared document: the metadata block names no format_version")
 
     block, body = _split_block(text)
-    span = _contents_span(body)
-    entries = _entries(body[span[0]:span[1]])
+    spans = _contents_spans(body)
+    entries = _entries(body[spans[0][0]:spans[0][1]]) if spans else []
     report = Report(entries=len(entries))
     if not entries:
         return text, None, report
@@ -292,7 +385,7 @@ def mark_headings(text: str):
                                 region=region_of_heading(scheme_of(e.text, roman)[2]))
              for e in entries]
 
-    pieces = _cut_at_titles(_pieces(body, span), [e.text for e in entries])
+    pieces = _cut_at_titles(_pieces(body, spans), [e.text for e in entries])
     raw, labels, where = _paginate(pieces)
     placement = placement_mod.place(wants, raw, labels, head_region=0)
 
@@ -303,13 +396,13 @@ def mark_headings(text: str):
             continue
         if _HEADING_RE.match(piece.text):
             continue                    # already a heading; its depth is below
-        found = _span_of(piece)
-        if found:
+        found = _span_of(body, _at(where, p.pos), p, p.want.title)
+        if found and _stands_alone(body, found[0]):
             writes.append(_Write(found[0], found[1], p.want.depth))
     report.placed = len(writes)
     # On the uncut channel: a line is short *for its page*, and the cuts above
     # fill the page with fragments of the length of a title.
-    whole_raw, whole_labels, whole_where = _paginate(_pieces(body, span))
+    whole_raw, whole_labels, whole_where = _paginate(_pieces(body, spans))
     promoted = _promoted(whole_raw, whole_labels, whole_where, table, placement,
                          roman, {w.start for w in writes})
     report.promoted = len(promoted)
@@ -365,9 +458,8 @@ def _promoted(raw, labels, where, table, placement, roman: bool,
             piece = where.get((pos, i))
             if not depth or piece is None or piece.start in taken:
                 continue
-            found = _span_of(piece)
-            if found:
-                out.append(_Write(found[0], found[1], depth))
+            out.append(_Write(piece.start,
+                              piece.start + len(piece.text.rstrip()), depth))
     return out
 
 
