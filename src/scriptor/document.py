@@ -176,6 +176,46 @@ def region_at(doc: ParsedDoc, offset: int) -> str:
     return _preceding(doc.region_marks, offset, inclusive=True)
 
 
+# the master's headings ---------------------------------------------------
+
+# Spec §4.2: a heading is an ATX line of one to six hashes. Seven are a
+# paragraph that begins with hashes, in CommonMark as in Obsidian, which is
+# why a deeper level is written with six and its true depth travels in the
+# structure sidecar (Briefing §8.3).
+HEADING_LINE_RE = re.compile(r"^(#{1,6})[ \t]+(\S[^\n]*?)[ \t]*$", re.MULTILINE)
+# A heading that opens a page stands *before* that page's marker, so a run of
+# headings in front of a marker belongs to the page the marker names.
+_OPENS_PAGE_RE = re.compile(r"\s*(?:#{1,6}[ \t][^\n]*\n\s*)*\[p\. ([^\]]+)\]")
+
+
+@dataclass(frozen=True)
+class MasterHeading:
+    """One ``#`` line of a master, with where it stands."""
+    marks: int          # how many hashes -- the printed level, at most six
+    text: str           # the line's text, verbatim (emphasis and all)
+    page: str           # the printed label it stands on; "" where none does
+    region: str         # the region in force there; "" before the first marker
+    start: int          # offset into ``doc.body``
+    end: int
+
+
+def master_headings(doc: ParsedDoc) -> list[MasterHeading]:
+    """The ``#`` lines of ``doc``, in document order.
+
+    The structure sidecar (spec §6.5) lists exactly these, in this order: the
+    master says how many headings a volume has, the sidecar how deep each one
+    really is.
+    """
+    out: list[MasterHeading] = []
+    for m in HEADING_LINE_RE.finditer(doc.body):
+        opens = _OPENS_PAGE_RE.match(doc.body, m.end())
+        page = opens.group(1) if opens else page_at(doc, m.start())
+        out.append(MasterHeading(marks=len(m.group(1)), text=m.group(2), page=page,
+                                 region=region_at(doc, m.start()),
+                                 start=m.start(), end=m.end()))
+    return out
+
+
 # the bundle --------------------------------------------------------------
 
 @dataclass(frozen=True)
