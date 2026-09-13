@@ -363,8 +363,8 @@ def apply(pages, placement: Placement, heads: HeadCandidates | None = None,
     Three things happen to a page in one pass over its lines, because they
     all move the same indices: a placed entry's line gets the mark and the
     lines that spell the rest of its title out; a head candidate the
-    placement did not confirm is removed, the folio it carried having been
-    rescued long before; everything else stays exactly as it stood.
+    placement did not confirm is removed, whatever folio it carried having
+    gone to the consensus long before; everything else stays as it stood.
 
     The line is found by its words, not by the index the search noted. Those
     indices are the raw channel's, and between it and the page body lie the
