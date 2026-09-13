@@ -390,3 +390,65 @@ def test_the_sidecar_is_stable_json():
 def test_the_block_line_says_depths_chapter_level_and_sources():
     assert st.describe(_structure()) == (
         "2 levels, chapters on level 1, 3 headings (2 contents, 1 typography-2027)")
+
+
+# ── the structure of a master ────────────────────────────────────────
+
+TABLE = st.SchemeTable([st.SchemeRow("word-ordinal", 1, 5),
+                        st.SchemeRow("letter-upper", 2, 17),
+                        st.SchemeRow("paren-arabic", 7, 4)])
+
+LINES = [(1, "Erstes Kapitel: Die bildliche Aneignung"),
+         (2, "A. Definition"),
+         (7, "(1) Kunstbegriff"),
+         (1, "Literaturverzeichnis")]
+
+
+def _master(**kw):
+    from scriptor.reflow.regions import region_of_heading
+    kw.setdefault("region_of", region_of_heading)
+    return st.structure_of(LINES, TABLE, pages=["24", "24", "195", "325"], **kw)
+
+
+def test_a_master_structure_carries_every_heading_line_in_order():
+    structure = _master()
+    assert [n.text for n in structure.headings] == [t for _d, t in LINES]
+    assert [n.page for n in structure.headings] == ["24", "24", "195", "325"]
+
+
+def test_the_seventh_depth_survives_the_six_hashes_of_the_master():
+    """The master writes '######' for both; the sidecar is what tells them apart."""
+    assert [n.depth for n in _master().headings] == [1, 2, 7, 1]
+
+
+def test_a_master_structure_reads_its_chapter_level_off_the_tree():
+    assert _master().chapter_level == 1
+
+
+def test_a_title_that_names_a_region_says_so():
+    assert [n.region for n in _master().headings] == [None, None, None, "bibliography"]
+
+
+def test_the_witness_is_asked_for_every_node():
+    seen = []
+
+    def witness_of(node):
+        seen.append(node.title)
+        return [st.Witness("contents", "the list names it")] if node.designator else []
+
+    structure = _master(witness_of=witness_of)
+    assert len(seen) == 4
+    assert [w.source for n in structure.headings for w in n.sources] == ["contents"] * 3
+    assert structure.headings[3].sources == []
+
+
+def test_what_no_page_carried_and_what_was_declined_travel_along():
+    structure = _master(unplaced=[{"text": "B. Gang", "page": "46"}],
+                        rejected=[{"text": "2. Bilder", "page": "317", "reason": "not-in-contents"}])
+    assert structure.unplaced[0]["page"] == "46"
+    assert structure.rejected[0]["reason"] == "not-in-contents"
+
+
+def test_a_master_without_a_heading_has_no_chapter_level():
+    empty = st.structure_of([], st.SchemeTable([]))
+    assert empty.chapter_level is None and empty.headings == []
