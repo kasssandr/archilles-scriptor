@@ -113,6 +113,8 @@ scriptor all book.pdf --out book.md
 | `book.review.md` | The same text plus inline uncertainty flags. This is the file you read. |
 | `book.md.audit.txt` | One line per uncertain footnote: page, confidence class, candidate glyphs with scores and the reason each was scored that way. Plus a run summary, so you know before you start whether the volume needs two corrections or two hundred. |
 | `book.md.decisions.txt` | The still-open choices, one line per candidate, each with an empty box. This is the file you edit. |
+| `book.md.pagination.json`, `.txt` | Where every page label came from: printed on the page, confirmed by the contents, or merely counted. |
+| `book.md.structure.json`, `.txt` | The volume's division as scriptor read it: every heading with its true depth, the page it stands on and the witness that placed it, plus the contents entries it found nowhere. |
 
 ## Input formats
 
@@ -129,7 +131,13 @@ scriptor prepared cleaned.txt --out book.md     # hand-corrected single TXT
 scriptor clippings article.md                   # Cambridge Core / JSTOR export
 scriptor pages-zip book.zip --out book.md       # Internet Archive page ZIP
 scriptor learn *.decisions.txt --out corpus.json # corrected corpus -> OCR profile
+scriptor headings book.md                       # mark the headings of an edited master
 ```
+
+`headings` is for a master you have already worked on and must not build
+again: it reads the volume's own contents list out of the finished file, finds
+each entry where it stands in the text and writes the `#` lines in — nothing
+else. `--dry-run` reports without writing.
 
 `prepared` reads a convention: `---` on its own line is a page break that does
 not break paragraphs, `--` opens the footnote region, `(1)` is a marker, and a
@@ -327,8 +335,7 @@ glyph knows something the confusion table can only guess. Running heads and page
 numbers recognised by geometry, since a lexicon prints a different head on every
 page and similarity finds nothing there. An HTML
 review view, since Markdown cannot show colour and the classes want to be told
-apart at a glance. A second export profile that hardens page boundaries and
-separates the apparatus for chunking and retrieval.
+apart at a glance.
 
 ## Layout
 
@@ -379,7 +386,8 @@ as the acting subject**. Contributions are welcome within that charter; beyond
 it, the license invites forks.
 
 The interchange contract between the tools — the *prepared document* — is
-specified in [docs/PREPARED_FORMAT_SPEC.md](docs/PREPARED_FORMAT_SPEC.md).
+specified in [docs/PREPARED_FORMAT_SPEC.md](docs/PREPARED_FORMAT_SPEC.md),
+currently version 0.4.0.
 
 - [archilles](https://github.com/kasssandr/archilles) — Informed RAG over a
   personal research library: retrieval grounded in page-level citations rather

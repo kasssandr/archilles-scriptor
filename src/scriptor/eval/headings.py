@@ -48,15 +48,12 @@ from collections import Counter
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
-from scriptor.document import FLAG_RE
+from scriptor.document import FLAG_RE, master_headings
 from scriptor.eval.adapters import ANCHOR_RE, ParsedDoc, page_at
 from scriptor.eval.ground_truth import GroundTruth, TruthHeading
 from scriptor.reflow.outline import MATCH_RATIO
 from scriptor.structure import MAX_MARKDOWN_DEPTH
 
-HEADING_LINE_RE = re.compile(r"^(#{1,6})[ \t]+(\S[^\n]*?)[ \t]*$", re.MULTILINE)
-# The block after a heading run opens with the page marker the run belongs to.
-_OPENS_PAGE_RE = re.compile(r"\s*(?:#{1,6}[ \t][^\n]*\n\s*)*\[p\. ([^\]]+)\]")
 _MARKER_RE = re.compile(r"\[p\. ([^\]]+)\](?:\{#[^}]*\})?")
 _NOISE_RES = (ANCHOR_RE, FLAG_RE, re.compile(r"\{\.cit[^}]*\}"))
 # What may stand between a sentence and what follows it without ending it.
@@ -151,13 +148,8 @@ def evaluate_headings(truth: GroundTruth, doc: ParsedDoc) -> HeadingResult:
 # the output's headings -----------------------------------------------------
 
 def _heading_spans(doc: ParsedDoc) -> list[tuple[int, int, OutputHeading]]:
-    spans = []
-    for m in HEADING_LINE_RE.finditer(doc.body):
-        opens = _OPENS_PAGE_RE.match(doc.body, m.end())
-        page = opens.group(1) if opens else page_at(doc, m.start())
-        spans.append((m.start(), m.end(),
-                      OutputHeading(page, len(m.group(1)), m.group(2))))
-    return spans
+    return [(h.start, h.end, OutputHeading(h.page, h.marks, h.text))
+            for h in master_headings(doc)]
 
 
 def _fold(text: str) -> str:

@@ -1,5 +1,5 @@
 ---
-format_version: 0.3.0
+format_version: 0.4.0
 chunking_strategy: basic
 pagination: bottom edge, 100% of pages attested
 ---

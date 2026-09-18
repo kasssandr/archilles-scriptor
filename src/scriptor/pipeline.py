@@ -53,6 +53,19 @@ def run_all(
     reflow(pages_dir, out_path, fmt, decisions, ocr_profile, chunking_strategy)
 
 
+def headings(master_path: str | Path, *, dry_run: bool = False):
+    """Write the volume's own division into an already edited master.
+
+    The second entrance (Gliederungsmodell §4.5): the reflow places headings
+    while it still has the pages, this places them out of the finished
+    document. The user's tool -- ``scriptor_prepare.py`` never calls it.
+    Returns the Report.
+    """
+    from scriptor.headings import run
+
+    return run(master_path, dry_run=dry_run)
+
+
 def bind_footnotes(in_path: str | Path, out_path: str | Path):
     """DOCX -> DOCX with attached footnotes + report sidecar.
     Returns the BindReport."""

@@ -29,7 +29,7 @@ from scriptor.languages import NOT_ATTESTED, _NotAttested
 # The version of PREPARED_FORMAT_SPEC this producer writes. Stated in the
 # document itself (§4.1), because a prepared document outlives the release
 # notes that describe it.
-FORMAT_VERSION = "0.3.0"
+FORMAT_VERSION = "0.4.0"
 
 # The marker of §4.4, on a line of its own.
 REGION_MARKER = "[region: {name}]"
@@ -732,7 +732,8 @@ def marker(name: str) -> str:
 
 
 def render_metadata_block(chunking_strategy: str = "basic",
-                          pagination: str | None = None) -> str:
+                          pagination: str | None = None,
+                          structure: str | None = None) -> str:
     """The YAML metadata block of §4.1, as its own block.
 
     Declaration only: it says which conventions the file follows and how a
@@ -745,6 +746,11 @@ def render_metadata_block(chunking_strategy: str = "basic",
     that and cannot derive it from the markers, since a computed label looks
     exactly like a printed one. Omitted where no verdict was taken, so a caller
     that only wants the text is unaffected.
+
+    ``structure`` says in one line how deep this volume divides and on which
+    level it opens its chapters (§6.5). Like the pagination line it is a
+    summary, not the data: the structure sidecar carries that, and a reader
+    who only wants to know whether the tree is worth asking for reads here.
     """
     lines = [
         "---",
@@ -753,6 +759,8 @@ def render_metadata_block(chunking_strategy: str = "basic",
     ]
     if pagination is not None:
         lines.append(f"pagination: {pagination}")
+    if structure is not None:
+        lines.append(f"structure: {structure}")
     lines.append("---")
     return "\n".join(lines)
 

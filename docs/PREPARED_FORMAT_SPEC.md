@@ -1,6 +1,6 @@
 # The Prepared Document Format
 
-**Version 0.3.0 (draft) · 2026-08-12 · MIT**
+**Version 0.4.0 (draft) · 2026-09-18 · MIT**
 
 This specification defines the *prepared document*: a scholarly text converted
 to plain Markdown in which the scholarly apparatus — footnotes, printed page
@@ -61,6 +61,8 @@ For a deliverable named `book.md`, the full set is:
 | `book.review.md` | **Review copy.** Same text plus inline uncertainty flags. | if uncertainty exists |
 | `book.md.audit.txt` | **Audit sidecar.** One block per uncertain footnote: page, class, candidates, reasons; plus a run summary. | if uncertainty exists |
 | `book.md.decisions.txt` | **Decision sidecar.** The still-open choices, one checkbox line per candidate. | if open choices exist |
+| `book.md.pagination.json`, `.txt` | **Pagination sidecar.** Where every page label came from (§6.3). | if pages carry markers |
+| `book.md.structure.json`, `.txt` | **Structure sidecar.** The volume's division as the producer read it (§6.5). | if headings are marked |
 | `book.translate.md` | **Translation profile.** Deliverable with `<dnt>` protection applied. | on demand |
 | `book.translate.briefing.txt` | **Briefing sidecar.** Instructions for the translating model. | with the translation profile |
 
@@ -83,9 +85,10 @@ text:
 
 ```yaml
 ---
-format_version: 0.3.0
+format_version: 0.4.0
 chunking_strategy: basic
 pagination: bottom edge, 95% of pages attested
+structure: 3 levels, chapters on level 1, 48 headings (45 contents, 3 numbering)
 ---
 ```
 
@@ -94,6 +97,7 @@ pagination: bottom edge, 95% of pages attested
 | `format_version` | The version of *this* specification the producer targeted. |
 | `chunking_strategy` | How a retrieval consumer should cut the text: `basic` cuts semantically and may drop the apparatus; `scientific` keeps a footnote marker and its definition in one chunk. |
 | `pagination` | How far the page markers of this document can be trusted: which edge the volume paginates at, and the share of pages whose label something corroborated rather than merely asserted. Free text, meant to be read; the machine-readable form is the sidecar of §6.3. |
+| `structure` | How the producer read the volume's division: how many depths, which depth carries the chapters, how many headings and where they came from. Free text, meant to be read; the machine-readable form is the sidecar of §6.5. |
 
 `pagination` exists because a marker cannot carry its own provenance. `[p. 47]`
 looks the same whether the page printed the number or the converter counted it
@@ -139,6 +143,11 @@ A page boundary is recorded inline, at its reading position, as:
   block.
 - Consumers MUST treat the marker as the citation address of all following text
   up to the next marker.
+
+A heading that opens a page stands before that page's marker: the marker is
+not pulled into the heading, and the marker that opens the following block
+addresses the heading as well. Consumers resolving the page of a heading SHOULD
+take the marker of the block that follows it.
 
 Where a table of contents was recognised, the first occurrence of a page marker
 that is a TOC target additionally carries a Pandoc anchor:
@@ -193,8 +202,44 @@ printed footnote number.
 
 ### 4.4 Headings and structural regions
 
-Chapter and section headings recognised by the producer are ordinary Markdown
-`#` headings. Beyond running prose, a prepared document treats regions
+**Headings.** A heading the producer recognised is an ordinary Markdown ATX
+heading, `#` to `######`.
+
+- The heading text is the volume's own text as printed where the heading
+  stands. The printed designator — `A.`, `I.`, `3.4`, `Erstes Kapitel:` — is
+  part of the heading text and MUST be kept verbatim: never added, renumbered,
+  translated or normalised by the producer. A heading that wraps in print is
+  one heading line here.
+- Depth is the heading's depth in the volume's own division: `#` is the
+  coarsest level on which the body is divided (parts where the volume has
+  parts, otherwise chapters), `##` the level below, and so on. A region title
+  the volume lists beside its chapters — a bibliography, a preface — is a
+  heading at the depth the volume gives it. Packaging (cover, half title,
+  imprint, a bare ISBN) is never a heading.
+- Depth is nesting, not rank. Which depth carries the chapters is a property of
+  the volume, stated in the structure sidecar (§6.5) and in the `structure`
+  field of the metadata block (§4.1). Consumers MUST NOT read `#` as
+  "chapter"; they MAY read depth as nesting and MUST tolerate a jump in depth
+  (`###` directly after `#`).
+- A volume may divide deeper than Markdown can spell. A heading below the sixth
+  depth is written `######`; where its printed designator does not tell it
+  from the sixth, the producer MAY set its text in emphasis (`###### *…*`).
+  Its true depth is carried by the structure sidecar (§6.5); a consumer reading
+  the document alone reads it as the sixth depth, and one comparing heading
+  texts SHOULD disregard an emphasis around the whole of the text.
+- A producer MUST NOT insert a heading whose words the source does not print at
+  that place, and MUST NOT remove a line that prints a heading's title. A
+  running head that repeats a title is furniture and may go; the heading it
+  repeats stays. Where the producer cannot tell the two apart, the line stays
+  as text and no heading is marked: an unmarked heading is running text, which
+  is the safe direction (see *Absence of a marker is not a claim* below).
+- The rebuilt table of contents (treatment below) lists every entry with its
+  printed designator; entries link to the page anchors of §4.2.
+  **(Reserved)** A heading MAY carry a Pandoc identifier `{#…}`; consumers
+  MUST ignore an identifier they do not use, and the translation profile MUST
+  carry it over unchanged.
+
+**Regions.** Beyond running prose, a prepared document treats regions
 differently in two respects — how their text is set, and what they are called.
 
 The **treatment** is a producer matter and needs no markup:
@@ -223,6 +268,10 @@ its own:
   page marker: the region is the wider frame, and the page marker belongs to
   the text it introduces. A region that begins mid-page opens before the first
   block that belongs to it, leaving the page marker where §4.2 puts it.
+- A region a heading opens — a heading whose title names the region — opens
+  immediately before that heading: the region marker precedes the heading
+  line. A heading whose title names no region does not end the region it
+  stands in.
 - `NAME` is one of the values below. It is an invariant token of the format,
   never localised and never translated.
 
@@ -260,7 +309,8 @@ further chapters marks those chapters `main` again.
 Literal `*` and `_` in the source text are backslash-escaped, so that OCR
 artefacts can never toggle Markdown emphasis and silently swallow characters.
 The format's own constructs (`[^N]`, `[p. …]`, `[region: …]`, leading `#`,
-flags, `<dnt>`) never contain these characters.
+flags, `<dnt>`) never contain these characters; the one emphasis the format
+sets itself is the one around a heading below the sixth depth (§4.4).
 
 ### 4.6 The deliverable guarantee
 
@@ -270,6 +320,33 @@ sidecars — never in the deliverable, whose contract is: *always translatable,
 always chunkable, always valid Pandoc* (“strip and pass”). An unresolved
 footnote appears in the deliverable as a hanging reference (§4.3), which is
 valid Pandoc; the open question about it lives in the sidecars.
+
+### 4.7 Addressing a passage
+
+A passage of a prepared document is addressed by three things the document
+itself carries: the volume, the printed page the passage stands on (§4.2), and
+a short run of its own wording. Where a volume prints the same label more than
+once — a volume in parts restarts its numbering — the address names which
+occurrence of the marker is meant, counted from the start of the document;
+where a label occurs once, the occurrence is 1 and MAY be omitted. A note is
+addressed by the page its anchor stands on and the number printed beside it
+(§6.6), never by its document-wide `[^N]` id, which is renumbered whenever the
+document is produced again.
+
+The wording is the check, not the pointer. A consumer resolving an address
+MUST locate the page by its marker first and only then search for the wording
+within that page, normalised the way a sidecar's context snippet is matched
+(§9). Where the wording is not found on that page the address is stale (§9)
+and MUST be reported, not repaired by searching elsewhere; a consumer MAY offer
+the nearest page that carries the wording as a proposal, marked as such.
+Nothing in an address depends on a consumer's own state: chunk identifiers,
+character offsets and physical page numbers are caches that speed a lookup up
+and whose loss invalidates nothing.
+
+The volume, the page, the occurrence and the note are invariant under
+translation (§7); the wording is not. A consumer holding a translated document
+resolves the page and the note and treats the wording as belonging to the
+source.
 
 ## 5. Confidence flags (review copy only)
 
@@ -299,9 +376,9 @@ positions where the producer was uncertain. Flag syntax (chosen so that
 ## 6. Sidecars
 
 Sidecars are plain UTF-8 text, designed to be read by humans and diffed by
-git. They are keyed by **printed page label + printed footnote number +
-context snippet** — never by byte offset, so they survive edits that do not
-touch the passage they describe (§9).
+git. They are keyed by what the page prints — **printed page label + printed
+footnote number or heading text + context snippet** — never by byte offset, so
+they survive edits that do not touch the passage they describe (§9).
 
 ### 6.1 Audit sidecar (`*.md.audit.txt`)
 
@@ -379,6 +456,18 @@ and still cite half its text as a page it is not on, where the numbers it
 witnessed stop. Sidecars written before the field existed lack it; a consumer MUST
 read its absence as unknown, never as zero.
 
+`pages[].pos` is the channel for the physical page: the ordinal, in the source,
+of the page whose label the marker prints. The document carries no marker of
+its own for it, by design — the marker is the citation address, and there is
+one. Consumers wanting the physical page SHOULD take it from here and MUST NOT
+derive it from the marker sequence, which cannot count the pages that carry no
+marker.
+
+**(Reserved)** `profile.reference` names the edition the labels refer to where
+the producer took them from a declaration rather than from the page — an EPUB
+page-list with its `dc:source` — as `{"declared_by": …, "value": …}`. Such
+labels carry `source = catalogue`.
+
 `rejected` records readings the numbering overruled, with what they were instead.
 An overruled reading is not necessarily a wrong one: where the model cannot
 represent what the volume does — a stretch one page long, a sheet carrying two
@@ -394,6 +483,74 @@ and the same decisions MUST reproduce the same output, certain choices
 untouched. Producers whose extraction stage is non-deterministic (VLM OCR)
 MUST confine the non-determinism to the extraction layer and keep structure
 decisions — what is a marker, what anchors where — deterministic and audited.
+
+### 6.5 Structure sidecar (`*.md.structure.json` and `*.md.structure.txt`)
+
+Where §6.3 justifies the page markers, this pair justifies the headings. Both
+are written from one reading of the volume, so they cannot disagree with each
+other or with the document.
+
+The **JSON** carries one record per `#` line of the document, in document
+order — the list a consumer walks beside the document's own headings:
+
+```json
+{
+  "version": 1,
+  "chapter_level": 1,
+  "schemes": [{"scheme": "word-ordinal", "depth": 1, "count": 4},
+              {"scheme": "letter-upper", "depth": 2, "count": 9}],
+  "headings": [{"depth": 2, "designator": "A.", "scheme": "letter-upper",
+                "title": "Die Handschriften", "page": "14", "pos": null,
+                "anchor": null, "region": null,
+                "sources": [{"source": "contents", "why": "placed by rule 2"}]}],
+  "unplaced": [{"text": "III. Der Anhang", "page": "90"}],
+  "rejected": [{"text": "1. Die These", "page": "112", "reason": "not-in-contents"}]
+}
+```
+
+`chapter_level` is the depth on which this volume opens its chapters.
+`schemes` is the ordered list of numbering schemes the volume uses and the
+depth each stands on, as learnt from its contents. Each heading gives its true
+`depth` (past the sixth, too — §4.4), its printed `designator` and the
+`scheme` it belongs to, its `title` without the designator, the printed label
+of the `page` it stands on, `pos` for the physical page where known, `anchor`
+where a producer places by location rather than by page (an EPUB target),
+`region` where the heading opens one, and `sources`, the witnesses that placed
+it, each with the reason — empty where nothing but the document itself stands
+behind the heading. `unplaced` lists contents entries whose title was found on
+no page (nothing was inserted for them); `rejected` lists lines the producer
+declined to read as headings, each with its reason.
+
+`source` is a vocabulary that grows like `source` in §6.3: `contents`,
+`outline`, `numbering`, `typography`, `running-head`; `stale` for a heading
+that stands in the document but that no witness of this reading names — one a
+user wrote or changed by hand; for EPUB producers `nav`, `heading-tag`,
+`epub-type`. Consumers MUST tolerate values they do not know.
+
+The **text** file is the same reading for a reader: the tree indented in
+document order, one searchable line per heading, then the scheme table, then
+the unplaced and rejected entries.
+
+Records are keyed by printed page label and heading text, never by offset
+(§9). A heading is identified by the page it stands on and its wording, never
+by its position in this list: an edit that inserts a heading moves every
+position after it and no page or wording at all. A consumer using a record
+MUST verify it against the document first; a heading the user has re-levelled
+or reworded makes its record stale, and a stale record is flagged, not
+applied. `chapter_level` MAY be recomputed from the headings by a consumer
+whose sidecar is stale; the rule is shared code, not a guess.
+
+### 6.6 Notes sidecar (reserved)
+
+**(Reserved.)** A future producer writes `*.md.notes.json`: one record per
+footnote, carrying the document-wide id `N`, the printed label and occurrence
+of the page its anchor stands on, the number printed beside it, and the
+physical position of that page. It is written from the pass that numbers the
+definitions, so it cannot disagree with the document. A consumer that needs
+the printed number behind `[^N]` — a reader checking against the volume, a
+link into the apparatus — reads it here; the audit sidecar (§6.1) lists only
+the notes the producer was unsure of. Until it is written, `[^N]` is a cache
+valid for one production of the document.
 
 ## 7. The do-not-translate convention (`<dnt>`)
 
@@ -494,6 +651,10 @@ are chosen to degrade gracefully:
   harmless direction. There is no closing token whose loss could pull the rest
   of the volume into an apparatus region, and no way for one broken marker to
   reach beyond the next one.
+- **A heading line is self-contained.** Depth, designator and title stand in
+  the line; re-levelling, deleting or adding a heading changes the division
+  consistently and nothing else. Only the sidecar's record for that heading
+  goes stale (§6.5).
 - **Sidecar keys are positional only at the last step.** Sidecar records key
   by page label + footnote number + context snippet (§6). A consumer using a
   sidecar record MUST verify it before acting on it: locate the page by its
@@ -549,7 +710,7 @@ Hertziana's *trans2tei* (2021), which this mapping follows in spirit.
 
 The specification uses semantic versioning. Within a major version, documents
 remain parseable by older consumers: new constructs are additive, and
-everything reserved in §5, §8 and §9 is claimed syntax that will only ever
+everything reserved in §4.4, §5, §6, §8 and §9 is claimed syntax that will only ever
 mean what this document says. Breaking changes (marker syntax, flag grammar,
 dnt convention) require a major version bump — and are a family event, not a
 local commit: every consuming tool tests against this document, and a change
@@ -569,6 +730,19 @@ separate file, so a consumer that knows neither reads the document exactly as
 before. The `source` vocabulary of §6.3 grows the way the region names do — it
 has gained two values since it was introduced, and a consumer meeting an
 unknown one MUST treat it as asserted rather than fail.
+
+0.4.0 defines what 0.3.0 left open: what the depth of a heading means, that
+the printed designator belongs to the heading text, and that a producer never
+inserts or deletes a heading's words (§4.4). Additive by the rules above: a
+consumer that read `#` as a chapter keeps working and is merely told, now,
+that it was reading nesting. 0.4.0 also adds the `structure` field (§4.1), the
+structure sidecar (§6.5), the heading-before-marker rule (§4.2) and
+`pages[].pos` as the channel of the physical page (§6.3) — all optional, all in
+separate files or fields, so a consumer that knows none of them reads the
+document exactly as before. It states the address of a passage (§4.7), which
+adds no syntax: it says what a consumer may rely on when it cites, from the
+markers and the text that were there already. And it reserves the notes
+sidecar (§6.6) and `profile.reference` (§6.3).
 
 Producers SHOULD state the spec version they target, in the document's
 `format_version` field (§4.1) and in tool `--version` output. Until version
@@ -592,7 +766,12 @@ What each family tool may rely on, stated once:
   running text — the guarantee is that a region marker is never a guess, not
   that every apparatus carries one. Where the provenance of a page label
   matters, it is in the sidecar of §6.3 rather than in the marker: the marker
-  is the same string whoever produced it.
+  is the same string whoever produced it; the physical page travels there too,
+  as `pages[].pos`. Headings nest, and the depth that carries the chapters is
+  declared rather than assumed (§4.4, §6.5). A consumer citing a passage
+  SHOULD emit the address of §4.7 — page, occurrence, wording — rather than an
+  identifier of its own index, so that the citation resolves against the
+  document alone.
 - **Translation (archillator).** `<dnt>` protection per §7; structural markers
   carried over by briefing contract; strip rules that restore a clean target
   document. A citation address therefore survives translation.

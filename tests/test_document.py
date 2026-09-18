@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from scriptor.document import Bundle, load_bundle, parse_prepared
+from scriptor.document import Bundle, load_bundle, master_headings, parse_prepared
 from scriptor.reflow.regions import FORMAT_VERSION, render_metadata_block
 
 BODY = """[p. xiv] Ein Vorwort, römisch gezählt.
@@ -213,3 +213,48 @@ def test_a_marker_the_sidecar_does_not_know_resolves_to_nothing(tmp_path):
     b = load_bundle(_bundle(tmp_path, sidecar=_sidecar(pages), body=body))
     resolved = b.resolve_marks(parse_prepared(b.text))
     assert [e.pos if e else None for e in resolved] == [3, None, 4]
+
+
+# the '#' lines of a master (spec §4.2) -----------------------------------
+
+HEADINGS_BODY = """[p. 22] Der letzte Satz des Kapitels davor.
+
+# I. Aneignung als Rechtsbegriff
+
+## A. Der Begriff
+
+[p. 23] Der erste Satz des Kapitels.
+
+[region: bibliography]
+
+###### *Ein tiefer Titel*
+
+[p. 24] Ein Eintrag.
+"""
+
+
+def test_a_heading_stands_on_the_page_the_marker_after_it_opens():
+    doc = parse_prepared(HEADINGS_BODY)
+    heads = master_headings(doc)
+    assert [(h.marks, h.text) for h in heads] == [
+        (1, "I. Aneignung als Rechtsbegriff"),
+        (2, "A. Der Begriff"),
+        (6, "*Ein tiefer Titel*"),
+    ]
+    # Both headings open p. 23 -- they stand before its marker, not on p. 22.
+    assert [h.page for h in heads] == ["23", "23", "24"]
+
+
+def test_a_heading_inside_a_page_keeps_that_page():
+    doc = parse_prepared("[p. 5] Ein Satz.\n\n## Mitten drin\n\nNoch ein Satz.\n")
+    assert [h.page for h in master_headings(doc)] == ["5"]
+
+
+def test_a_heading_knows_the_region_it_stands_in():
+    doc = parse_prepared(HEADINGS_BODY)
+    assert [h.region for h in master_headings(doc)] == ["", "", "bibliography"]
+
+
+def test_seven_hashes_are_a_paragraph_not_a_heading():
+    doc = parse_prepared("[p. 1] Satz.\n\n####### Keine Überschrift\n")
+    assert master_headings(doc) == []

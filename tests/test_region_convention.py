@@ -793,8 +793,8 @@ def test_preface_does_not_swallow_prose_opening_with_the_word():
 
 def test_format_version_is_declared_and_current():
     from scriptor.reflow.regions import FORMAT_VERSION
-    assert FORMAT_VERSION == "0.3.0"
-    assert "format_version: 0.3.0" in render_metadata_block()
+    assert FORMAT_VERSION == "0.4.0"
+    assert "format_version: 0.4.0" in render_metadata_block()
 
 
 # ── multi-level ordinals and compound German titles ──────────────────

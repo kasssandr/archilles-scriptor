@@ -6,9 +6,11 @@ citation spans are read, all with offsets into the remaining text. The reach
 rule a consumer needs on top of that -- which page and which region a position
 is in -- is ``page_at`` and ``region_at``.
 
-``load_bundle`` adds what travels beside the master (spec §3, §6.3): the fields
-of the metadata block and the pagination sidecar, which carries the physical page
-and the witness behind each label.
+``load_bundle`` adds what travels beside the master (spec §3, §6.3, §6.5): the
+fields of the metadata block, the pagination sidecar, which carries the physical
+page and the witness behind each label, and the structure sidecar, which carries
+the division -- the true depth of every heading and the level the chapters open
+on, neither of which the master's six hashes can say.
 
 The reader lived in ``eval/``, the benchmark's workshop, where no consumer may
 import from. Here it is the one place that knows the grammar; the benchmark and
@@ -18,11 +20,18 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from scriptor.reflow.pagelabel import PAGE_MARKER_RE
 from scriptor.reflow.pagination.report import SIDECAR_VERSION
+from scriptor.structure import (
+    SchemeTable,
+    Structure,
+    read_structure_sidecar,
+    structure_of,
+)
 
 # Spec §5 flag grammar. Group 1: sigil (? or ??), 2: printed number,
 # 3: candidate glyph (absent on orphan flags).
@@ -176,6 +185,75 @@ def region_at(doc: ParsedDoc, offset: int) -> str:
     return _preceding(doc.region_marks, offset, inclusive=True)
 
 
+# the master's headings ---------------------------------------------------
+
+# Spec §4.2: a heading is an ATX line of one to six hashes. Seven are a
+# paragraph that begins with hashes, in CommonMark as in Obsidian, which is
+# why a deeper level is written with six and its true depth travels in the
+# structure sidecar (Briefing §8.3).
+HEADING_LINE_RE = re.compile(r"^(#{1,6})[ \t]+(\S[^\n]*?)[ \t]*$", re.MULTILINE)
+# A heading that opens a page stands *before* that page's marker, so a run of
+# headings in front of a marker belongs to the page the marker names.
+_OPENS_PAGE_RE = re.compile(r"\s*(?:#{1,6}[ \t][^\n]*\n\s*)*\[p\. ([^\]]+)\]")
+
+
+@dataclass(frozen=True)
+class MasterHeading:
+    """One ``#`` line of a master, with where it stands."""
+    marks: int          # how many hashes -- the printed level, at most six
+    text: str           # the line's text, verbatim (emphasis and all)
+    page: str           # the printed label it stands on; "" where none does
+    region: str         # the region in force there; "" before the first marker
+    start: int          # offset into ``doc.body``
+    end: int
+
+
+def master_headings(doc: ParsedDoc) -> list[MasterHeading]:
+    """The ``#`` lines of ``doc``, in document order.
+
+    The structure sidecar (spec §6.5) lists exactly these, in this order: the
+    master says how many headings a volume has, the sidecar how deep each one
+    really is.
+    """
+    out: list[MasterHeading] = []
+    for m in HEADING_LINE_RE.finditer(doc.body):
+        opens = _OPENS_PAGE_RE.match(doc.body, m.end())
+        page = opens.group(1) if opens else page_at(doc, m.start())
+        out.append(MasterHeading(marks=len(m.group(1)), text=m.group(2), page=page,
+                                 region=region_at(doc, m.start()),
+                                 start=m.start(), end=m.end()))
+    return out
+
+
+# How far ahead of the heading it expects a producer's depth may stand: a
+# stray '#' in passed-through front matter is a '#' line the render never
+# wrote, and the two lists have to find each other again after one.
+_DEPTH_REACH = 4
+
+
+def structure_of_master(text: str, depths: Sequence[tuple[int, str]],
+                        table: SchemeTable, **kw) -> Structure:
+    """The structure of the master ``text``, listing its ``#`` lines in order.
+
+    ``depths`` is what the producer knows and the master cannot say: the true
+    depth of each heading it wrote, past the six levels Markdown has (§8.3).
+    The two lists are joined on the wording, one heading at a time, so that a
+    line neither of them expected -- a '#' that came through in front matter --
+    costs only itself: it keeps the depth its hashes print.
+    """
+    doc = parse_prepared(text)
+    heads = master_headings(doc)
+    lines: list[tuple[int, str]] = []
+    k = 0
+    for h in heads:
+        ahead = range(k, min(k + _DEPTH_REACH, len(depths)))
+        j = next((i for i in ahead if depths[i][1] == h.text), None)
+        lines.append((h.marks if j is None else depths[j][0], h.text))
+        if j is not None:
+            k = j + 1
+    return structure_of(lines, table, pages=[h.page or None for h in heads], **kw)
+
+
 # the bundle --------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -198,6 +276,7 @@ class Bundle:
     text: str
     metadata: dict[str, str]
     pages: list[SidecarPage] = field(default_factory=list)
+    structure: Structure | None = None   # the division, where a sidecar carries it
 
     def __post_init__(self) -> None:
         self.pages = sorted(self.pages, key=lambda p: p.pos)
@@ -217,6 +296,13 @@ class Bundle:
     @property
     def pagination(self) -> str | None:
         return self.metadata.get("pagination")
+
+    @property
+    def chapter_level(self) -> int | None:
+        """The depth on which this volume opens its chapters, or None where no
+        sidecar says. Declared, never guessed from the hashes: a volume whose
+        parts are ``#`` sets its chapters on 2, one without parts on 1."""
+        return self.structure.chapter_level if self.structure else None
 
     def _only(self, label: str) -> SidecarPage | None:
         """The one sidecar page carrying ``label`` -- None where no page does,
@@ -260,7 +346,8 @@ def load_bundle(master_path: str | Path) -> Bundle | None:
     bundle -- a hand-written Markdown file, or one from before 0.2.0 -- and gets
     None: nothing here guesses which conventions it follows. A missing sidecar is
     no error (the text is whole without it, spec §3); a sidecar of a version this
-    reader does not know is one, and is refused rather than half-read.
+    reader does not know is one, and is refused rather than half-read. Both
+    sidecars, the pagination and the structure, are read by that same rule.
     """
     from scriptor.reflow.regions import read_metadata_block
 
@@ -282,4 +369,5 @@ def load_bundle(master_path: str | Path) -> Bundle | None:
                         confidence=p.get("confidence"))
             for p in payload.get("pages", [])
         ]
-    return Bundle(master=master, text=text, metadata=metadata, pages=pages)
+    return Bundle(master=master, text=text, metadata=metadata, pages=pages,
+                  structure=read_structure_sidecar(master))

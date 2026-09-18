@@ -528,6 +528,31 @@ class Structure:
     version: int = SIDECAR_VERSION
 
 
+def structure_of(lines: Sequence[tuple[int, str]], table: SchemeTable, *,
+                 pages: Sequence[str | None] = (),
+                 region_of: Callable[[str], str | None] | None = None,
+                 witness_of: Callable[[Node], Sequence[Witness]] | None = None,
+                 unplaced: Sequence[dict] = (),
+                 rejected: Sequence[dict] = ()) -> Structure:
+    """The structure of a master, from the headings it prints.
+
+    ``lines`` are (depth, heading text) in document order, one per ``#`` line
+    of the master -- the *true* depths, which the master itself cannot spell
+    past the sixth (§8.3); carrying them is what the sidecar is for. ``pages``
+    is the printed label each heading stands on, parallel to ``lines``.
+    ``witness_of`` says who placed a node and why.
+    """
+    tree = Tree.from_headings(lines, region_of)
+    for node, page in zip(tree.nodes, pages):
+        node.page = page
+    if witness_of is not None:
+        for node in tree.nodes:
+            node.sources = list(witness_of(node))
+    return Structure(chapter_level=tree.chapter_level(), schemes=table,
+                     headings=tree.nodes, unplaced=list(unplaced),
+                     rejected=list(rejected))
+
+
 def describe(structure: Structure) -> str:
     """The metadata block's ``structure:`` line: one line, to be read."""
     depths = {n.depth for n in structure.headings}

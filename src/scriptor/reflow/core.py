@@ -650,6 +650,7 @@ from scriptor.reflow.headings import MARK as HEADING_MARK  # noqa: E402
 from scriptor.reflow.headings import PLACED as PLACED_MARK  # noqa: E402
 from scriptor.reflow.headings import read_mark  # noqa: E402
 from scriptor.reflow.tables import BREAK as TABLE_BREAK  # noqa: E402
+from scriptor.structure import MAX_MARKDOWN_DEPTH  # noqa: E402
 
 
 def heading_level(line: str, *, marked: bool = False) -> int:
@@ -1084,6 +1085,7 @@ def format_paragraph_md(
     level: int,
     state: dict,
     page_order: dict[str, int] | None = None,
+    depths: list[tuple[int, str]] | None = None,
 ) -> str:
     """
     MD mode: [N] markers in the paragraph text become [^G] Pandoc markers with
@@ -1164,7 +1166,12 @@ def format_paragraph_md(
     new_para = re.sub(r" {2,}", " ", new_para).rstrip()
 
     if level > 0:
-        return ("#" * min(level, 6)) + " " + new_para
+        # Six is all Markdown has, and a volume may divide deeper (Bauer prints
+        # seven). The line is flattened, the true depth is noted for the
+        # structure sidecar, which is the one place that can carry it (§8.3).
+        if depths is not None:
+            depths.append((level, new_para))
+        return ("#" * min(level, MAX_MARKDOWN_DEPTH)) + " " + new_para
     return new_para
 
 
@@ -1177,6 +1184,7 @@ def render_main(
     annotator=None,
     decisions=None,
     evidence=None,
+    depths: list[tuple[int, str]] | None = None,
 ) -> list[str]:
     paras, fns, occs, levels = reconstruct_body(pages, threshold, audit)
     if decisions:
@@ -1200,7 +1208,7 @@ def render_main(
             if p.label is not None:
                 page_order.setdefault(p.label, i)
         return [
-            format_paragraph_md(p, f, o, lvl, state, page_order)
+            format_paragraph_md(p, f, o, lvl, state, page_order, depths)
             for p, f, o, lvl in zip(paras, fns, occs, levels)
         ]
     return [
@@ -1301,11 +1309,18 @@ def render_book(
     evidence=None,
     chunking_strategy: str | None = None,
     pagination: str | None = None,
+    structure=None,
 ) -> tuple[str, dict[str, list[int]]]:
     """Group pages by mode in source order and render each group accordingly.
 
     Returns the rendered document plus an audit dict of pages on which at
     least one footnote definition had no marker in the body.
+
+    ``structure`` is called with the finished body and the depth of every
+    heading the render wrote, in document order, and answers the ``structure:``
+    line of the metadata block. It is a callback because the two can only be
+    had in this order: the depths are known when the last heading is written,
+    and the block is prepended after that.
     """
     from scriptor.reflow.toc import render_toc, inject_page_anchors
 
@@ -1317,6 +1332,8 @@ def render_book(
         evidence = document_evidence(pages, threshold)
 
     out_blocks: list[str] = []
+    # (true depth, heading text) in document order, one per '#' line written.
+    depths: list[tuple[int, str]] = []
     state: dict = {"counter": 0, "defs": []}
     audit: dict[str, list[int]] = {}
     available_pages = {p.label for p in pages if p.label is not None}
@@ -1365,7 +1382,8 @@ def render_book(
         if mode == "main":
             out_blocks.extend(
                 render_main(
-                    group, threshold, fmt, state, audit, annotator, decisions, evidence
+                    group, threshold, fmt, state, audit, annotator, decisions, evidence,
+                    depths,
                 )
             )
         elif mode in ("frontmatter", "raw"):
@@ -1373,6 +1391,11 @@ def render_book(
         elif mode == "toc":
             tr = render_toc(group, available_pages)
             out_blocks.extend(tr.blocks)
+            # The list prints its own name over it, and that name is a '#' line
+            # like any other: the structure counts it where it stands.
+            if tr.blocks and tr.blocks[0].startswith("#"):
+                marks, _, text = tr.blocks[0].partition(" ")
+                depths.append((len(marks), text))
             anchor_targets |= tr.anchor_targets
         elif mode == "entries-versal":
             out_blocks.extend(render_entries(group, VERSAL_RE))
@@ -1399,6 +1422,8 @@ def render_book(
     # table needs a blank line around it to be one in Markdown.
     result = result.replace(HEADING_MARK, "")
     result = re.sub(rf"{PLACED_MARK}\d", "", result)
+    depths = [(d, re.sub(rf"{PLACED_MARK}\d", "", t.replace(HEADING_MARK, "")))
+              for d, t in depths]
     if TABLE_BREAK in result:
         result = re.sub(
             rf"[ \t]*{TABLE_BREAK}[ \t]*", "\n", result
@@ -1409,7 +1434,8 @@ def render_book(
     # want the bare text (golden comparisons, the TXT profile) pass nothing.
     if fmt == "md" and chunking_strategy is not None:
         from scriptor.reflow.regions import render_metadata_block
-        result = (render_metadata_block(chunking_strategy, pagination)
+        line = structure(result, depths) if structure is not None else None
+        result = (render_metadata_block(chunking_strategy, pagination, line)
                   + "\n\n" + result)
     return result + "\n", audit
 
@@ -1811,10 +1837,10 @@ def main(
             pg.backend_label = sp.label
             pg.heading = headings_by_pos.get(ordinal - 1)
             # The physical page, counted over the source files. Always known,
-            # even where nothing is printed on the page. Kept as the counterpart
-            # to page_label/page_number in the archilles chunk schema; not
-            # emitted yet, because the marker syntax for it is a decision shared
-            # with that repo (see docs/.../2026-07-08-page-label-modell-design.md).
+            # even where nothing is printed on the page. It travels as
+            # pages[].pos in the pagination sidecar, never as a marker in the
+            # text (spec §6.3): the marker is the citation address, and there
+            # is one. Archilles reads it from there as page_number.
             pg.index = ordinal
             pages.append(pg)
 
@@ -1945,6 +1971,7 @@ def main(
     from scriptor.reflow.regions import region_of_heading
     from scriptor.structure import Entry, is_roman_volume, learn_schemes
 
+    placement = numbering = None
     contents_wants: list = []
     if contents_entries:
         learnt = learn_schemes([
@@ -2059,10 +2086,50 @@ def main(
     )
     pagination = profile_line(pages, verdict)
 
+    # The volume's division (§6.5). Built from the finished master, because the
+    # sidecar lists the master's own '#' lines in their order -- that is the
+    # join a consumer reads it by -- and from what the render knows and the
+    # master cannot say: the true depth of a heading past the sixth level.
+    # Computed once and held: both renders declare the same division.
+    from scriptor.document import structure_of_master
+    from scriptor.structure import Witness, describe as describe_structure
+    from scriptor.reflow.outline import fold
+
+    witnesses: dict[str, Witness] = {}
+    for p in (placement.placed if placement else ()):
+        witnesses.setdefault(
+            fold(p.want.title),
+            Witness(p.want.source, f"placed by rule {p.rule}"))
+    for row in (numbering.promoted if numbering else ()):
+        witnesses.setdefault(
+            fold(row["text"]),
+            Witness("numbering", "a form the volume's table does not know"))
+    held: dict = {}
+
+    def structure_line(body: str, depths: list[tuple[int, str]]) -> str:
+        if "structure" not in held:
+            held["structure"] = structure_of_master(
+                body, depths, sources.table,
+                region_of=region_of_heading,
+                witness_of=lambda n: [witnesses[fold(n.title)]]
+                if fold(n.title) in witnesses else [],
+                unplaced=[{"text": w.text, "page": w.page}
+                          for w in (placement.unplaced if placement else ())],
+                rejected=[{"text": w.text, "page": w.page, "reason": why}
+                          for w, why in (placement.rejected if placement else ())]
+                + list(numbering.refused if numbering else ()),
+            )
+            # A volume that prints no heading declares no division: the line
+            # would say "0 headings" and the sidecar would carry a bare version.
+            held["line"] = (describe_structure(held["structure"])
+                            if held["structure"].headings else None)
+        return held["line"]
+
     decisions.reset_report()
     clean_output, _ = render_book(
         pages, threshold, fmt, decisions=decisions, evidence=evidence,
         chunking_strategy=chunking_strategy, pagination=pagination,
+        structure=structure_line,
     )
     Path(out_path).write_text(clean_output, encoding="utf-8")
     print(f"Written: {out_path}", file=sys.stderr)
@@ -2086,7 +2153,7 @@ def main(
     review_output, _ = render_book(
         pages, threshold, fmt, annotator=annotator, decisions=decisions,
         evidence=evidence, chunking_strategy=chunking_strategy,
-        pagination=pagination,
+        pagination=pagination, structure=structure_line,
     )
     op = Path(out_path)
     review_path = op.with_name(f"{op.stem}.review{op.suffix}")
@@ -2124,6 +2191,20 @@ def main(
         f"{plural(len(verdict.rejected), 'reading')} overruled -> {pagination_txt}",
         file=sys.stderr,
     )
+
+    # Structure sidecars, the same two channels: the machine one for archilles,
+    # where the depth past the sixth level and the chapter level live, and the
+    # tree a reader checks them against. Both from the same Structure.
+    structure = held.get("structure")
+    if structure is not None and structure.headings:
+        from scriptor.structure import render_structure_sidecar
+        structure_json, structure_report = render_structure_sidecar(
+            structure, Path(out_path).name)
+        op.with_suffix(op.suffix + ".structure.json").write_text(
+            structure_json, encoding="utf-8")
+        structure_txt = op.with_suffix(op.suffix + ".structure.txt")
+        structure_txt.write_text(structure_report, encoding="utf-8")
+        print(f"Structure: {held['line']} -> {structure_txt}", file=sys.stderr)
 
     # Decision sidecar: the still-open choices, ready to be marked. Regenerated
     # every run, so it shrinks as decisions are made and applied.
