@@ -22,7 +22,9 @@ from scriptor.reflow.footnotes import (
     FOOTNOTE_RE,
     PLACED_MARKER_RE,
     SUPERSCRIPT_DIGITS,
-    match_definition,
+    continues,
+    definition_numbers,
+    definition_start,
     split_small_type_block,
     substitute_markers,
 )
@@ -137,8 +139,13 @@ def parse_page(
     *,
     geometry_verified: bool = False,
     deferred_top: int = 0,
+    last_note: int | None = None,
 ) -> Page | None:
     """Parse a single page file. Returns None if empty.
+
+    ``last_note`` is the highest note the pages before this one opened. A
+    four-digit number opens a note only where it continues that numbering
+    (``footnotes.continues``); otherwise it is a year at the head of a line.
 
     ``fn_block`` carries the page's footnote block where the geometry already
     verified it (small type at the bottom, see ``split_small_type_block``).
@@ -206,7 +213,8 @@ def parse_page(
     fn_start = None
     if not geometry_verified:
         for i, ln in enumerate(lines):
-            if FOOTNOTE_RE.match(ln):
+            m = FOOTNOTE_RE.match(ln)
+            if m and continues(int(m.group(1)), last_note):
                 fn_start = i
                 break
 
@@ -219,14 +227,14 @@ def parse_page(
         fn_lines = lines[fn_start:]
 
     # Assemble footnotes (join multi-line notes, dehyphenate)
-    footnotes, _ = _assemble_footnotes(fn_lines, FOOTNOTE_RE.match)
+    footnotes, _ = _assemble_footnotes(fn_lines, FOOTNOTE_RE.match, last_note)
 
     # The size-verified block from the page geometry. Lines above its first
     # definition are the tail of a note that began on the previous page.
     fn_continuation: str | None = None
     if fn_block:
         block = [ln.translate(SUPERSCRIPT_DIGITS).rstrip() for ln in fn_block]
-        block_notes, leading = _assemble_footnotes(block, match_definition)
+        block_notes, leading = _assemble_footnotes(block, definition_start, last_note)
         footnotes.update(block_notes)
         if leading:
             fn_continuation = dehyphenate_join(leading).strip() or None
@@ -246,10 +254,14 @@ def parse_page(
 
 
 def _assemble_footnotes(
-    fn_lines: list[str], matcher
+    fn_lines: list[str], matcher, last: int | None = None
 ) -> tuple[dict[int, str], list[str]]:
     """Join multi-line definitions, dehyphenated. Returns (notes, leading) —
-    ``leading`` being the lines before the first definition start."""
+    ``leading`` being the lines before the first definition start.
+
+    A line whose four-digit number does not continue the numbering -- the
+    volume's (``last``) and then this block's own -- is not a definition start
+    but the next line of the note before: "(Paris," / "1958); J. H. W." """
     footnotes: dict[int, str] = {}
     leading: list[str] = []
     cur_num: int | None = None
@@ -262,9 +274,12 @@ def _assemble_footnotes(
 
     for ln in fn_lines:
         m = matcher(ln)
+        if m and not continues(int(m.group(1)), last):
+            m = None
         if m:
             flush()
             cur_num = int(m.group(1))
+            last = cur_num if last is None else max(last, cur_num)
             cur_buf = [m.group(2)]
         elif cur_num is None:
             leading.append(ln)
@@ -613,7 +628,7 @@ SENT_END = re.compile(r"[.!?»“”\"’']$")
 # Placed footnote markers at the end of a line ("… Occident.” [1]" or even
 # "… country. [4] [5]"). They stand *after* the full stop and would hide it
 # from SENT_END — the paragraph-end check looks at the line without them.
-_TRAILING_MARKERS = re.compile(r"(\s*\[\d{1,3}\])+$")
+_TRAILING_MARKERS = re.compile(r"(\s*\[\d{1,4}\])+$")
 
 
 # Numbered heading at the start of a paragraph: "3.4. Probleme um Welf VI." and,
@@ -1529,10 +1544,17 @@ def main(
     )
     if doc_body_size is not None:
         print(f"Dominant type size: {doc_body_size}pt", file=sys.stderr)
-    splits = [
-        split_small_type_block(r.lines, r.sizes, body_size=doc_body_size)
-        for r in reconstructions
-    ]
+    # In reading order, carrying the highest note opened so far: a four-digit
+    # number opens a note only where it continues the volume's numbering.
+    splits = []
+    last_note: int | None = None
+    for r in reconstructions:
+        split = split_small_type_block(r.lines, r.sizes, body_size=doc_body_size,
+                                       last_note=last_note)
+        splits.append(split)
+        opened = definition_numbers(split.notes, last_note) if split else []
+        if opened:
+            last_note = max(last_note or 0, *opened)
     fn_blocks = [s.notes if s else None for s in splits]
     cut = sum(1 for s in splits if s)
     if cut:
@@ -1817,12 +1839,15 @@ def main(
 
     pages: list[Page] = []
     page_headers: list[str | None] = []
+    last_note = None
     for ordinal, (text, raw, fn_block, sp, rec) in enumerate(
         zip(cleaned, raw_texts, fn_blocks, source_pages, reconstructions), start=1
     ):
         deferred = {c.text.strip() for c in heads.at(ordinal - 1)}
         pg = parse_page(text, fn_block=fn_block, geometry_verified=rec.measured,
-                        deferred_top=_leading(text, deferred))
+                        deferred_top=_leading(text, deferred), last_note=last_note)
+        if pg is not None and pg.footnotes:
+            last_note = max(last_note or 0, *pg.footnotes)
         if pg is None and rescued_by_ordinal.get(ordinal):
             # The page was not empty: everything it carried was furniture, and
             # the strippers took it. That is not the same as a blank leaf, and
