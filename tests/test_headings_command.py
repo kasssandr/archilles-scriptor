@@ -217,6 +217,18 @@ def test_a_designator_behind_the_tail_of_a_wrapped_heading_goes_with_the_next_on
             "[p. 84]{#p-84} Bereits Platon setzt sich") in out
 
 
+def test_a_question_mark_that_ends_a_title_stays_in_the_heading():
+    """The fold drops punctuation, so the heading ended at the last letter and
+    the '?' was left behind as a paragraph of its own (Bauer: '... § 14 UrhG'
+    / '?', twice)."""
+    master = MASTER.replace("[II. Der Text]", "[II. Welcher Text?]") \
+        .replace("[p. 20] II. Der Text Hier beginnt",
+                 "[p. 20] II. Welcher Text? Hier beginnt")
+    out, _structure, _report = mark_headings(master)
+    assert "# II. Welcher Text?\n\n[p. 20] Hier beginnt" in out
+    assert "\n?" not in out
+
+
 def test_a_designator_inside_a_sentence_is_not_taken():
     master = BARE_MASTER.replace(
         "[p. 20] II. Der Text Hier beginnt",

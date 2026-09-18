@@ -359,6 +359,27 @@ def _take_designators(body: str, writes: list[_Write], roman: bool) -> list[_Wri
     return out
 
 
+# What ends a title as printed and the fold drops: a question or an
+# exclamation, and a closing quotation or bracket right behind it.
+_TITLE_END_RE = re.compile(r"[?!]+[\"'»«“”’)\]]*")
+
+
+def _take_closing_marks(body: str, writes: list[_Write]) -> list[_Write]:
+    """Each heading with the question mark its title ends in.
+
+    The wording is matched folded, so a span ends at the last letter, and
+    "... § 14 UrhG?" was written as a heading "... § 14 UrhG" with the "?"
+    left behind as a paragraph of its own (Bauer, twice). A mark glued to the
+    end of the title belongs to it; a full stop does not -- after a title run
+    into the prose it is as often the sentence's.
+    """
+    out = []
+    for w in writes:
+        m = _TITLE_END_RE.match(body, w.end)
+        out.append(_Write(w.start, m.end(), w.depth) if m else w)
+    return out
+
+
 def _apply(body: str, writes: list[_Write]) -> str:
     """The body with a ``#`` line written at each place, and nothing else.
 
@@ -447,7 +468,7 @@ def mark_headings(text: str):
     promoted = _promoted(whole_raw, whole_labels, whole_where, table, placement,
                          roman, {w.start for w in writes})
     report.promoted = len(promoted)
-    writes = _take_designators(body, writes + promoted, roman)
+    writes = _take_closing_marks(body, _take_designators(body, writes + promoted, roman))
     out_body = _apply(body, writes)
     report.unplaced = len(placement.unplaced)
     report.rejected = len(placement.rejected)
