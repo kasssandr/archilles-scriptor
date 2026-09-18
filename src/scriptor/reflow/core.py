@@ -1837,10 +1837,10 @@ def main(
             pg.backend_label = sp.label
             pg.heading = headings_by_pos.get(ordinal - 1)
             # The physical page, counted over the source files. Always known,
-            # even where nothing is printed on the page. Kept as the counterpart
-            # to page_label/page_number in the archilles chunk schema; not
-            # emitted yet, because the marker syntax for it is a decision shared
-            # with that repo (see docs/.../2026-07-08-page-label-modell-design.md).
+            # even where nothing is printed on the page. It travels as
+            # pages[].pos in the pagination sidecar, never as a marker in the
+            # text (spec §6.3): the marker is the citation address, and there
+            # is one. Archilles reads it from there as page_number.
             pg.index = ordinal
             pages.append(pg)
 
