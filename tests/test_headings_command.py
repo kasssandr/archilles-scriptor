@@ -163,6 +163,68 @@ def test_a_heading_written_before_a_marker_is_found_on_its_page_again():
     assert twice == once and report.changed is False
 
 
+# A list that names its entries without their designators (Bauer's master of
+# 11.9.: "Das Bild als Medium ..." for "II. Das Bild als Medium ..."). The cut
+# follows the list's wording, so the designator was left in front of the
+# heading as a paragraph of its own -- 44 times in Bauer (P-M2, 18.9.) -- where
+# spec §4.4 has it in the heading line.
+BARE_CONTENTS = CONTENTS.replace("[I. Die Ueberlieferung]", "[Die Ueberlieferung]") \
+    .replace("[A. Die Handschriften]", "[Die Handschriften]") \
+    .replace("[II. Der Text]", "[Der Text]")
+BARE_MASTER = BLOCK + "\n" + BARE_CONTENTS + "\n" + BODY
+
+
+def test_a_designator_the_list_leaves_out_goes_into_the_heading():
+    out, _structure, _report = mark_headings(BARE_MASTER)
+    assert _headings(out) == [
+        "## Inhaltsverzeichnis",
+        "# I. Die Ueberlieferung",
+        "## A. Die Handschriften",
+        "# II. Der Text",
+    ]
+    assert "# I. Die Ueberlieferung\n\n[p. 11] Ein erster Satz" in out
+    assert "\nI.\n" not in out and "[p. 11] I." not in out
+
+
+def test_a_heading_with_its_designator_is_still_the_lists_entry():
+    _out, structure, _report = mark_headings(BARE_MASTER)
+    assert [(n.depth, n.designator, n.title, [w.source for w in n.sources])
+            for n in structure.headings][1:] == [
+        (1, "I.", "Die Ueberlieferung", ["contents"]),
+        (2, "A.", "Die Handschriften", ["contents"]),
+        (1, "II.", "Der Text", ["contents"]),
+    ]
+
+
+def test_a_designator_behind_the_tail_of_a_wrapped_heading_goes_with_the_next_one():
+    """Bauer p. 84: '... mit der' / 'Vorlage 1. Platon und die Nachahmung ...'.
+    The first heading reaches over the break to 'Vorlage'; the '1.' behind it
+    belongs to the second, and the page marker belongs behind both."""
+    contents = ("[region: contents]\n\n## Inhaltsverzeichnis\n\n"
+                "- [Die Antike: Aneignung als wertschaetzende Auseinandersetzung mit der "
+                "Vorlage](#p-84) — p. 84\n"
+                "  - [Platon und die Nachahmung der Wirklichkeit](#p-84) — p. 84\n\n"
+                "[region: main]\n")
+    body = ("[p. 84]{#p-84} I. Die Antike: Aneignung als wertschaetzende "
+            "Auseinandersetzung mit der\n\n"
+            "Vorlage 1. Platon und die Nachahmung der Wirklichkeit Bereits Platon setzt "
+            "sich mit der Aneignung in der Kunst auseinander, um seine Vorstellungen "
+            "darzustellen.\n")
+    out, _structure, _report = mark_headings(BLOCK + "\n" + contents + "\n" + body)
+    assert ("# I. Die Antike: Aneignung als wertschaetzende Auseinandersetzung mit der "
+            "Vorlage\n\n"
+            "## 1. Platon und die Nachahmung der Wirklichkeit\n\n"
+            "[p. 84]{#p-84} Bereits Platon setzt sich") in out
+
+
+def test_a_designator_inside_a_sentence_is_not_taken():
+    master = BARE_MASTER.replace(
+        "[p. 20] II. Der Text Hier beginnt",
+        "[p. 20] Wie oben unter II. Der Text Hier beginnt")
+    out, _structure, _report = mark_headings(master)
+    assert "# II. Der Text" not in out
+
+
 def test_the_block_declares_the_division_it_found():
     out, _structure, _report = mark_headings(MASTER)
     assert "structure: 2 levels, chapters on level 1, 4 headings" in out
