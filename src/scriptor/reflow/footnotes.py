@@ -15,7 +15,9 @@ from dataclasses import dataclass
 
 # A note number has up to four digits: a volume that numbers its notes through
 # runs past 999 (Bauer prints 1320), and with three the whole apparatus from
-# note 1000 on stayed in the running text.
+# note 1000 on stayed in the running text. A four-digit number is also what a
+# year looks like, though, so it opens a definition only where it continues the
+# volume's own numbering -- see ``continues``.
 #
 # Footnote definition at the start of a line: "NN) Text…".
 FOOTNOTE_RE = re.compile(r"^(\d{1,4})\)\s?(.*)$")
@@ -39,7 +41,33 @@ SUPERSCRIPT_DIGITS = str.maketrans({
 })
 
 
-def match_definition(line: str) -> re.Match | None:
+# How far past the highest note so far a four-digit number may stand. A page
+# carries a few dozen notes at most; a year is centuries away from the note a
+# volume has reached.
+MAX_NOTE_STEP = 50
+
+
+def continues(num: int, last: int | None) -> bool:
+    """May ``num`` open a note, after ``last``, the highest note read so far?
+
+    Below 1000 the question is not asked -- nothing changes for the volumes
+    that never get there. From 1000 on the number has to continue the
+    volume's own numbering: note 999 was read, so 1000 is a note, but in a
+    volume that has reached note 45 the "1958);" that opens a bibliography
+    line is a year. The widened pattern alone read 53 false notes out of
+    L'Empire chrétien and 16 out of Militarizing Men (A/B of 19.9.).
+    """
+    return num < 1000 or (last is not None and last < num <= last + MAX_NOTE_STEP)
+
+
+def definition_start(line: str) -> re.Match | None:
+    """The shape of a definition start, before the numbering is asked."""
+    return (FOOTNOTE_RE.match(line)
+            or FOOTNOTE_DOT_RE.match(line)
+            or FOOTNOTE_SPACE_RE.match(line))
+
+
+def match_definition(line: str, last: int | None = None) -> re.Match | None:
     """Definition start inside a size-verified footnote block.
 
     Three print conventions: "NN)", "NN." and a bare "NN " — the last one is
@@ -47,11 +75,25 @@ def match_definition(line: str) -> re.Match | None:
     punctuation after it (Nomos, De Gruyter). It is the loosest of the three
     and is only ever consulted inside a block the geometry has already
     verified as small type; on bare running text it would match any sentence
-    that opens with a number.
+    that opens with a number. ``last`` is the highest note read so far; a
+    four-digit number has to continue it.
     """
-    return (FOOTNOTE_RE.match(line)
-            or FOOTNOTE_DOT_RE.match(line)
-            or FOOTNOTE_SPACE_RE.match(line))
+    m = definition_start(line)
+    return m if m and continues(int(m.group(1)), last) else None
+
+
+def definition_numbers(lines: list[str], last: int | None = None) -> list[int]:
+    """The notes a run of lines opens, in reading order. Each four-digit one
+    has to continue the numbering -- the volume's before the run, and the
+    run's own from its first note on."""
+    out: list[int] = []
+    for line in lines:
+        m = match_definition(line, last)
+        if m:
+            num = int(m.group(1))
+            out.append(num)
+            last = num if last is None else max(last, num)
+    return out
 
 
 # A footnote block is set measurably smaller than the body. OCR text layers
@@ -91,6 +133,7 @@ def split_small_type_block(
     lines: list[str],
     sizes: list[float | None],
     body_size: float | None = None,
+    last_note: int | None = None,
 ) -> SmallTypeSplit | None:
     """Cut the trailing small-type footnote block off a page, or return None.
 
@@ -98,6 +141,8 @@ def split_small_type_block(
     pages, not this one: on a note-heavy page the footnotes outweigh the body,
     and a page-local mode would flip to the footnote size and see nothing
     small. Without it the page's own dominant size serves as fallback.
+    ``last_note`` is the highest note the pages before have opened; a
+    four-digit definition has to continue it (``continues``).
 
     The cut is conservative: it needs measured sizes, a contiguous small run at
     the bottom of the page, and at least one definition start ("NN)" / "NN.")
@@ -153,7 +198,7 @@ def split_small_type_block(
             # as well be a small-set contents page or preface whose "N. Title"
             # lines would be swallowed as definitions. Too risky — leave it.
             return None
-        if any(match_definition(lines[i]) for i in range(start, end)):
+        if definition_numbers(lines[start:end], last_note):
             break
         end = start          # this run carries no definition; look further up
 
@@ -165,7 +210,7 @@ def split_small_type_block(
             return None
 
     notes = lines[start:end]
-    if not any(match_definition(ln) for ln in notes):
+    if not definition_numbers(notes, last_note):
         return None
     return SmallTypeSplit(
         body=lines[:start] + lines[end:bottom] + tail, notes=notes, split_at=start
