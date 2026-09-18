@@ -324,16 +324,75 @@ def _span_of(body: str, at: dict[int, _Piece], placed, title: str) -> tuple[int,
     return start, end
 
 
+def _is_designator(text: str, heading: str, roman: bool) -> bool:
+    """Is ``text`` exactly the designator of a numbering scheme, printed in
+    front of ``heading``?"""
+    scheme, designator, _title = scheme_of(f"{text} {heading}", roman)
+    return bool(scheme) and designator == text
+
+
+def _take_designators(body: str, writes: list[_Write], roman: bool) -> list[_Write]:
+    """Each heading with the designator printed in front of it (spec §4.4).
+
+    A list that names its entries without designators -- Bauer's of 11.9.
+    has "Das Bild als Medium ..." for "II. Das Bild als Medium ..." -- cuts at
+    the title, and the designator was left standing as a paragraph of its own
+    in front of the heading, 44 times in Bauer. What stands between the start
+    of the line (or the end of the heading before, where a wrapped title
+    reached over the break: "... mit der" / "Vorlage 1. Platon ...") and the
+    title, a page marker aside, goes into the heading when it is exactly a
+    designator of a known scheme. Anything more -- "wie oben unter II." -- is
+    prose, and nothing is taken.
+    """
+    out: list[_Write] = []
+    prev_end = 0
+    for w in sorted(writes, key=lambda w: w.start):
+        low = max(body.rfind("\n", 0, w.start) + 1, prev_end)
+        gap = body[low:w.start]
+        m = _OPENING_MARKER_RE.match(gap)
+        skip = m.end() if m else 0
+        candidate = gap[skip:].strip()
+        if candidate and _is_designator(candidate, body[w.start:w.end], roman):
+            w = _Write(low + skip + gap[skip:].index(candidate), w.end, w.depth)
+        out.append(w)
+        prev_end = w.end
+    return out
+
+
+# What ends a title as printed and the fold drops: a question or an
+# exclamation, and a closing quotation or bracket right behind it.
+_TITLE_END_RE = re.compile(r"[?!]+[\"'»«“”’)\]]*")
+
+
+def _take_closing_marks(body: str, writes: list[_Write]) -> list[_Write]:
+    """Each heading with the question mark its title ends in.
+
+    The wording is matched folded, so a span ends at the last letter, and
+    "... § 14 UrhG?" was written as a heading "... § 14 UrhG" with the "?"
+    left behind as a paragraph of its own (Bauer, twice). A mark glued to the
+    end of the title belongs to it; a full stop does not -- after a title run
+    into the prose it is as often the sentence's.
+    """
+    out = []
+    for w in writes:
+        m = _TITLE_END_RE.match(body, w.end)
+        out.append(_Write(w.start, m.end(), w.depth) if m else w)
+    return out
+
+
 def _apply(body: str, writes: list[_Write]) -> str:
     """The body with a ``#`` line written at each place, and nothing else.
 
     A heading is a line, so the text around it is broken where it has to be
     and nowhere else. Where the heading opens a page, the page marker moves
     behind it: spec §4.2 has a page's first heading standing in front of the
-    marker, which is how every consumer reads which page it is on.
+    marker, which is how every consumer reads which page it is on. Where a
+    second heading follows with nothing between, the marker waits behind that
+    one too -- otherwise it would stand alone between the two.
     """
     out: list[str] = []
     at = 0
+    pending = ""
     for w in sorted(writes, key=lambda w: w.start):
         if w.start < at:
             continue
@@ -345,16 +404,19 @@ def _apply(body: str, writes: list[_Write]) -> str:
             # heading opens that page: it goes in front of the marker.
             marker = _OPENING_MARKER_RE.fullmatch(tail).group(1) + " "
             before = head + sep
+        if before.strip():
+            out.append(pending + before.rstrip(" \t"))
+            pending = ""
         hashes = "#" * min(w.depth, MAX_MARKDOWN_DEPTH)
         # A title that broke across a paragraph becomes one line again: that
         # is the break the print made, and a heading is a line.
         title = " ".join(body[w.start:w.end].split())
-        out.append(before.rstrip(" \t"))
-        out.append(f"\n\n{hashes} {title}\n\n{marker}")
+        out.append(f"\n\n{hashes} {title}\n\n")
+        pending = pending or marker
         at = w.end
         while at < len(body) and body[at] in " \t":
             at += 1
-    out.append(body[at:])
+    out.append(pending + body[at:])
     return re.sub(r"\n{3,}", "\n\n", "".join(out))
 
 
@@ -406,14 +468,14 @@ def mark_headings(text: str):
     promoted = _promoted(whole_raw, whole_labels, whole_where, table, placement,
                          roman, {w.start for w in writes})
     report.promoted = len(promoted)
-    writes += promoted
+    writes = _take_closing_marks(body, _take_designators(body, writes + promoted, roman))
     out_body = _apply(body, writes)
     report.unplaced = len(placement.unplaced)
     report.rejected = len(placement.rejected)
 
     known = {fold(e.text): (e.depth, "contents") for e in entries}
     known.update({fold(body[w.start:w.end]): (w.depth, "numbering") for w in promoted})
-    depths = _depths(out_body, known)
+    depths = _depths(out_body, known, roman)
     report.existing = sum(1 for _d, _t, source in depths if source == "stale")
     structure = structure_of_master(
         block + out_body, [(d, t) for d, t, _s in depths], table,
@@ -463,13 +525,15 @@ def _promoted(raw, labels, where, table, placement, roman: bool,
     return out
 
 
-def _depths(body: str, known: dict[str, tuple[int, str]]) -> list[tuple[int, str, str]]:
+def _depths(body: str, known: dict[str, tuple[int, str]],
+            roman: bool) -> list[tuple[int, str, str]]:
     """(depth, text, witness source) for every ``#`` line of ``body``.
 
-    A line the list names takes the depth the list indents it to. One nothing
-    here names is the user's own -- a heading written or changed by hand --
-    and keeps the depth its hashes print, marked ``stale``: it stands in the
-    master, and nothing here claims to know where it belongs.
+    A line the list names takes the depth the list indents it to -- with the
+    designator the list left out, too. One nothing here names is the user's
+    own -- a heading written or changed by hand -- and keeps the depth its
+    hashes print, marked ``stale``: it stands in the master, and nothing here
+    claims to know where it belongs.
     """
     out: list[tuple[int, str, str]] = []
     for line in body.splitlines():
@@ -477,7 +541,7 @@ def _depths(body: str, known: dict[str, tuple[int, str]]) -> list[tuple[int, str
         if not m:
             continue
         text = m.group(2).strip()
-        found = known.get(fold(text))
+        found = known.get(fold(text)) or known.get(fold(scheme_of(text, roman)[2]))
         out.append((found[0], text, found[1]) if found
                    else (len(m.group(1)), text, "stale"))
     return out
