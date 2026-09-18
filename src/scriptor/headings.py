@@ -32,7 +32,7 @@ from scriptor.reflow import placement as placement_mod
 from scriptor.reflow.headings import read_mark
 from scriptor.reflow.outline import fold
 from scriptor.reflow.pagelabel import PAGE_MARKER_RE
-from scriptor.reflow.regions import read_metadata_block, region_of_heading
+from scriptor.reflow.regions import FORMAT_VERSION, read_metadata_block, region_of_heading
 from scriptor.structure import (
     MAX_MARKDOWN_DEPTH,
     Witness,
@@ -497,10 +497,26 @@ def _witness_of(sources: dict[str, str]):
     return witness
 
 
+def _version(text: str) -> tuple[int, ...] | None:
+    try:
+        return tuple(int(part) for part in text.strip().split("."))
+    except ValueError:
+        return None
+
+
 def _redeclare(block: str, line: str) -> str:
-    """The metadata block with its ``structure:`` line brought up to date."""
+    """The metadata block with its ``structure:`` line brought up to date.
+
+    The field is what 0.4.0 adds (spec §11), so an older ``format_version``
+    goes up with it; a newer one already knows the field and stays.
+    """
     if not block:
         return block
+    m = re.search(r"^format_version: *(.*)$", block, re.MULTILINE)
+    if m:
+        ours, theirs = _version(FORMAT_VERSION), _version(m.group(1))
+        if theirs is not None and theirs < ours:
+            block = block[:m.start(1)] + FORMAT_VERSION + block[m.end(1):]
     declaration = f"structure: {line}"
     if re.search(r"^structure: .*$", block, re.MULTILINE):
         return re.sub(r"^structure: .*$", lambda _m: declaration,

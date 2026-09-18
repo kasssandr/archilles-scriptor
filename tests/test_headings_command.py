@@ -168,6 +168,28 @@ def test_the_block_declares_the_division_it_found():
     assert "structure: 2 levels, chapters on level 1, 4 headings" in out
 
 
+def test_a_master_that_gains_a_structure_line_says_it_is_0_4_0():
+    """The ``structure`` field is what 0.4.0 adds (spec §11); a block that
+    carries it and still says 0.3.0 would declare a version that has no such
+    field (decision of 18.9.)."""
+    master = MASTER.replace("format_version: 0.4.0", "format_version: 0.3.0")
+    out, _structure, report = mark_headings(master)
+    assert "format_version: 0.4.0" in out and "0.3.0" not in out
+    assert report.changed is True
+
+
+def test_a_newer_format_version_is_not_lowered():
+    master = MASTER.replace("format_version: 0.4.0", "format_version: 0.5.1")
+    out, _structure, _report = mark_headings(master)
+    assert "format_version: 0.5.1" in out
+
+
+def test_a_master_left_alone_keeps_its_version():
+    master = (BLOCK + "\n" + BODY).replace("format_version: 0.4.0", "format_version: 0.3.0")
+    out, _structure, _report = mark_headings(master)
+    assert out == master
+
+
 def test_a_master_without_a_contents_list_is_left_alone():
     master = BLOCK + "\n" + BODY
     out, structure, report = mark_headings(master)
