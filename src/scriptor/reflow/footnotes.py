@@ -13,18 +13,22 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+# A note number has up to four digits: a volume that numbers its notes through
+# runs past 999 (Bauer prints 1320), and with three the whole apparatus from
+# note 1000 on stayed in the running text.
+#
 # Footnote definition at the start of a line: "NN) Text…".
-FOOTNOTE_RE = re.compile(r"^(\d{1,3})\)\s?(.*)$")
+FOOTNOTE_RE = re.compile(r"^(\d{1,4})\)\s?(.*)$")
 # "NN. Text…" — the other common print convention (Zuckerman). Far too frequent
 # in running prose (enumerations, years) to trust on bare text: it is only
 # applied inside a block the page geometry has already verified as small type.
-FOOTNOTE_DOT_RE = re.compile(r"^(\d{1,3})\.\s+(\S.*)$")
+FOOTNOTE_DOT_RE = re.compile(r"^(\d{1,4})\.\s+(\S.*)$")
 # "NN Text…" — a superscript number the extractor flattened, with nothing but a
 # space after it. Requires the space, so a continuation line opening with
 # "27, S. 53." or "2017, S. 41" is not mistaken for a definition.
-FOOTNOTE_SPACE_RE = re.compile(r"^(\d{1,3})\s+(\S.*)$")
+FOOTNOTE_SPACE_RE = re.compile(r"^(\d{1,4})\s+(\S.*)$")
 # Marker in the finished body: already replaced with [NN] — recognised during reflow.
-PLACED_MARKER_RE = re.compile(r"\[(\d{1,3})\]")
+PLACED_MARKER_RE = re.compile(r"\[(\d{1,4})\]")
 
 # OCR often delivers footnote markers as Unicode superscripts. Before marker
 # detection we normalise these to ASCII digits.

@@ -77,7 +77,7 @@ def _is_marker_position(left: str, right: str) -> bool:
 
 # Structural markers in a reconstructed paragraph that must NOT yield
 # candidates: page markers "[p. NN]" and footnote markers "[n]"/"[^n]".
-_MARKER_SPAN_RE = re.compile(r"\[p\. [^\]]+\]|\[\^?\d{1,3}\]")
+_MARKER_SPAN_RE = re.compile(r"\[p\. [^\]]+\]|\[\^?\d{1,4}\]")
 
 
 def _mask_markers(text: str) -> str:

@@ -613,7 +613,7 @@ SENT_END = re.compile(r"[.!?»“”\"’']$")
 # Placed footnote markers at the end of a line ("… Occident.” [1]" or even
 # "… country. [4] [5]"). They stand *after* the full stop and would hide it
 # from SENT_END — the paragraph-end check looks at the line without them.
-_TRAILING_MARKERS = re.compile(r"(\s*\[\d{1,3}\])+$")
+_TRAILING_MARKERS = re.compile(r"(\s*\[\d{1,4}\])+$")
 
 
 # Numbered heading at the start of a paragraph: "3.4. Probleme um Welf VI." and,
