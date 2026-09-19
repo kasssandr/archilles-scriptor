@@ -25,6 +25,7 @@ from scriptor.reflow.footnotes import (
     continues,
     definition_numbers,
     definition_start,
+    note_starts,
     split_small_type_block,
     substitute_markers,
 )
@@ -143,9 +144,12 @@ def parse_page(
 ) -> Page | None:
     """Parse a single page file. Returns None if empty.
 
-    ``last_note`` is the highest note the pages before this one opened. A
-    four-digit number opens a note only where it continues that numbering
-    (``footnotes.continues``); otherwise it is a year at the head of a line.
+    ``last_note`` is the highest note the pages before this one opened; a
+    four-digit number opens the page's first note only where it continues
+    that numbering (``footnotes.continues``). Within the block every further
+    note has to follow the one before it or start the count again
+    (``footnotes.follows``); otherwise it is the next line of that note,
+    opening with a number that is no note -- a page, a day, a year.
 
     ``fn_block`` carries the page's footnote block where the geometry already
     verified it (small type at the bottom, see ``split_small_type_block``).
@@ -259,28 +263,27 @@ def _assemble_footnotes(
     """Join multi-line definitions, dehyphenated. Returns (notes, leading) —
     ``leading`` being the lines before the first definition start.
 
-    A line whose four-digit number does not continue the numbering -- the
-    volume's (``last``) and then this block's own -- is not a definition start
-    but the next line of the note before: "(Paris," / "1958); J. H. W." """
+    Which lines open a note is the block's longest run of numbers that
+    follow one another (``footnotes.note_starts``, ``last`` being the
+    volume's highest note so far). Any other line that opens with a number
+    is the next line of the note before: "S. 390," / "393 Rn. 10 ff.",
+    "(Paris," / "1958); J. H. W." """
     footnotes: dict[int, str] = {}
     leading: list[str] = []
     cur_num: int | None = None
     cur_buf: list[str] = []
+    starts = dict(note_starts(fn_lines, last, matcher))
 
     def flush():
         if cur_num is None:
             return
         footnotes[cur_num] = dehyphenate_join(cur_buf).strip()
 
-    for ln in fn_lines:
-        m = matcher(ln)
-        if m and not continues(int(m.group(1)), last):
-            m = None
-        if m:
+    for i, ln in enumerate(fn_lines):
+        if i in starts:
             flush()
-            cur_num = int(m.group(1))
-            last = cur_num if last is None else max(last, cur_num)
-            cur_buf = [m.group(2)]
+            cur_num = starts[i]
+            cur_buf = [matcher(ln).group(2)]
         elif cur_num is None:
             leading.append(ln)
         else:
@@ -1560,7 +1563,8 @@ def main(
     if doc_body_size is not None:
         print(f"Dominant type size: {doc_body_size}pt", file=sys.stderr)
     # In reading order, carrying the highest note opened so far: a four-digit
-    # number opens a note only where it continues the volume's numbering.
+    # number opens a page's first note only where it continues the volume's
+    # numbering. Within a block, each note follows the one before it.
     splits = []
     last_note: int | None = None
     for r in reconstructions:
