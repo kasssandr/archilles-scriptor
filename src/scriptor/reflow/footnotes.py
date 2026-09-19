@@ -65,14 +65,36 @@ def continues(num: int, last: int | None) -> bool:
     return num < 1000 or (last is not None and last < num <= last + MAX_NOTE_STEP)
 
 
+def misread(num: int, prev: int) -> bool:
+    """Could ``num`` be the note after ``prev`` with a digit lost or misread?
+
+    OCR drops and swaps the digits of a small-set number: Le trasformazioni
+    prints 151 after 150, and the text layer says "15 '". The next number with
+    one digit lost, or with one digit wrong, is that note -- from two digits
+    on: a single digit is a fragment of too many numbers to say anything.
+    """
+    s = str(num)
+    if num == prev or len(s) < 2:
+        return False
+    for nxt in (prev + 1, prev + 2):
+        t = str(nxt)
+        if len(t) == len(s) + 1 and (t.startswith(s) or t.endswith(s)):
+            return True
+        if len(t) == len(s) and sum(a != b for a, b in zip(s, t)) == 1:
+            return True
+    return False
+
+
 def follows(num: int, prev: int) -> bool:
     """May ``num`` open a note after note ``prev`` of the same block?
 
-    It continues the count -- above ``prev``, at most MAX_NOTE_STEP past it --
-    or starts it again (a chapter that begins mid-page). Anything else is the
-    next line of note ``prev``, opening with a number that is no note: a page
-    of a citation ("BGH GRUR 2017, S. 390," / "393 Rn. 10 ff."), a day before
-    its month ("... vom" / "17. April 2019"), a year. Bauer had 30 of these.
+    It continues the count -- above ``prev``, at most MAX_NOTE_STEP past it,
+    or the next note with a digit misread -- or starts it again (a chapter
+    that begins mid-page). Anything else is the next line of note ``prev``,
+    opening with a number that is no note: a page of a citation ("BGH GRUR
+    2017, S. 390," / "393 Rn. 10 ff."), a day before its month ("... vom" /
+    "17. April 2019"), a year ("(Paris," / "1930); M. Pellegrino"). Over the
+    21 page models some 475 such lines had been read as notes (19.9.).
 
     The rule holds within a block and not across pages (user, 19.9.: the
     continuation rule for every number). Carried from page to page it broke
@@ -80,7 +102,8 @@ def follows(num: int, prev: int) -> bool:
     page after lost its apparatus: A comemoração kept 24 of 117 note blocks,
     Bauer 248 of 1320 notes (A/B of 19.9.).
     """
-    return prev < num <= prev + MAX_NOTE_STEP or num <= RESTART_MAX
+    return (prev < num <= prev + MAX_NOTE_STEP or num <= RESTART_MAX
+            or misread(num, prev))
 
 
 def definition_start(line: str) -> re.Match | None:
@@ -90,9 +113,53 @@ def definition_start(line: str) -> re.Match | None:
             or FOOTNOTE_SPACE_RE.match(line))
 
 
-def opens_note(num: int, last: int | None, prev: int | None) -> bool:
-    """``continues`` for a block's first note, ``follows`` for the others."""
-    return continues(num, last) if prev is None else follows(num, prev)
+def note_starts(lines: list[str], last: int | None = None,
+                shape=definition_start) -> list[tuple[int, int]]:
+    """(line index, number) of the lines of a block that open a note.
+
+    Every line shaped like a definition start is a candidate. The block's
+    notes are its longest run of candidates in which each ``follows`` the one
+    before and the first may open the page (``continues`` after the volume's
+    highest note ``last``); every other candidate is the next line of a note.
+    The run, not the first candidate, decides: Bauer's block that opened with
+    the tail of a note ("2. Aufl. 2018, S. 12.") took it for note 2, and 249,
+    250, 251 followed nothing. Among runs of one length, the one that
+    continues the volume's count wins, then the earlier one. No number opens
+    two notes of one run -- the second would overwrite the first.
+    """
+    cands: list[tuple[int, int]] = []
+    for i, line in enumerate(lines):
+        m = shape(line)
+        if m:
+            cands.append((i, int(m.group(1))))
+    if not cands:
+        return []
+    # best[j]: (length of the best run ending at j, it continues the volume,
+    # -start), back[j]: the candidate before j in that run.
+    best: list[tuple[int, bool, int] | None] = [None] * len(cands)
+    back: list[int | None] = [None] * len(cands)
+    for j, (_idx, num) in enumerate(cands):
+        if continues(num, last):
+            best[j] = (1, last is not None and last < num <= last + MAX_NOTE_STEP, -j)
+        for k in range(j):
+            if best[k] is None or not follows(num, cands[k][1]):
+                continue
+            used, p = set(), k
+            while p is not None:
+                used.add(cands[p][1])
+                p = back[p]
+            if num in used:
+                continue
+            score = (best[k][0] + 1, best[k][1], best[k][2])
+            if best[j] is None or score > best[j]:
+                best[j], back[j] = score, k
+    end = max((j for j in range(len(cands)) if best[j] is not None),
+              key=lambda j: best[j], default=None)
+    run: list[tuple[int, int]] = []
+    while end is not None:
+        run.append(cands[end])
+        end = back[end]
+    return run[::-1]
 
 
 def match_definition(line: str, last: int | None = None) -> re.Match | None:
@@ -111,15 +178,8 @@ def match_definition(line: str, last: int | None = None) -> re.Match | None:
 
 
 def definition_numbers(lines: list[str], last: int | None = None) -> list[int]:
-    """The notes a run of lines opens, in reading order: the first as
-    ``continues`` allows after the volume's ``last``, each further one as
-    ``follows`` allows after the note before it."""
-    out: list[int] = []
-    for line in lines:
-        m = definition_start(line)
-        if m and opens_note(int(m.group(1)), last, out[-1] if out else None):
-            out.append(int(m.group(1)))
-    return out
+    """The notes a run of lines opens, in reading order (``note_starts``)."""
+    return [num for _i, num in note_starts(lines, last)]
 
 
 # A footnote block is set measurably smaller than the body. OCR text layers

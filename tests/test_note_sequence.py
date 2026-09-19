@@ -78,6 +78,41 @@ def test_a_chapter_that_starts_mid_page_starts_the_count():
     assert set(pg.footnotes) == {45, 1}
 
 
+def test_a_number_at_the_head_of_a_block_does_not_close_it():
+    """Bauer: the block opened with the tail of the note before ("2. Aufl.
+    ..."), that was taken for note 2, and 249, 250, 251 followed nothing. The
+    block's notes are its longest run that follows through."""
+    pg = parse_page("Text.249 Mehr.250 Ende.251", last_note=248, fn_block=[
+        "2. Aufl. 2018, S. 12.",
+        "249 Ein Flashmob ist ein Phaenomen, bei dem sich eine Gruppe trifft.",
+        "250 Vgl. dazu S. 211 ff.",
+        "251 BGH GRUR 2013, S. 618.",
+    ])
+    assert set(pg.footnotes) == {249, 250, 251}
+    assert pg.fn_continuation == "2. Aufl. 2018, S. 12."
+
+
+def test_a_note_whose_number_lost_a_digit_is_still_a_note():
+    """Le trasformazioni p. 96: '151' read as "15 '". It is the next note in
+    the block, not the next line of note 150."""
+    pg = parse_page("Text.150 Mehr.151", last_note=149, fn_block=[
+        "150 PLRE I, Fabiola 2, p. 323; PCBE It., Fabiola 1, p. 734 sg.",
+        "15 '.Hier. Ep. 77, 2.",
+    ])
+    assert set(pg.footnotes) == {150, 15}
+    assert pg.footnotes[150].endswith("p. 734 sg.")
+
+
+def test_a_number_already_read_in_the_block_overwrites_nothing():
+    pg = parse_page("Text.12 Mehr.13", last_note=11, fn_block=[
+        "12 Erste Note, die weitergeht auf",
+        "12 f. und endet dort.",
+        "13 Zweite Note.",
+    ])
+    assert set(pg.footnotes) == {12, 13}
+    assert pg.footnotes[12] == "Erste Note, die weitergeht auf 12 f. und endet dort."
+
+
 def test_a_misreading_on_one_page_does_not_close_the_next():
     """The naive rule's failure: a caption read as note 3 set the count back,
     and the next page's 250 no longer continued anything."""

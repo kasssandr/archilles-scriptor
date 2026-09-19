@@ -25,7 +25,7 @@ from scriptor.reflow.footnotes import (
     continues,
     definition_numbers,
     definition_start,
-    opens_note,
+    note_starts,
     split_small_type_block,
     substitute_markers,
 )
@@ -263,29 +263,27 @@ def _assemble_footnotes(
     """Join multi-line definitions, dehyphenated. Returns (notes, leading) —
     ``leading`` being the lines before the first definition start.
 
-    The block's first note has to be one the volume can continue with
-    (``continues``, ``last`` being its highest note so far); each further one
-    has to follow the note before it or start the count again (``follows``).
-    Any other line that opens with a number is the next line of the note
-    before: "S. 390," / "393 Rn. 10 ff.", "(Paris," / "1958); J. H. W." """
+    Which lines open a note is the block's longest run of numbers that
+    follow one another (``footnotes.note_starts``, ``last`` being the
+    volume's highest note so far). Any other line that opens with a number
+    is the next line of the note before: "S. 390," / "393 Rn. 10 ff.",
+    "(Paris," / "1958); J. H. W." """
     footnotes: dict[int, str] = {}
     leading: list[str] = []
     cur_num: int | None = None
     cur_buf: list[str] = []
+    starts = dict(note_starts(fn_lines, last, matcher))
 
     def flush():
         if cur_num is None:
             return
         footnotes[cur_num] = dehyphenate_join(cur_buf).strip()
 
-    for ln in fn_lines:
-        m = matcher(ln)
-        if m and not opens_note(int(m.group(1)), last, cur_num):
-            m = None
-        if m:
+    for i, ln in enumerate(fn_lines):
+        if i in starts:
             flush()
-            cur_num = int(m.group(1))
-            cur_buf = [m.group(2)]
+            cur_num = starts[i]
+            cur_buf = [matcher(ln).group(2)]
         elif cur_num is None:
             leading.append(ln)
         else:
