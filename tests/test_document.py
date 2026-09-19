@@ -321,6 +321,10 @@ def test_locate_searches_the_named_page_and_nowhere_else(tmp_path):
     b = _address(tmp_path)
     loc = b.locate(SECOND, page="1", occurrence=2)
     assert (loc.page, loc.occurrence, loc.pos) == ("1", 2, 9)
+    # The witness behind the label travels with the locus: this second page 1
+    # was placed by the catalogue, the first one is printed.
+    assert loc.label_source == "catalogue"
+    assert b.locate(FIRST, page="1").label_source == "printed"
     assert b.doc.body[loc.start:loc.end] == SECOND
     assert not loc.ambiguous and not loc.proposed
     assert b.locate(SECOND, page="1") is None
@@ -397,7 +401,7 @@ def test_a_wording_shorter_than_the_minimum_is_refused(tmp_path):
 def test_a_master_without_a_sidecar_locates_without_a_physical_page(tmp_path):
     b = _address(tmp_path, pages=None)
     loc = b.locate(FIRST, page="1")
-    assert loc.page == "1" and loc.pos is None
+    assert loc.page == "1" and loc.pos is None and loc.label_source is None
 
 
 def test_a_wording_is_cut_from_one_paragraph(tmp_path):

@@ -392,6 +392,7 @@ class Locus:
     end: int
     proposed: bool = False    # not the page that was asked for, only the nearest
     ambiguous: bool = False   # the page carries the wording more than once
+    label_source: str | None = None   # the witness behind the label (spec §6.3)
 
 
 def _wording_of(wording: str) -> str:
@@ -515,13 +516,13 @@ class Bundle:
         end = marks[i + 1][1] if i + 1 < len(marks) else len(self.doc.body)
         return marks[i][1], end
 
-    def _pos_at(self, i: int) -> int | None:
+    def _sidecar_at(self, i: int) -> SidecarPage | None:
+        """The sidecar page the i-th marker stands for, where a sidecar says."""
         if not self.pages:
             return None
         if self._resolved is None:
             self._resolved = self.resolve_marks(self.doc)
-        entry = self._resolved[i]
-        return entry.pos if entry else None
+        return self._resolved[i]
 
     def page_text(self, label: str, occurrence: int = 1) -> str | None:
         """The text of the ``occurrence``-th page printing ``label``.
@@ -586,11 +587,13 @@ class Bundle:
         if hit is None:
             return None
         label = self.doc.page_marks[i][0]
+        entry = self._sidecar_at(i)
         return Locus(page=label,
                      occurrence=sum(1 for lbl, _ in self.doc.page_marks[:i + 1]
                                     if lbl == label),
-                     pos=self._pos_at(i), start=hit[0], end=hit[1],
-                     proposed=proposed, ambiguous=hit[2] > 1)
+                     pos=entry.pos if entry else None, start=hit[0], end=hit[1],
+                     proposed=proposed, ambiguous=hit[2] > 1,
+                     label_source=entry.source if entry else None)
 
     def locate(self, wording: str, page: str | None = None,
                occurrence: int = 1) -> Locus | None:
