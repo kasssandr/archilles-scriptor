@@ -660,6 +660,15 @@ are chosen to degrade gracefully:
   sidecar record MUST verify it before acting on it: locate the page by its
   marker, then match the context snippet. If the snippet no longer matches,
   the record is **stale**.
+- **What the match ignores.** Matching a context snippet, or the wording of an
+  address (§4.7), is done on normalised text: case folded, every run of
+  whitespace one space, soft hyphens dropped, a word hyphenated across a line
+  break joined. It is also blind to what a new production rewrites without
+  changing a word — footnote anchors, page markers with their anchors, the
+  backslash of an escape, and the hashes that open a heading line. A consumer
+  MUST NOT let any of these decide a match: re-levelling a heading changes its
+  hashes and not one of its words. Everything else is part of the match;
+  punctuation in particular is not folded away.
 - **Stale means flag, not guess.** A consumer holding a stale record MUST NOT
   apply it heuristically; it MUST surface the discrepancy (flag, log, refuse —
   whatever its idiom is) and continue without the record. This is the same
@@ -741,8 +750,10 @@ structure sidecar (§6.5), the heading-before-marker rule (§4.2) and
 separate files or fields, so a consumer that knows none of them reads the
 document exactly as before. It states the address of a passage (§4.7), which
 adds no syntax: it says what a consumer may rely on when it cites, from the
-markers and the text that were there already. And it reserves the notes
-sidecar (§6.6) and `profile.reference` (§6.3).
+markers and the text that were there already. With it comes what no earlier
+version said and every consumer had to decide for itself: what the match of a
+snippet or a wording ignores (§9). And it reserves the notes sidecar (§6.6)
+and `profile.reference` (§6.3).
 
 Producers SHOULD state the spec version they target, in the document's
 `format_version` field (§4.1) and in tool `--version` output. Until version

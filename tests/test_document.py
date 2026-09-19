@@ -9,7 +9,15 @@ import json
 
 import pytest
 
-from scriptor.document import Bundle, load_bundle, master_headings, parse_prepared
+from scriptor.document import (
+    MIN_WORDING_WORDS,
+    Bundle,
+    find_snippet,
+    load_bundle,
+    master_headings,
+    normalize,
+    parse_prepared,
+)
 from scriptor.reflow.regions import FORMAT_VERSION, render_metadata_block
 
 BODY = """[p. xiv] Ein Vorwort, römisch gezählt.
@@ -258,3 +266,238 @@ def test_a_heading_knows_the_region_it_stands_in():
 def test_seven_hashes_are_a_paragraph_not_a_heading():
     doc = parse_prepared("[p. 1] Satz.\n\n####### Keine Überschrift\n")
     assert master_headings(doc) == []
+
+
+# the address: page, occurrence, wording (P-B1) ---------------------------
+
+ADDRESS_BODY = """[p. 1] Auf der ersten Seite des ersten Teils steht dieser eine lange Satz.
+
+[p. 2] Die zweite Seite trägt einen eigenen, hinreichend langen Satz für sich allein.
+
+[p. 1] Auf der ersten Seite des zweiten Teils steht ein ganz anderer langer Satz.
+"""
+
+ADDRESS_PAGES = [
+    {"pos": 3, "label": "1", "source": "printed", "confidence": 1.0},
+    {"pos": 4, "label": "2", "source": "printed", "confidence": 1.0},
+    {"pos": 9, "label": "1", "source": "catalogue", "confidence": 1.0},
+]
+
+FIRST = "Auf der ersten Seite des ersten Teils steht dieser eine lange Satz."
+MIDDLE = "Die zweite Seite trägt einen eigenen, hinreichend langen Satz für sich allein."
+SECOND = "Auf der ersten Seite des zweiten Teils steht ein ganz anderer langer Satz."
+
+
+def _address(tmp_path, *, body=ADDRESS_BODY, pages=ADDRESS_PAGES, structure=None):
+    if structure is not None:
+        (tmp_path / "book.md.structure.json").write_text(
+            json.dumps({"version": 1, "chapter_level": 1, "schemes": [],
+                        "headings": [{"depth": d, "title": t} for d, t in structure],
+                        "unplaced": [], "rejected": []}), encoding="utf-8")
+    return load_bundle(_bundle(tmp_path, body=body,
+                               sidecar=_sidecar(pages) if pages is not None else None))
+
+
+def test_the_text_match_lives_with_the_reader_and_eval_imports_it():
+    """``find_snippet`` was the benchmark's; it is the match §B.7 of the wiki
+    concept means and the one ``locate`` uses. It moves here, where a consumer
+    may import it, and ``eval/normalize.py`` reads it from here (pattern S1)."""
+    from scriptor.eval import normalize as eval_normalize
+    assert eval_normalize.find_snippet is find_snippet
+    assert eval_normalize.normalize is normalize
+
+
+def test_page_text_is_the_nth_page_carrying_the_label(tmp_path):
+    b = _address(tmp_path)
+    assert "ersten Teils" in b.page_text("1")
+    assert "zweiten Teils" in b.page_text("1", 2)
+    assert b.page_text("1", 3) is None
+    assert b.page_text("7") is None
+
+
+def test_locate_searches_the_named_page_and_nowhere_else(tmp_path):
+    """The wording is a checksum, not a pointer (Befund §1.2): where the page
+    does not carry it, the answer is None -- never the same words elsewhere."""
+    b = _address(tmp_path)
+    loc = b.locate(SECOND, page="1", occurrence=2)
+    assert (loc.page, loc.occurrence, loc.pos) == ("1", 2, 9)
+    assert b.doc.body[loc.start:loc.end] == SECOND
+    assert not loc.ambiguous and not loc.proposed
+    assert b.locate(SECOND, page="1") is None
+    assert b.locate(MIDDLE, page="1") is None
+
+
+def test_without_a_page_the_document_answers_with_its_first_hit(tmp_path):
+    b = _address(tmp_path)
+    loc = b.locate(SECOND)
+    assert (loc.page, loc.occurrence, loc.pos) == ("1", 2, 9)
+    # An occurrence names a page's repetition; without a page it names nothing.
+    with pytest.raises(ValueError):
+        b.locate(SECOND, occurrence=2)
+
+
+def test_the_nearest_page_that_carries_the_wording_is_a_proposal(tmp_path):
+    """Spec §4.7: a consumer may offer the nearest page as a proposal, never as
+    a repair. Three pages in both directions, the page after first."""
+    b = _address(tmp_path)
+    prop = b.nearest(MIDDLE, page="1")
+    assert (prop.page, prop.occurrence, prop.proposed) == ("2", 1, True)
+    assert b.doc.body[prop.start:prop.end] == MIDDLE
+    assert b.nearest(FIRST, page="2").page == "1"
+    assert b.nearest("Ein Wortlaut, den dieser Band nirgends druckt, nicht einmal hier",
+                     page="1") is None
+
+
+def test_a_wording_standing_twice_on_its_page_is_ambiguous(tmp_path):
+    """P-M2: nine of 1437 addresses found the wrong place at eight words, all of
+    them on a page that prints the wording twice. None of them was silent."""
+    twice = "Ein Satz, der auf dieser Seite zweimal steht, wortgleich und lang genug."
+    b = _address(tmp_path, body=f"[p. 1] {twice}\n\nUnd hier noch einmal: {twice}\n",
+                 pages=ADDRESS_PAGES[:1])
+    loc = b.locate(twice, page="1")
+    assert loc.ambiguous
+    assert b.doc.body[loc.start:loc.end] == twice
+
+
+def test_an_ocr_variant_of_the_wording_is_found(tmp_path):
+    b = _address(tmp_path, pages=[ADDRESS_PAGES[0]],
+                 body="[p. 1] Die Aneignung des Beſitzes war für die Straßburger "
+                      "Bürger ein wich-\ntiger Vorgang.\n")
+    assert b.locate("Die Aneignung des Besitzes war für die Strassburger Bürger "
+                    "ein wichtiger Vorgang.", page="1") is not None
+
+
+def test_markers_hashes_and_escapes_belong_to_no_wording(tmp_path):
+    """A new production renumbers the note anchors and may level a heading
+    differently: that changes hashes and marker, and no word. The first P-M2 run
+    lost five of eighty matches to '#' against '####' alone."""
+    b = _address(tmp_path, pages=[ADDRESS_PAGES[0]],
+                 body="[p. 1] Ein Satz mit einem Anker [^1] und einem \\*Sternchen\\* "
+                      "darin, lang genug.\n\n"
+                      "#### Die Aneignung als Rechtsbegriff im späten Mittelalter "
+                      "und in der Neuzeit\n\n"
+                      "[^1]: Die Note.\n")
+    assert b.locate("Ein Satz mit einem Anker und einem *Sternchen* darin, lang genug.",
+                    page="1") is not None
+    assert b.locate("Die Aneignung als Rechtsbegriff im späten Mittelalter und in "
+                    "der Neuzeit", page="1") is not None
+
+
+def test_a_wording_shorter_than_the_minimum_is_refused(tmp_path):
+    """Eight words, measured (P-M2 §3): shorter ones find the wrong place, longer
+    ones do not fit in their paragraph."""
+    b = _address(tmp_path)
+    short = " ".join(FIRST.split()[:MIN_WORDING_WORDS - 1])
+    with pytest.raises(ValueError):
+        b.locate(short, page="1")
+    with pytest.raises(ValueError):
+        b.nearest(short, page="1")
+
+
+def test_a_master_without_a_sidecar_locates_without_a_physical_page(tmp_path):
+    b = _address(tmp_path, pages=None)
+    loc = b.locate(FIRST, page="1")
+    assert loc.page == "1" and loc.pos is None
+
+
+def test_a_wording_is_cut_from_one_paragraph(tmp_path):
+    """Measured (P-M2, Briefing §8): a wording that runs over a paragraph
+    boundary breaks as soon as a heading is inserted there. The address was cut
+    badly; the page is not stale. A thousand wordings cut across Bauer's
+    headings failed for no other reason."""
+    body = ("[p. 1] Ein Absatz mit genau so vielen Wörtern, dass er eine "
+            "Adresse gerade noch trägt.\n\n"
+            "## Eine Überschrift dazwischen\n\n"
+            "Und danach geht der Text weiter, mit genügend Wörtern für eine "
+            "zweite Adresse.\n")
+    b = _address(tmp_path, body=body, pages=ADDRESS_PAGES[:1])
+    at = b.doc.body.index("Ein Absatz")
+    wording = b.wording_at(at)
+    assert wording == "Ein Absatz mit genau so vielen Wörtern, dass"
+    assert b.locate(wording, page="1").start == at
+    # From the marker on, the marker is not a word of the wording.
+    assert b.wording_at(0) == wording
+    # Three words from the paragraph's end there is no address, and the heading
+    # behind it lends none.
+    assert b.wording_at(b.doc.body.index("gerade noch")) is None
+
+
+def test_a_wording_stops_at_the_page_it_stands_on(tmp_path):
+    """A wording over a page boundary is never found: ``locate`` reads one page
+    and the rest of it stands on the next. Thirty-three of 899 wordings cut
+    across Bauer's page markers were stale for that reason and no other."""
+    body = ("[p. 1] Ein erster Satz auf dieser Seite, und dann: der Rest ohne "
+            "Punkt [p. 2]{#p-2} läuft in die nächste Seite hinein.\n")
+    b = _address(tmp_path, body=body, pages=ADDRESS_PAGES[:2])
+    assert b.wording_at(b.doc.body.index("Ein erster")) == \
+        "Ein erster Satz auf dieser Seite, und dann:"
+    assert b.wording_at(b.doc.body.index("der Rest")) is None   # vier bis zur Grenze
+    # Wäre er über die Grenze geschnitten, fände ihn keine der beiden Seiten.
+    over = "der Rest ohne Punkt läuft in die nächste"
+    assert b.locate(over, page="1") is None and b.locate(over, page="2") is None
+    # Ein Offset mitten im Marker beginnt den Wortlaut hinter ihm, nie mit
+    # seinem Rest ("2]{#p-2} läuft in die ...").
+    inside = b.doc.body.index("[p. 2]{#p-2}") + 4
+    assert b.wording_at(inside, words=3) == "läuft in die"
+
+
+# the section a position stands in ----------------------------------------
+
+SECTION_BODY = """[p. 1] Vor dem Kapitel.
+
+# I. Das Kapitel
+
+[p. 2] Der erste Satz des Kapitels, lang genug für eine Adresse auf dieser Seite.
+
+###### *Ein tiefer Titel*
+
+[p. 3] Der Text des tiefen Abschnitts, ebenfalls lang genug für eine Adresse.
+
+###### Ein Unterabschnitt
+
+[p. 4] Und weiter im Text, auch hier mit genügend Wörtern für eine Adresse.
+
+###### Der nächste Titel
+
+[p. 5] Das Ende des Masters, mit hinreichend vielen Wörtern für eine Adresse.
+"""
+
+SECTION_PAGES = [{"pos": i, "label": str(i), "source": "printed", "confidence": 1.0}
+                 for i in range(1, 6)]
+
+# What the master's six hashes cannot say (spec §6.5, Briefing §8.3): the
+# subsection is deeper than the title above it, though both print six.
+SECTION_DEPTHS = [(1, "I. Das Kapitel"), (7, "*Ein tiefer Titel*"),
+                  (8, "Ein Unterabschnitt"), (7, "Der nächste Titel")]
+
+
+def test_a_section_reaches_to_the_next_heading_of_its_own_depth(tmp_path):
+    b = _address(tmp_path, body=SECTION_BODY, pages=SECTION_PAGES,
+                 structure=SECTION_DEPTHS)
+    text = b.doc.body[slice(*b.section_span("3", "*Ein tiefer Titel*"))]
+    assert "Ein Unterabschnitt" in text
+    assert "Der nächste Titel" not in text
+    assert b.section_span("3", "Ein Titel, der dort nicht steht") is None
+    assert b.section_span("4", "*Ein tiefer Titel*") is None
+
+
+def test_without_a_structure_sidecar_the_hashes_say_the_depth(tmp_path):
+    b = _address(tmp_path, body=SECTION_BODY, pages=SECTION_PAGES)
+    text = b.doc.body[slice(*b.section_span("3", "*Ein tiefer Titel*"))]
+    assert "Ein Unterabschnitt" not in text
+
+
+def test_the_last_section_reaches_to_the_end_of_the_master(tmp_path):
+    b = _address(tmp_path, body=SECTION_BODY, pages=SECTION_PAGES,
+                 structure=SECTION_DEPTHS)
+    span = b.section_span("5", "Der nächste Titel")
+    assert span[1] == len(b.doc.body)
+
+
+def test_node_at_names_the_heading_a_position_stands_under(tmp_path):
+    b = _address(tmp_path, body=SECTION_BODY, pages=SECTION_PAGES,
+                 structure=SECTION_DEPTHS)
+    loc = b.locate("Und weiter im Text, auch hier mit genügend Wörtern für eine Adresse.",
+                   page="4")
+    assert b.node_at(loc.start).text == "Ein Unterabschnitt"
+    assert b.node_at(0) is None
