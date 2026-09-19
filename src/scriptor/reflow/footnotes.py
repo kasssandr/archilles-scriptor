@@ -41,23 +41,32 @@ SUPERSCRIPT_DIGITS = str.maketrans({
 })
 
 
-# How far past the highest note so far a four-digit number may stand. A page
-# carries a few dozen notes at most; a year is centuries away from the note a
-# volume has reached.
+# How far past the note read last the next may stand. A page carries a few
+# dozen notes at most; a year is centuries away from the note a volume has
+# reached.
 MAX_NOTE_STEP = 50
+# A count that starts again -- per chapter, per part, per page -- starts at 1,
+# or at 2 or 3 where the first definition of the new count was unreadable.
+RESTART_MAX = 3
 
 
 def continues(num: int, last: int | None) -> bool:
-    """May ``num`` open a note, after ``last``, the highest note read so far?
+    """May ``num`` open a note, after ``last``, the note read last?
 
-    Below 1000 the question is not asked -- nothing changes for the volumes
-    that never get there. From 1000 on the number has to continue the
-    volume's own numbering: note 999 was read, so 1000 is a note, but in a
-    volume that has reached note 45 the "1958);" that opens a bibliography
-    line is a year. The widened pattern alone read 53 false notes out of
-    L'Empire chrétien and 16 out of Militarizing Men (A/B of 19.9.).
+    It continues the count -- above ``last`` and at most MAX_NOTE_STEP past
+    it -- or it starts the count again. Anything else is the next line of the
+    note before, opening with a number that is no note: a page of a citation
+    ("BGH GRUR 2017, S. 390," / "393 Rn. 10 ff."), a day before its month
+    ("... vom" / "17. April 2019"), a year ("(Paris," / "1958); J. H. W.").
+    Bauer had 30 of the first two kinds; the years came with the four-digit
+    pattern and gave L'Empire chrétien 53 false notes (A/B of 19.9.).
+
+    Before the volume's first note there is nothing to continue, and any
+    number below 1000 may open the count.
     """
-    return num < 1000 or (last is not None and last < num <= last + MAX_NOTE_STEP)
+    if last is None:
+        return num < 1000
+    return last < num <= last + MAX_NOTE_STEP or num <= RESTART_MAX
 
 
 def definition_start(line: str) -> re.Match | None:
@@ -75,24 +84,23 @@ def match_definition(line: str, last: int | None = None) -> re.Match | None:
     punctuation after it (Nomos, De Gruyter). It is the loosest of the three
     and is only ever consulted inside a block the geometry has already
     verified as small type; on bare running text it would match any sentence
-    that opens with a number. ``last`` is the highest note read so far; a
-    four-digit number has to continue it.
+    that opens with a number. ``last`` is the note read last; the number has
+    to continue it or start the count again (``continues``).
     """
     m = definition_start(line)
     return m if m and continues(int(m.group(1)), last) else None
 
 
 def definition_numbers(lines: list[str], last: int | None = None) -> list[int]:
-    """The notes a run of lines opens, in reading order. Each four-digit one
-    has to continue the numbering -- the volume's before the run, and the
-    run's own from its first note on."""
+    """The notes a run of lines opens, in reading order. Each has to continue
+    the count -- the volume's before the run, and the run's own from its
+    first note on -- or start it again."""
     out: list[int] = []
     for line in lines:
         m = match_definition(line, last)
         if m:
-            num = int(m.group(1))
-            out.append(num)
-            last = num if last is None else max(last, num)
+            last = int(m.group(1))
+            out.append(last)
     return out
 
 
