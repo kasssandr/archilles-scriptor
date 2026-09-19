@@ -1455,6 +1455,21 @@ def render_book(
     return result + "\n", audit
 
 
+def heading_witness(witnesses: dict, node) -> list:
+    """The witness that placed a heading of the master, for the sidecar.
+
+    Witnesses are filed under the entry's whole wording -- designator and all,
+    as the contents prints it -- so they are looked up the same way, and by
+    the bare title only where the list prints none. Looked up by the title
+    alone, 219 of Bauer's 222 headings stood in the sidecar without the
+    witness that placed them (19.9.).
+    """
+    from scriptor.reflow.outline import fold
+
+    found = witnesses.get(fold(node.text)) or witnesses.get(fold(node.title))
+    return [found] if found else []
+
+
 # ----------------------------------------------------------------------
 # main
 # ----------------------------------------------------------------------
@@ -2136,8 +2151,7 @@ def main(
             held["structure"] = structure_of_master(
                 body, depths, sources.table,
                 region_of=region_of_heading,
-                witness_of=lambda n: [witnesses[fold(n.title)]]
-                if fold(n.title) in witnesses else [],
+                witness_of=lambda node: heading_witness(witnesses, node),
                 unplaced=[{"text": w.text, "page": w.page}
                           for w in (placement.unplaced if placement else ())],
                 rejected=[{"text": w.text, "page": w.page, "reason": why}

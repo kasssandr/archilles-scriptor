@@ -87,6 +87,25 @@ def test_the_sidecar_lists_the_headings_of_the_master_in_order(tmp_path):
     assert [h["depth"] for h in _sidecar(out)["headings"]] == [1, 2, 1]
 
 
+def test_a_heading_with_a_designator_finds_the_witness_that_placed_it():
+    """Witnesses were filed under the entry's whole wording and looked up
+    under the title without its designator, so a numbered heading lost its
+    witness -- 219 of 222 in Bauer's bundle of 19.9."""
+    from scriptor.reflow.core import heading_witness
+    from scriptor.reflow.outline import fold
+    from scriptor.structure import Node, Witness
+
+    placed = Witness("contents", "placed by rule 2")
+    witnesses = {fold("A. Bildliche Aneignung – eine Definition"): placed,
+                 fold("Einleitung"): Witness("outline", "placed by rule 1")}
+    lettered = Node(depth=2, title="Bildliche Aneignung – eine Definition", designator="A.")
+    bare = Node(depth=1, title="Einleitung")
+    stranger = Node(depth=1, title="Ein Zwischentitel")
+    assert heading_witness(witnesses, lettered) == [placed]
+    assert [w.source for w in heading_witness(witnesses, bare)] == ["outline"]
+    assert heading_witness(witnesses, stranger) == []
+
+
 def test_a_heading_knows_the_page_it_stands_on(tmp_path):
     out = _volume(tmp_path)
     assert [h["page"] for h in _sidecar(out)["headings"]] == ["112", "116", "122"]
