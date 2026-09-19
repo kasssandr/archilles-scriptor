@@ -51,22 +51,36 @@ RESTART_MAX = 3
 
 
 def continues(num: int, last: int | None) -> bool:
-    """May ``num`` open a note, after ``last``, the note read last?
+    """May ``num`` open a page's first note, after ``last``, the highest note
+    the volume has read so far?
 
-    It continues the count -- above ``last`` and at most MAX_NOTE_STEP past
-    it -- or it starts the count again. Anything else is the next line of the
-    note before, opening with a number that is no note: a page of a citation
-    ("BGH GRUR 2017, S. 390," / "393 Rn. 10 ff."), a day before its month
-    ("... vom" / "17. April 2019"), a year ("(Paris," / "1958); J. H. W.").
-    Bauer had 30 of the first two kinds; the years came with the four-digit
-    pattern and gave L'Empire chrétien 53 false notes (A/B of 19.9.).
-
-    Before the volume's first note there is nothing to continue, and any
-    number below 1000 may open the count.
+    Below 1000 it may: a count restarts per chapter, part or page, and the
+    first note of a block is where it does. From 1000 on the number has to
+    continue the volume's numbering -- note 999 was read, so 1000 is a note,
+    but in a volume that has reached note 45 the "1958);" that opens a
+    bibliography line is a year (L'Empire chrétien: 53 false notes, A/B of
+    19.9.). The highest note, not the last one: a single misreading must not
+    set the course for every page after it.
     """
-    if last is None:
-        return num < 1000
-    return last < num <= last + MAX_NOTE_STEP or num <= RESTART_MAX
+    return num < 1000 or (last is not None and last < num <= last + MAX_NOTE_STEP)
+
+
+def follows(num: int, prev: int) -> bool:
+    """May ``num`` open a note after note ``prev`` of the same block?
+
+    It continues the count -- above ``prev``, at most MAX_NOTE_STEP past it --
+    or starts it again (a chapter that begins mid-page). Anything else is the
+    next line of note ``prev``, opening with a number that is no note: a page
+    of a citation ("BGH GRUR 2017, S. 390," / "393 Rn. 10 ff."), a day before
+    its month ("... vom" / "17. April 2019"), a year. Bauer had 30 of these.
+
+    The rule holds within a block and not across pages (user, 19.9.: the
+    continuation rule for every number). Carried from page to page it broke
+    the moment one number was misread -- a caption, an OCR slip -- and every
+    page after lost its apparatus: A comemoração kept 24 of 117 note blocks,
+    Bauer 248 of 1320 notes (A/B of 19.9.).
+    """
+    return prev < num <= prev + MAX_NOTE_STEP or num <= RESTART_MAX
 
 
 def definition_start(line: str) -> re.Match | None:
@@ -74,6 +88,11 @@ def definition_start(line: str) -> re.Match | None:
     return (FOOTNOTE_RE.match(line)
             or FOOTNOTE_DOT_RE.match(line)
             or FOOTNOTE_SPACE_RE.match(line))
+
+
+def opens_note(num: int, last: int | None, prev: int | None) -> bool:
+    """``continues`` for a block's first note, ``follows`` for the others."""
+    return continues(num, last) if prev is None else follows(num, prev)
 
 
 def match_definition(line: str, last: int | None = None) -> re.Match | None:
@@ -84,23 +103,22 @@ def match_definition(line: str, last: int | None = None) -> re.Match | None:
     punctuation after it (Nomos, De Gruyter). It is the loosest of the three
     and is only ever consulted inside a block the geometry has already
     verified as small type; on bare running text it would match any sentence
-    that opens with a number. ``last`` is the note read last; the number has
-    to continue it or start the count again (``continues``).
+    that opens with a number. ``last`` is the highest note read so far; a
+    four-digit number has to continue it (``continues``).
     """
     m = definition_start(line)
     return m if m and continues(int(m.group(1)), last) else None
 
 
 def definition_numbers(lines: list[str], last: int | None = None) -> list[int]:
-    """The notes a run of lines opens, in reading order. Each has to continue
-    the count -- the volume's before the run, and the run's own from its
-    first note on -- or start it again."""
+    """The notes a run of lines opens, in reading order: the first as
+    ``continues`` allows after the volume's ``last``, each further one as
+    ``follows`` allows after the note before it."""
     out: list[int] = []
     for line in lines:
-        m = match_definition(line, last)
-        if m:
-            last = int(m.group(1))
-            out.append(last)
+        m = definition_start(line)
+        if m and opens_note(int(m.group(1)), last, out[-1] if out else None):
+            out.append(int(m.group(1)))
     return out
 
 

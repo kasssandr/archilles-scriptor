@@ -25,6 +25,7 @@ from scriptor.reflow.footnotes import (
     continues,
     definition_numbers,
     definition_start,
+    opens_note,
     split_small_type_block,
     substitute_markers,
 )
@@ -143,10 +144,12 @@ def parse_page(
 ) -> Page | None:
     """Parse a single page file. Returns None if empty.
 
-    ``last_note`` is the note the pages before this one opened last. A number
-    opens a note only where it continues that count or starts it again
-    (``footnotes.continues``); otherwise it is the next line of a note that
-    happens to open with a number -- a page, a day, a year.
+    ``last_note`` is the highest note the pages before this one opened; a
+    four-digit number opens the page's first note only where it continues
+    that numbering (``footnotes.continues``). Within the block every further
+    note has to follow the one before it or start the count again
+    (``footnotes.follows``); otherwise it is the next line of that note,
+    opening with a number that is no note -- a page, a day, a year.
 
     ``fn_block`` carries the page's footnote block where the geometry already
     verified it (small type at the bottom, see ``split_small_type_block``).
@@ -260,10 +263,11 @@ def _assemble_footnotes(
     """Join multi-line definitions, dehyphenated. Returns (notes, leading) —
     ``leading`` being the lines before the first definition start.
 
-    A line whose number neither continues the count -- the volume's (``last``)
-    and then this block's own -- nor starts it again is not a definition start
-    but the next line of the note before: "S. 390," / "393 Rn. 10 ff.",
-    "(Paris," / "1958); J. H. W." """
+    The block's first note has to be one the volume can continue with
+    (``continues``, ``last`` being its highest note so far); each further one
+    has to follow the note before it or start the count again (``follows``).
+    Any other line that opens with a number is the next line of the note
+    before: "S. 390," / "393 Rn. 10 ff.", "(Paris," / "1958); J. H. W." """
     footnotes: dict[int, str] = {}
     leading: list[str] = []
     cur_num: int | None = None
@@ -276,11 +280,11 @@ def _assemble_footnotes(
 
     for ln in fn_lines:
         m = matcher(ln)
-        if m and not continues(int(m.group(1)), last):
+        if m and not opens_note(int(m.group(1)), last, cur_num):
             m = None
         if m:
             flush()
-            cur_num = last = int(m.group(1))
+            cur_num = int(m.group(1))
             cur_buf = [m.group(2)]
         elif cur_num is None:
             leading.append(ln)
@@ -1545,8 +1549,9 @@ def main(
     )
     if doc_body_size is not None:
         print(f"Dominant type size: {doc_body_size}pt", file=sys.stderr)
-    # In reading order, carrying the note opened last: a number opens a note
-    # only where it continues the count or starts it again.
+    # In reading order, carrying the highest note opened so far: a four-digit
+    # number opens a page's first note only where it continues the volume's
+    # numbering. Within a block, each note follows the one before it.
     splits = []
     last_note: int | None = None
     for r in reconstructions:
@@ -1555,7 +1560,7 @@ def main(
         splits.append(split)
         opened = definition_numbers(split.notes, last_note) if split else []
         if opened:
-            last_note = opened[-1]
+            last_note = max(last_note or 0, *opened)
     fn_blocks = [s.notes if s else None for s in splits]
     cut = sum(1 for s in splits if s)
     if cut:
@@ -1848,7 +1853,7 @@ def main(
         pg = parse_page(text, fn_block=fn_block, geometry_verified=rec.measured,
                         deferred_top=_leading(text, deferred), last_note=last_note)
         if pg is not None and pg.footnotes:
-            last_note = next(reversed(pg.footnotes))    # read in order, so the last one
+            last_note = max(last_note or 0, *pg.footnotes)
         if pg is None and rescued_by_ordinal.get(ordinal):
             # The page was not empty: everything it carried was furniture, and
             # the strippers took it. That is not the same as a blank leaf, and
