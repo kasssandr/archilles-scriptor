@@ -103,6 +103,23 @@ def test_a_note_whose_number_lost_a_digit_is_still_a_note():
     assert pg.footnotes[150].endswith("p. 734 sg.")
 
 
+def test_a_repeated_number_no_longer_erases_the_first_note():
+    """L'Empire chrétien p. 364: notes 1, 2, 3, 4, then a 5 the text layer
+    reads as "3.", then 6. Before the rule, the second 3 overwrote the first
+    and its text was gone. Now the misread line stays with note 4 -- still
+    wrong, but no word is lost; a single digit is too ambiguous to be read as
+    the 5 it probably was."""
+    pg = parse_page("Text.3 Mehr.4 Weiter.6", last_note=2, fn_block=[
+        "3. Entre le vicaire du prefet et le prefet de la ville, les conflits.",
+        "4. Dessau, ILS, 1228, 1253.",
+        "3. Anatolius, professeur de droit d'Antioche, est consulaire de Syrie.",
+        "6. Glanville Downey, A study of the Comites Orientis.",
+    ])
+    assert set(pg.footnotes) == {3, 4, 6}
+    assert pg.footnotes[3].startswith("Entre le vicaire")
+    assert "Anatolius" in pg.footnotes[4]
+
+
 def test_a_number_already_read_in_the_block_overwrites_nothing():
     pg = parse_page("Text.12 Mehr.13", last_note=11, fn_block=[
         "12 Erste Note, die weitergeht auf",
