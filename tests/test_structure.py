@@ -214,6 +214,15 @@ def test_fields_below_the_chapter_level():
     assert fields.section == "A.II.1"
 
 
+def test_a_decimal_designator_is_its_own_chain():
+    # Steuer, "Germanen" (De Gruyter): I Methodisches > 2 … > 2.1 …
+    tree = st.Tree.from_headings([
+        (1, "I Methodisches"), (2, "2 Germanien aus der Sicht der Germanen"),
+        (3, "2.1 Die Themen dieses Buches"), (4, "2.1.1 Ein Beispiel")])
+    assert tree.fields_of(2, chapter_level=1).section == "2.1"
+    assert tree.fields_of(3, chapter_level=1).section == "2.1.1"
+
+
 def test_fields_of_a_chapter_itself():
     fields = _bauer_tree().fields_of(2, chapter_level=1)
     assert (fields.chapter, fields.section_title, fields.section) == (
