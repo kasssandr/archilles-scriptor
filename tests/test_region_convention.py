@@ -22,6 +22,7 @@ def test_german_headings_without_number_prefix():
     assert region_of_heading("Literaturverzeichnis") == "bibliography"
     assert region_of_heading("Literatur") == "bibliography"
     assert region_of_heading("Quellen- und Literaturverzeichnis") == "bibliography"
+    assert region_of_heading("D. BIBLIOGRAPHIE UND QUELLEN") == "bibliography"
     assert region_of_heading("Personenregister") == "index"
     assert region_of_heading("Abkürzungsverzeichnis") == "abbreviations"
 
