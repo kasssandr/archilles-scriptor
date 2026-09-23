@@ -29,7 +29,7 @@ from scriptor.languages import NOT_ATTESTED, _NotAttested
 # The version of PREPARED_FORMAT_SPEC this producer writes. Stated in the
 # document itself (§4.1), because a prepared document outlives the release
 # notes that describe it.
-FORMAT_VERSION = "0.4.0"
+FORMAT_VERSION = "0.5.0"
 
 # The marker of §4.4, on a line of its own.
 REGION_MARKER = "[region: {name}]"
@@ -45,17 +45,22 @@ REGION_NAMES = (
     "abbreviations",
     "notes",
     "appendix",
+    "lists",
 )
 
 # Regions that name an apparatus — the ones a retrieval consumer wants to
-# exclude.
-APPARATUS = ("bibliography", "index", "abbreviations", "notes", "appendix")
+# exclude. `appendix` is not among them (user decision, 2026-09-23): an
+# appendix is as often a source as an aid — Gli Actus prints its edition of the
+# text there, *De eerste minister* the instruction it discusses — and §4.4
+# would rather show an appendix than lose one.
+APPARATUS = ("bibliography", "index", "abbreviations", "notes", "lists")
 
 # Regions the closing rules apply to. A table of contents is not apparatus,
 # but it must close like one: a volume that prints its contents at the end
 # (Pückert 1899, Guilhiermoz 1902) would otherwise carry `contents` over every
-# chapter that follows, which is the same silent loss by another name.
-_CLOSEABLE = APPARATUS + ("contents",)
+# chapter that follows, which is the same silent loss by another name. An
+# appendix closes for the same reason, apparatus or not.
+_CLOSEABLE = APPARATUS + ("appendix", "contents")
 
 # Heading vocabulary, grouped by the language each word belongs to. Matched
 # against a whole heading line, case- and accent-insensitively (an OCR layer
@@ -117,6 +122,51 @@ _VOCABULARY: dict[str, dict[str, tuple[str, ...] | _NotAttested]] = {
             r"библиография", r"список литературы", r"литература",
             r"источники(?: и литература)?",
         ),
+    },
+    # Lists a reader looks things up in: glossaries, lists of illustrations,
+    # maps and tables, lists of contributors, credits. Every word below is
+    # attested in the library's EPUB contents or the corpus (G7, 2026-09-23).
+    # Before `index`, because Spanish heads a list of figures "Índice de
+    # figuras", which the index pattern `índice de …` would take. A chronology
+    # is left out on purpose: it is as often an argument set as a table.
+    # The bare plurals ("Figures", "Maps", "Karten") are in
+    # _TITLED_VOCABULARY: alone on a line they may be the last word of a
+    # sentence.
+    "lists": {
+        "de": (
+            r"(?:kleines )?glossar", r"abbildungs(?:verzeichnis|nachweis)",
+            r"(?:karten|tabellen|tafel)verzeichnis",
+            r"verzeichnis der (?:karten|abbildungen|tabellen|tafeln|pl[äa]ne)"
+            r"(?: und \w+)?",
+            r"autorenverzeichnis", r"autorinnen und autoren",
+            r"(?:[üu]ber die|zu den) autoren", r"autoreninfo",
+        ),
+        "en": (
+            r"glossary", r"list of (?:illustrations|figures|maps|plates|tables|"
+            r"contributors)(?:,? and (?:[^\W\d_]+ )?[^\W\d_]+)?",
+            r"table of illustrations",
+            r"(?:about |notes on )?(?:the )?contributors(?: and editors)?",
+            r"(?:about the )?editors? and contributors",
+            r"illustration credits", r"(?:sources|credits) (?:for|of) illustrations",
+            r"notes? on (?:the )?(?:illustrations|transliteration)",
+        ),
+        "fr": (
+            r"glossaire",
+            r"table (?:des|et cr[ée]dits des) (?:illustrations|figures|cartes)"
+            r"(?: et des tableaux)?",
+            r"l[ée]gendes des figures", r"les auteurs",
+        ),
+        "it": (
+            r"glossario", r"indice delle (?:illustrazioni|tavole|figure)",
+            r"elenco delle (?:illustrazioni|tavole|figure)", r"gli autori",
+        ),
+        "es": (
+            r"glosario", r"[íi]ndice de (?:figuras|ilustraciones|mapas|l[áa]minas)",
+        ),
+        "pt": NOT_ATTESTED,
+        "nl": NOT_ATTESTED,
+        "la": NOT_ATTESTED,
+        "ru": NOT_ATTESTED,
     },
     "index": {
         # Personen-, Sach-, Orts-, Namen-, Stellen-, Autoren-, Bibelstellen-
@@ -455,6 +505,17 @@ _TITLED_VOCABULARY: dict[str, dict[str, tuple[str, ...]]] = {
             r"anmerkungen zu(?:m| den)? (?:kapitel|text)\b.*",
         ),
         "fr": (r"notes\s+(?:compl[ée]?mentaires|additionnelles)",),
+    },
+    "lists": {
+        "en": (
+            r"(?:colou?r |line )?(?:illustrations|figures|maps|plates|tables)"
+            r"(?:,? and (?:figures|tables|maps|plates))?",
+            r"glossary of .{2,60}",
+        ),
+        "de": (r"karten", r"abbildungen"),
+        "fr": (r"cartes",),
+        "it": (r"illustrazioni",),
+        "es": (r"ilustraciones",),
     },
     "appendix": {
         "en": (_appendix(r"(?:appendix|appendices)"),),

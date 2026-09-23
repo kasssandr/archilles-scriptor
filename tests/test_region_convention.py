@@ -73,10 +73,12 @@ def test_running_prose_is_never_a_region():
     assert region_of_heading("Ein Index ist eine geordnete Liste von Begriffen.") is None
     assert region_of_heading("") is None
     # "Vorwort" stood here until 0.3.0 gave it a name of its own. What takes
-    # its place is a heading deliberately left out of the vocabulary: imprint,
-    # glossary, chronology, tables and maps have one attestation between them
-    # across sixteen volumes, and one attestation is not a name.
+    # its place is a heading deliberately left out of the vocabulary: imprint
+    # and chronology have one attestation between them across sixteen
+    # volumes, and one attestation is not a name. Glossaries, tables and maps
+    # found theirs in the library's EPUB contents (0.5.0, `lists`).
     assert region_of_heading("Impressum") is None
+    assert region_of_heading("Zeittafel") is None
 
 
 # ── Qualifier and complement (G7) ────────────────────────────────────
@@ -113,6 +115,42 @@ def test_running_prose_is_never_a_region():
 ])
 def test_qualified_apparatus_headings(line, expected):
     assert region_of_heading(line) == expected
+
+
+@pytest.mark.parametrize("line", [
+    "Glossary", "GLOSSARY OF PLACE NAMES", "Glossar", "Glossaire", "Glosario",
+    "List of Illustrations", "LIST OF FIGURES", "List of Tables and Charts",
+    "Illustrations", "Figures and Tables", "Colour plates", "Maps",
+    "Abbildungsverzeichnis", "Abbildungsnachweis", "Verzeichnis der Karten",
+    "Karten", "Autorinnen und Autoren", "Über die Autoren",
+    "Table des illustrations", "Table des cartes et des tableaux", "Les auteurs",
+    "Indice delle illustrazioni", "Gli autori",
+    "ÍNDICE DE FIGURAS",                        # Libros; not a register
+    "Contributors", "List of Contributors", "About the Contributors",
+    "Notes on Contributors", "Illustration Credits", "Note on Transliteration",
+])
+def test_lists_a_reader_looks_things_up_in(line):
+    assert region_of_heading(line) == "lists"
+
+
+@pytest.mark.parametrize("line", [
+    "figures.",              # the last word of a sentence, alone on a line
+    "maps",
+    "Chronology",            # left out on purpose: as often argument as table
+    "Martyrdom and Comparable Figures",
+])
+def test_lists_stop_short_of_prose_and_chapters(line):
+    assert region_of_heading(line) is None
+
+
+def test_list_of_abbreviations_stays_abbreviations():
+    assert region_of_heading("List of Abbreviations") == "abbreviations"
+
+
+def test_appendix_is_named_but_not_apparatus():
+    from scriptor.reflow.regions import APPARATUS
+    assert "appendix" in REGION_NAMES and "appendix" not in APPARATUS
+    assert "lists" in APPARATUS
 
 
 @pytest.mark.parametrize("line", [
@@ -674,8 +712,10 @@ def test_spanish_and_italian_bibliography_forms():
 
 
 def test_a_heading_broken_by_non_breaking_spaces():
-    # Barbiero's PDF sets its headings with NBSP between the words.
-    assert region_of_heading("INDICE\xa0\xa0DELLE\xa0\xa0ILLUSTRAZIONI") == "index"
+    # Barbiero's PDF sets its headings with NBSP between the words. The heading
+    # is a list of illustrations, not a register: `index` until 0.5.0 gave
+    # such lists a name of their own.
+    assert region_of_heading("INDICE\xa0\xa0DELLE\xa0\xa0ILLUSTRAZIONI") == "lists"
 
 
 def test_a_volume_title_is_recognised_by_its_span_not_its_count():
@@ -870,8 +910,8 @@ def test_preface_does_not_swallow_prose_opening_with_the_word():
 
 def test_format_version_is_declared_and_current():
     from scriptor.reflow.regions import FORMAT_VERSION
-    assert FORMAT_VERSION == "0.4.0"
-    assert "format_version: 0.4.0" in render_metadata_block()
+    assert FORMAT_VERSION == "0.5.0"
+    assert "format_version: 0.5.0" in render_metadata_block()
 
 
 # ── multi-level ordinals and compound German titles ──────────────────
