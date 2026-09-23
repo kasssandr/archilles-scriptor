@@ -79,6 +79,63 @@ def test_running_prose_is_never_a_region():
     assert region_of_heading("Impressum") is None
 
 
+# ── Qualifier and complement (G7) ────────────────────────────────────
+# EPUB contents and running heads name their apparatus with more than the
+# bare word. Each form below was found in the library or the corpus.
+
+@pytest.mark.parametrize("line,expected", [
+    ("Appendix C. Dream Transcripts across a Single Night of Sleep", "appendix"),
+    ("Appendix VIII: The Anti-Fatimid Manifesto of Baghdad", "appendix"),
+    ("Bijlage 2: categorieën pamfletten uit de Tweede Engelse Oorlog", "appendix"),
+    ("ANEXO 1. ACCIONES VIOLENTAS", "appendix"),
+    ("APPENDICE", "appendix"),                  # Gli Actus, running head
+    ("Appendice 2", "appendix"),
+    ("Index of Modern Authors", "index"),
+    ("Ancient Sources Index", "index"),         # Josephus and Jesus
+    ("SCRIPTURE INDEX", "index"),
+    ("Index codicum", "index"),
+    ("Consolidated Bibliography", "bibliography"),
+    ("Bibliography and Guide to Further Reading", "bibliography"),
+    ("References and Bibliography", "bibliography"),
+    ("Footnotes", "notes"),
+    ("Fußnoten", "notes"),
+    ("NOTES AND REFERENCES", "notes"),
+    ("Notes to the Translation", "notes"),
+    ("NOTES TO CHAPTER 9", "notes"),
+    ("Notes 17", "notes"),
+    ("Notes complémentaires", "notes"),
+    ("Bibliographical Notes", "notes"),
+    ("TRANSLATOR’S NOTES", "notes"),
+    ("Notes on the Text", "notes"),
+    ("· INDEX ·", "index"),
+    ("[Anmerkungen]", "notes"),
+    ("Index of\n      Authors", "index"),
+])
+def test_qualified_apparatus_headings(line, expected):
+    assert region_of_heading(line) == expected
+
+
+@pytest.mark.parametrize("line", [
+    # Chapters that open with a region word.
+    "Notes on a nameless philosophy",
+    "Notes toward a definition of the political thought of Tlön",
+    "Literatur und Mehrsprachigkeit",
+    "Sources and Methods",
+    # Prose and entries, found on pages of the corpus.
+    "Appendix 5. The most substantive contradiction that may exist between the Gospel accounts",
+    "Anhang : Neu gefundene Philonfragmente, dans les Sitzungsberichte",
+    "appendice.",
+    "APPENDICE ....................................................................",
+    "the consumer price index",
+    "Der Index",
+    "The Bibliography",
+    # Rejected at the length cap: no designator, so no licence to run long.
+    "APPENDIX: THE CREEDS OF NICAEA (325), CONSTANTINOPLE (381) AND ATHANASIUS",
+])
+def test_qualifier_tolerance_stops_short_of_prose(line):
+    assert region_of_heading(line) is None
+
+
 @pytest.mark.parametrize("line,expected", [
     ("Literaturverzeichnis", "bibliography"), ("Personenregister", "index"),
     ("Selected Bibliography", "bibliography"), ("List of Abbreviations", "abbreviations"),
@@ -417,6 +474,26 @@ def test_a_foreign_running_head_closes_a_region_even_in_the_tail():
     assign_modes(pages)
     assign_regions(pages, page_headers=heads)
     assert [p.region for p in pages[-8:]] == ["main"] * 8
+
+
+def test_a_head_enclosed_by_the_region_does_not_close_it():
+    """Gli Actus: APPENDICE verso, the appendix's title recto.
+
+    A head between two pages of the region is the section's own title, not a
+    foreign structure. Read as foreign, it closed the appendix on every recto
+    and the region flickered page by page. The last recto, before the
+    bibliography, is enclosed too: a region follows it.
+    """
+    title = "LA DISPUTA FRA SILVESTRO E GIUDEI: IL TESTO"
+    pages = [_prose() for _ in range(30)]
+    pages.extend(_prose() for _ in range(10))
+    pages.append(_entries("Bibliografia", "Acta Eusebii, in S. Baluze, Miscellanea"))
+    heads = ([None] * 30 + ["Appendice" if i % 2 == 0 else title for i in range(10)]
+             + ["Bibliografia"])
+    assign_modes(pages)
+    assign_regions(pages, page_headers=heads)
+    assert [p.region for p in pages[30:40]] == ["appendix"] * 10
+    assert pages[40].region == "bibliography"
 
 
 def test_a_region_naming_running_head_holds_through_the_tail():

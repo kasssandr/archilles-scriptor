@@ -153,7 +153,10 @@ _VOCABULARY: dict[str, dict[str, tuple[str, ...] | _NotAttested]] = {
             r"[íi]ndice(?: onom[áa]stico| anal[íi]tico| tem[áa]tico| remissivo)",
         ),
         "nl": (r"register(?: van \w+)?", r"zaakregister", r"namenregister"),
-        "la": (r"index (?:nominum|rerum|locorum|verborum|auctorum)",),
+        "la": (
+            r"index (?:nominum|rerum|locorum|verborum|auctorum|codicum|"
+            r"manuscriptorum|fontium)",
+        ),
         "ru": (
             r"указатель(?: имён| имен| названий)?", r"именной указатель",
             r"предметный указатель",
@@ -253,10 +256,12 @@ _VOCABULARY: dict[str, dict[str, tuple[str, ...] | _NotAttested]] = {
         "en": (
             r"appendix(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]))?", r"appendices",
         ),
-        "fr": (
-            r"annexes?", r"appendici?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
-        ),
-        "it": (r"appendici?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",),
+        # The singular "appendice" is French and Italian alike, and lives in
+        # _TITLED_VOCABULARY: alone on a line it is as often the last word of
+        # a wrapped sentence ("… nell'" / "appendice.") as a heading. The
+        # entries here once read `appendici?`, which never met the singular.
+        "fr": (r"annexes?",),
+        "it": (r"appendici(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",),
         "es": (
             r"ap[ée]ndices?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
             r"anexos?(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]\b))?",
@@ -385,14 +390,127 @@ def _is_capitalised(text: str) -> bool:
     return sum(1 for c in cased if c.isupper()) / len(cased) >= 0.8
 
 
-def region_of_heading(line: str) -> str | None:
-    """The region a heading line opens, or None if it opens none.
+# Headings the whole-line vocabulary cannot take, because the region word
+# carries a qualifier or a complement: "Index of Modern Authors", "Scripture
+# Index", "Notes to the Translation", "Appendix C. Dream Transcripts …". An
+# EPUB contents names its apparatus this way far more often than a running head
+# does (G7, 2026-09-23: 1 350 chunks of apparatus the plain words missed).
+#
+# Each entry is a closed list of complements, never "the word and anything
+# after it": "Notes on a nameless philosophy" and "Literatur und
+# Mehrsprachigkeit" are chapters. And every entry is tried only on a line set
+# as a heading (``_is_titled``), which is what keeps "Appendix 5. The most
+# substantive contradiction that may exist …" — a line of prose — out.
+#
+# Completeness per language is owed by _VOCABULARY alone; a language missing
+# here has simply not shown the form.
+_DESIGNATOR = (r"(?:[ivxlcdm]{1,5}|\d{1,2}|[a-z]|one|two|three|four|five|six|"
+               r"seven|eight|nine|ten)\b")
 
-    Returns None for anything that is not a plausible heading — prose, an
-    empty line, a title too long to be one. Never guesses: a line that is not
-    in the vocabulary is not a region, and §4.4 makes that the safe answer.
+# An appendix titled after its designator: word, optional number or letter,
+# separator, title. Only this form may run past _MAX_HEADING_CHARS, and only
+# with the designator (see _DESIGNATED_APPENDIX).
+def _appendix(word: str) -> str:
+    return rf"{word}(?:\s*{_DESIGNATOR})?\s*[.:—–]\s*[^\W_].*"
+
+
+# A word that qualifies the region word — "Scripture Index", "Consolidated
+# Bibliography" — but never an article or a pronoun: "Der Index" opens a
+# sentence, not a register.
+_QUALIFIER = (r"(?!(?:the|this|that|these|our|his|her|its|their|each|every|any|"
+              r"der|die|das|den|dem|des|ein|eine|einen|le|la|les|il|lo|el|los|las|"
+              r"het|een)\s)[^\W\d_]{3,15}")
+
+
+_TITLED_VOCABULARY: dict[str, dict[str, tuple[str, ...]]] = {
+    "bibliography": {
+        "en": (
+            # Consolidated / Supplementary / Annotated Bibliography
+            rf"(?:{_QUALIFIER}\s+){{1,2}}bibliography",
+            r"bibliography\s+(?:and|for|of|in)\s+.{2,60}",
+            r"(?:sources|references)\s+and\s+bibliography",
+        ),
+    },
+    "index": {
+        "en": (
+            r"(?:index|indices|indexes)\s+(?:of|to|by)\s+.{2,70}",
+            # Scripture Index, Ancient Sources Index, Key Sites Index
+            rf"(?:{_QUALIFIER}\s+(?:and\s+)?){{1,3}}index(?:es)?",
+        ),
+    },
+    "notes": {
+        "en": (
+            r"footnotes",
+            r"notes\s+(?:and references|\d{1,2}|to (?:the )?"
+            r"(?:chapters?|translation|text|introduction|part)\b.*)",
+            # Notes on the text are notes. Notes on contributors, illustrations
+            # or transliteration are lists of another kind and stay unnamed
+            # until the vocabulary has a name for them.
+            r"notes on (?:the )?(?:text|translation|sources|editions)\b.*",
+            r"(?:bibliographical|biographical|translator['’]?s|editor['’]?s|"
+            r"explanatory|textual|critical|additional|supplementary|general)\s+notes",
+        ),
+        "de": (
+            r"fu(?:ß|ss)noten",
+            r"anmerkungen zu(?:m| den)? (?:kapitel|text)\b.*",
+        ),
+        "fr": (r"notes\s+(?:compl[ée]?mentaires|additionnelles)",),
+    },
+    "appendix": {
+        "en": (_appendix(r"(?:appendix|appendices)"),),
+        "de": (_appendix(r"(?:anhang|anh[äa]nge|anlagen?|beilagen?)"),),
+        "fr": (r"appendice(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]))?",
+               _appendix(r"(?:annexes?|appendices?)")),
+        "it": (r"appendice(?:\s+(?:[ivxlcdm]+|\d{1,2}|[a-z]))?",
+               _appendix(r"(?:appendic[ei])")),
+        "es": (_appendix(r"(?:ap[ée]ndices?|anexos?)"),),
+        "pt": (_appendix(r"(?:ap[êe]ndices?|anexos?)"),),
+        "nl": (_appendix(r"(?:bijlagen?)"),),
+    },
+}
+
+_TITLED_COMPILED: dict[str, tuple[re.Pattern[str], ...]] = {
+    region: tuple(
+        re.compile(_undiacritic(rf"^{_PREFIX}{alt}\s*{_TRAILING}\s*$"), re.IGNORECASE)
+        for alt in _patterns_of(by_language)
+    )
+    for region, by_language in _TITLED_VOCABULARY.items()
+}
+
+# An appendix that states its number or letter may carry a title of any
+# ordinary length; without one, a long line is more likely a bibliography
+# entry that opens with the word ("Anhang : Neu gefundene Philonfragmente,
+# dans les Sitzungsberichte").
+_DESIGNATED_APPENDIX = re.compile(
+    _undiacritic(
+        rf"^{_PREFIX}(?:appendix|appendices|anhang|anh[äa]nge|anlagen?|beilagen?|"
+        rf"annexes?|appendic[ei]s?|ap[ée]ndices?|ap[êe]ndices?|anexos?|bijlagen?)"
+        rf"\s*{_DESIGNATOR}\s*[.:—–]"),
+    re.IGNORECASE)
+
+_MAX_TITLED_CHARS = 100
+
+# Ornament a volume sets around a heading: "· INDEX ·", "[Anmerkungen]".
+_ORNAMENT = re.compile(r"^[\[(·•∙*\s]+|[\])·•∙*\s]+$")
+
+
+def _is_titled(text: str) -> bool:
+    """True where the line is set as a heading: title case or capitals.
+
+    At least half the words of four letters or more open with a capital.
+    Half, not all, because sentence-case headings with proper nouns exist
+    ("Bijlage 2: categorieën pamfletten uit de Tweede Engelse Oorlog"); a line
+    of prose that happens to open with a region word reaches one in eight.
     """
-    stripped = line.strip()
+    words = [w for w in re.findall(r"[^\W\d_]+", text) if len(w) >= 4]
+    if not words:
+        words = re.findall(r"[^\W\d_]+", text)
+    if not words:
+        return False
+    return sum(1 for w in words if w[0].isupper()) * 2 >= len(words)
+
+
+def _region_of_whole_line(stripped: str) -> str | None:
     if not stripped or len(stripped) > _MAX_HEADING_CHARS:
         return None
     folded = _fold(stripped)
@@ -405,6 +523,42 @@ def region_of_heading(line: str) -> str | None:
             if pat.match(folded):
                 return region
     return None
+
+
+def _region_of_titled(bare: str) -> str | None:
+    if not bare or len(bare) > _MAX_TITLED_CHARS or not _is_titled(bare):
+        return None
+    folded = _fold(bare)
+    if len(bare) > _MAX_HEADING_CHARS and not _DESIGNATED_APPENDIX.match(folded):
+        return None
+    for region, patterns in _TITLED_COMPILED.items():
+        for pat in patterns:
+            if pat.match(folded):
+                return region
+    return None
+
+
+def region_of_heading(line: str) -> str | None:
+    """The region a heading line opens, or None if it opens none.
+
+    Returns None for anything that is not a plausible heading — prose, an
+    empty line, a title too long to be one. Never guesses: a line that is not
+    in the vocabulary is not a region, and §4.4 makes that the safe answer.
+
+    Three tries, each narrower in what it forgives: the line as it stands,
+    the line without ornament around it, and — only where it is set as a
+    heading — the region word with a qualifier or complement.
+    """
+    stripped = line.strip()
+    region = _region_of_whole_line(stripped)
+    if region is not None:
+        return region
+    bare = _ORNAMENT.sub("", " ".join(stripped.split()))
+    if bare != stripped:
+        region = _region_of_whole_line(bare)
+        if region is not None:
+            return region
+    return _region_of_titled(bare)
 
 
 # Where a running head stops naming its section and starts describing it.
@@ -628,6 +782,11 @@ def assign_regions(
     prose_run: list = []
     in_tail = False
 
+    def names_region(at: int) -> str | None:
+        if not page_headers or not 0 <= at < len(page_headers) or not page_headers[at]:
+            return None
+        return region_of_running_head(page_headers[at])
+
     for position, page in enumerate(pages):
         mode = getattr(page, "mode", "main")
         head = page_headers[position] if page_headers else None
@@ -704,13 +863,22 @@ def assign_regions(
             # kept the region open.
             if page.heading and region_of_heading(page.heading) is None:
                 current, prose_run = "main", []
-            elif head is not None and is_prose_page(page, width):
+            elif (head is not None and is_prose_page(page, width)
+                  and not (names_region(position - 1) == current
+                           and names_region(position + 1) is not None)):
                 # A running head that names something other than a region says
                 # the page belongs to a named structure — an essay, a chapter —
                 # and an apparatus is not one. This outranks the tail rule:
                 # Anglo-Norman's APPENDIX sits 81% into a collective volume
                 # with sixty-eight pages of further essays behind it, each
                 # headed by its own title.
+                #
+                # Unless the head is enclosed: the page before it is headed
+                # with this region's name and the page after it with a region.
+                # That is a section set with its name on one side and its title
+                # on the other — Gli Actus: APPENDICE verso, "LA DISPUTA FRA
+                # SILVESTRO E GIUDEI: IL TESTO" recto — and read as foreign,
+                # the title closed the appendix on every recto.
                 current, prose_run = "main", []
             elif in_tail:
                 prose_run = []
