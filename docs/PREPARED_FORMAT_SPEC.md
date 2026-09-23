@@ -1,6 +1,6 @@
 # The Prepared Document Format
 
-**Version 0.4.0 (draft) · 2026-09-18 · MIT**
+**Version 0.5.0 (draft) · 2026-09-23 · MIT**
 
 This specification defines the *prepared document*: a scholarly text converted
 to plain Markdown in which the scholarly apparatus — footnotes, printed page
@@ -85,7 +85,7 @@ text:
 
 ```yaml
 ---
-format_version: 0.4.0
+format_version: 0.5.0
 chunking_strategy: basic
 pagination: bottom edge, 95% of pages attested
 structure: 3 levels, chapters on level 1, 48 headings (45 contents, 3 numbering)
@@ -285,7 +285,8 @@ its own:
 | `index` | Index of any kind — names, subjects, places, passages. |
 | `abbreviations` | List of abbreviations or sigla. |
 | `notes` | A collected notes section (endnotes at the end of a chapter or volume), as distinct from the footnotes of §4.3. |
-| `appendix` | Appendices, tables, documentary supplements. |
+| `appendix` | Appendices, tables, documentary supplements. Named, and like `preface` not apparatus: an appendix is as often a source — an edition, a document the book discusses — as an aid. |
+| `lists` | Lists a reader looks things up in: glossary, list of illustrations, maps, plates or tables, list of contributors, illustration credits. |
 
 **Absence of a marker is not a claim.** A document may carry no region marker
 at all; a region the producer could not identify simply stays unmarked.
@@ -301,7 +302,7 @@ disappears from retrieval, and nobody notices it is gone. **When in doubt,
 emit no marker.**
 
 `main` is a value like any other, and it is how a document returns to running
-text after an apparatus region — a volume whose appendix is followed by
+text after any other region — a volume whose appendix is followed by
 further chapters marks those chapters `main` again.
 
 ### 4.5 Escaping
@@ -754,6 +755,15 @@ markers and the text that were there already. With it comes what no earlier
 version said and every consumer had to decide for itself: what the match of a
 snippet or a wording ignores (§9). And it reserves the notes sidecar (§6.6)
 and `profile.reference` (§6.3).
+
+0.5.0 adds `lists` (§4.4): glossaries, lists of illustrations and of
+contributors, which until then were either unmarked or, where their heading
+resembled one, marked `index`. Additive by the rule above. The description of
+`appendix` now says that an appendix is not apparatus, which the reference
+producer's own list of apparatus regions assumed until then. The name and
+what it marks are unchanged, so this redefines nothing: which regions leave a
+search was always the consumer's choice, and a consumer may keep excluding
+appendices.
 
 Producers SHOULD state the spec version they target, in the document's
 `format_version` field (§4.1) and in tool `--version` output. Until version

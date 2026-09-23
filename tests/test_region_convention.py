@@ -73,10 +73,105 @@ def test_running_prose_is_never_a_region():
     assert region_of_heading("Ein Index ist eine geordnete Liste von Begriffen.") is None
     assert region_of_heading("") is None
     # "Vorwort" stood here until 0.3.0 gave it a name of its own. What takes
-    # its place is a heading deliberately left out of the vocabulary: imprint,
-    # glossary, chronology, tables and maps have one attestation between them
-    # across sixteen volumes, and one attestation is not a name.
+    # its place is a heading deliberately left out of the vocabulary: imprint
+    # and chronology have one attestation between them across sixteen
+    # volumes, and one attestation is not a name. Glossaries, tables and maps
+    # found theirs in the library's EPUB contents (0.5.0, `lists`).
     assert region_of_heading("Impressum") is None
+    assert region_of_heading("Zeittafel") is None
+
+
+# ── Qualifier and complement (G7) ────────────────────────────────────
+# EPUB contents and running heads name their apparatus with more than the
+# bare word. Each form below was found in the library or the corpus.
+
+@pytest.mark.parametrize("line,expected", [
+    ("Appendix C. Dream Transcripts across a Single Night of Sleep", "appendix"),
+    ("Appendix VIII: The Anti-Fatimid Manifesto of Baghdad", "appendix"),
+    ("Bijlage 2: categorieën pamfletten uit de Tweede Engelse Oorlog", "appendix"),
+    ("ANEXO 1. ACCIONES VIOLENTAS", "appendix"),
+    ("APPENDICE", "appendix"),                  # Gli Actus, running head
+    ("Appendice 2", "appendix"),
+    ("Index of Modern Authors", "index"),
+    ("Ancient Sources Index", "index"),         # Josephus and Jesus
+    ("SCRIPTURE INDEX", "index"),
+    ("Index codicum", "index"),
+    ("Consolidated Bibliography", "bibliography"),
+    ("Bibliography and Guide to Further Reading", "bibliography"),
+    ("References and Bibliography", "bibliography"),
+    ("Footnotes", "notes"),
+    ("Fußnoten", "notes"),
+    ("NOTES AND REFERENCES", "notes"),
+    ("Notes to the Translation", "notes"),
+    ("NOTES TO CHAPTER 9", "notes"),
+    ("Notes 17", "notes"),
+    ("Notes complémentaires", "notes"),
+    ("Bibliographical Notes", "notes"),
+    ("TRANSLATOR’S NOTES", "notes"),
+    ("Notes on the Text", "notes"),
+    ("· INDEX ·", "index"),
+    ("[Anmerkungen]", "notes"),
+    ("Index of\n      Authors", "index"),
+])
+def test_qualified_apparatus_headings(line, expected):
+    assert region_of_heading(line) == expected
+
+
+@pytest.mark.parametrize("line", [
+    "Glossary", "GLOSSARY OF PLACE NAMES", "Glossar", "Glossaire", "Glosario",
+    "List of Illustrations", "LIST OF FIGURES", "List of Tables and Charts",
+    "Illustrations", "Figures and Tables", "Colour plates", "Maps",
+    "Abbildungsverzeichnis", "Abbildungsnachweis", "Verzeichnis der Karten",
+    "Karten", "Autorinnen und Autoren", "Über die Autoren",
+    "Table des illustrations", "Table des cartes et des tableaux", "Les auteurs",
+    "Indice delle illustrazioni", "Gli autori",
+    "ÍNDICE DE FIGURAS",                        # Libros; not a register
+    "Contributors", "List of Contributors", "About the Contributors",
+    "Notes on Contributors", "Illustration Credits", "Note on Transliteration",
+])
+def test_lists_a_reader_looks_things_up_in(line):
+    assert region_of_heading(line) == "lists"
+
+
+@pytest.mark.parametrize("line", [
+    "figures.",              # the last word of a sentence, alone on a line
+    "maps",
+    "Chronology",            # left out on purpose: as often argument as table
+    "Martyrdom and Comparable Figures",
+])
+def test_lists_stop_short_of_prose_and_chapters(line):
+    assert region_of_heading(line) is None
+
+
+def test_list_of_abbreviations_stays_abbreviations():
+    assert region_of_heading("List of Abbreviations") == "abbreviations"
+
+
+def test_appendix_is_named_but_not_apparatus():
+    from scriptor.reflow.regions import APPARATUS
+    assert "appendix" in REGION_NAMES and "appendix" not in APPARATUS
+    assert "lists" in APPARATUS
+
+
+@pytest.mark.parametrize("line", [
+    # Chapters that open with a region word.
+    "Notes on a nameless philosophy",
+    "Notes toward a definition of the political thought of Tlön",
+    "Literatur und Mehrsprachigkeit",
+    "Sources and Methods",
+    # Prose and entries, found on pages of the corpus.
+    "Appendix 5. The most substantive contradiction that may exist between the Gospel accounts",
+    "Anhang : Neu gefundene Philonfragmente, dans les Sitzungsberichte",
+    "appendice.",
+    "APPENDICE ....................................................................",
+    "the consumer price index",
+    "Der Index",
+    "The Bibliography",
+    # Rejected at the length cap: no designator, so no licence to run long.
+    "APPENDIX: THE CREEDS OF NICAEA (325), CONSTANTINOPLE (381) AND ATHANASIUS",
+])
+def test_qualifier_tolerance_stops_short_of_prose(line):
+    assert region_of_heading(line) is None
 
 
 @pytest.mark.parametrize("line,expected", [
@@ -419,6 +514,26 @@ def test_a_foreign_running_head_closes_a_region_even_in_the_tail():
     assert [p.region for p in pages[-8:]] == ["main"] * 8
 
 
+def test_a_head_enclosed_by_the_region_does_not_close_it():
+    """Gli Actus: APPENDICE verso, the appendix's title recto.
+
+    A head between two pages of the region is the section's own title, not a
+    foreign structure. Read as foreign, it closed the appendix on every recto
+    and the region flickered page by page. The last recto, before the
+    bibliography, is enclosed too: a region follows it.
+    """
+    title = "LA DISPUTA FRA SILVESTRO E GIUDEI: IL TESTO"
+    pages = [_prose() for _ in range(30)]
+    pages.extend(_prose() for _ in range(10))
+    pages.append(_entries("Bibliografia", "Acta Eusebii, in S. Baluze, Miscellanea"))
+    heads = ([None] * 30 + ["Appendice" if i % 2 == 0 else title for i in range(10)]
+             + ["Bibliografia"])
+    assign_modes(pages)
+    assign_regions(pages, page_headers=heads)
+    assert [p.region for p in pages[30:40]] == ["appendix"] * 10
+    assert pages[40].region == "bibliography"
+
+
 def test_a_region_naming_running_head_holds_through_the_tail():
     # Zuckerman: 'Selected Bibliography' over every page of it.
     pages = [_prose() for _ in range(30)]
@@ -597,8 +712,10 @@ def test_spanish_and_italian_bibliography_forms():
 
 
 def test_a_heading_broken_by_non_breaking_spaces():
-    # Barbiero's PDF sets its headings with NBSP between the words.
-    assert region_of_heading("INDICE\xa0\xa0DELLE\xa0\xa0ILLUSTRAZIONI") == "index"
+    # Barbiero's PDF sets its headings with NBSP between the words. The heading
+    # is a list of illustrations, not a register: `index` until 0.5.0 gave
+    # such lists a name of their own.
+    assert region_of_heading("INDICE\xa0\xa0DELLE\xa0\xa0ILLUSTRAZIONI") == "lists"
 
 
 def test_a_volume_title_is_recognised_by_its_span_not_its_count():
@@ -793,8 +910,8 @@ def test_preface_does_not_swallow_prose_opening_with_the_word():
 
 def test_format_version_is_declared_and_current():
     from scriptor.reflow.regions import FORMAT_VERSION
-    assert FORMAT_VERSION == "0.4.0"
-    assert "format_version: 0.4.0" in render_metadata_block()
+    assert FORMAT_VERSION == "0.5.0"
+    assert "format_version: 0.5.0" in render_metadata_block()
 
 
 # ── multi-level ordinals and compound German titles ──────────────────
