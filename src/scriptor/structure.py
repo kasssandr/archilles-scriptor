@@ -204,7 +204,9 @@ EPUB_TYPE_REGIONS: dict[str, str | None] = {
     **dict.fromkeys(("cover", "titlepage", "halftitlepage", "copyright-page", "imprint",
                      "dedication", "colophon"), "front-matter"),
     "toc": "contents",
-    **dict.fromkeys(("loi", "lot"), None),
+    # Lists of illustrations and tables, glossaries, contributors: `lists`
+    # since spec 0.5.0.
+    **dict.fromkeys(("loi", "lot", "glossary", "contributors"), "lists"),
     **dict.fromkeys(("preface", "foreword", "acknowledgments"), "preface"),
     **dict.fromkeys(("introduction", "prologue", "epigraph", "preamble"), None),
     **dict.fromkeys(("bodymatter", "part", "chapter", "subchapter", "division", "volume",
@@ -213,10 +215,9 @@ EPUB_TYPE_REGIONS: dict[str, str | None] = {
     "index": "index",
     **dict.fromkeys(("endnotes", "rearnotes", "footnotes"), "notes"),
     "appendix": "appendix",
-    "glossary": None,
     **dict.fromkeys(("frontmatter", "backmatter"), None),
     **dict.fromkeys(("footnote", "noteref", "rearnote", "biblioentry", "index-entry-list",
-                     "landmarks", "page-list", "pagebreak", "errata", "contributors",
+                     "landmarks", "page-list", "pagebreak", "errata",
                      "other-credits", "notice", "warning", "qna", "abstract", "keywords",
                      "list"), None),
 }

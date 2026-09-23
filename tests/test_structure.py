@@ -312,6 +312,7 @@ def test_only_one_emphasis_around_the_whole_text_is_stripped(text, title):
     ("chapter", None), ("preface", "preface"), ("copyright-page", "front-matter"),
     ("bodymatter chapter", None), ("backmatter bibliography", "bibliography"),
     ("unknown-type", None),
+    ("glossary", "lists"), ("loi", "lists"), ("lot", "lists"), ("contributors", "lists"),
 ])
 def test_epub_type_names_a_region_only_where_anhang_b1_says_so(types, region):
     assert st.region_for_epub_type(types) == region
