@@ -29,8 +29,13 @@ from scriptor.reflow.rescued import RescuedFolios
 
 OUTLINE_FILENAME = "outline.json"
 
-# Scanner artifacts posing as outline titles (Archilles `_JUNK_TOC_RE`).
-_JUNK_TITLE_RE = re.compile(r"^(scan\s*\d+|z\s*-\s*|page\s*\d+$|\d+$)", re.IGNORECASE)
+# Scanner artifacts posing as outline titles, and page bookmarks ("p. [299]",
+# JSTOR's outline of every page; Briefing §7.6). The number follows a dot, a
+# space or a bracket, so that a chapter called "Six" is no "S ix".
+_JUNK_TITLE_RE = re.compile(
+    r"^(scan\s*\d+|z\s*-\s*|\d+$"
+    r"|(?:p|pp|s|pag|page|seite)(?:\.\s*|\s+|(?=[\[\d]))\[?(?:\d+|[ivxlc]+)\]?$)",
+    re.IGNORECASE)
 
 # How many of a page's first lines may hold a running head. Same window the
 # running-element stripper uses.

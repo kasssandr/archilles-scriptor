@@ -87,6 +87,16 @@ def test_scanner_artifact_titles_are_not_believed():
     assert not credible([_entry("scan 001", 1), _entry("scan 002", 5), _entry("Echt", 9)])
 
 
+def test_page_bookmarks_are_not_believed():
+    """JSTOR bookmarks every page: the titles are its page numbers (Briefing §7.6)."""
+    assert not credible([_entry("p. [299]", 1), _entry("p. 300", 2), _entry("p.301", 3)])
+    assert not credible([_entry("S. xi", 1), _entry("pp. 12", 2), _entry("Seite 13", 3)])
+
+
+def test_a_chapter_named_six_is_no_page_bookmark():
+    assert credible([_entry("Five", 1), _entry("Six", 5), _entry("Pix", 9)])
+
+
 # ----------------------------------------------------------------------
 # the page confirms the title
 # ----------------------------------------------------------------------
