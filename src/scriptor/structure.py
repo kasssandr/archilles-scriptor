@@ -204,7 +204,9 @@ EPUB_TYPE_REGIONS: dict[str, str | None] = {
     **dict.fromkeys(("cover", "titlepage", "halftitlepage", "copyright-page", "imprint",
                      "dedication", "colophon"), "front-matter"),
     "toc": "contents",
-    **dict.fromkeys(("loi", "lot"), None),
+    # Lists of illustrations and tables, glossaries, contributors: `lists`
+    # since spec 0.5.0.
+    **dict.fromkeys(("loi", "lot", "glossary", "contributors"), "lists"),
     **dict.fromkeys(("preface", "foreword", "acknowledgments"), "preface"),
     **dict.fromkeys(("introduction", "prologue", "epigraph", "preamble"), None),
     **dict.fromkeys(("bodymatter", "part", "chapter", "subchapter", "division", "volume",
@@ -213,10 +215,9 @@ EPUB_TYPE_REGIONS: dict[str, str | None] = {
     "index": "index",
     **dict.fromkeys(("endnotes", "rearnotes", "footnotes"), "notes"),
     "appendix": "appendix",
-    "glossary": None,
     **dict.fromkeys(("frontmatter", "backmatter"), None),
     **dict.fromkeys(("footnote", "noteref", "rearnote", "biblioentry", "index-entry-list",
-                     "landmarks", "page-list", "pagebreak", "errata", "contributors",
+                     "landmarks", "page-list", "pagebreak", "errata",
                      "other-credits", "notice", "warning", "qna", "abstract", "keywords",
                      "list"), None),
 }
@@ -477,9 +478,18 @@ class Tree:
         if node.depth <= level:
             return Fields(node.text, "", "")
         below = [self.nodes[j] for j in reversed(chain) if self.nodes[j].depth > level]
-        section = ".".join(_designator_key(n.designator) for n in below
-                           if n.designator and n.scheme not in WORD_SCHEMES)
-        return Fields(chapter.text if chapter.depth <= level else "", node.text, section)
+        keys: list[str] = []
+        for n in below:
+            if not n.designator or n.scheme in WORD_SCHEMES:
+                continue
+            key = _designator_key(n.designator)
+            # A decimal designator carries its ancestors already: under "2",
+            # "2.1" is the whole chain, not "2.2.1" (Steuer, De Gruyter).
+            if keys and key.startswith(keys[-1] + "."):
+                keys[-1] = key
+            else:
+                keys.append(key)
+        return Fields(chapter.text if chapter.depth <= level else "", node.text, ".".join(keys))
 
 
 def _designator_key(designator: str) -> str:

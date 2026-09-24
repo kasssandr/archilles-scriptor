@@ -92,6 +92,7 @@ _VOCABULARY: dict[str, dict[str, tuple[str, ...] | _NotAttested]] = {
             r"(?:quellen|siglen)?(?:verzeichnis)?[-\s]*bibliographie",
             r"bibliographie", r"bibliografie",
             r"quellenverzeichnis", r"quellen und literatur",
+            r"bibliographie und quellen", r"quellen und bibliographie",
             r"verzeichnis der (?:zitierten |verwendeten )?literatur",
         ),
         "en": (
