@@ -24,7 +24,9 @@ FOOTNOTE_RE = re.compile(r"^(\d{1,4})\)\s?(.*)$")
 # "NN. Text…" — the other common print convention (Zuckerman). Far too frequent
 # in running prose (enumerations, years) to trust on bare text: it is only
 # applied inside a block the page geometry has already verified as small type.
-FOOTNOTE_DOT_RE = re.compile(r"^(\d{1,4})\.\s+(\S.*)$")
+# OCR drops the space now and then ("5.The theory", Kuijsten p. 3); without it
+# the note opens only on a capital or a quotation mark, never on "2017.12".
+FOOTNOTE_DOT_RE = re.compile(r"^(\d{1,4})\.(?:\s+|(?=[A-Z“\"‘']))(\S.*)$")
 # "NN Text…" — a superscript number the extractor flattened, with nothing but a
 # space after it. Requires the space, so a continuation line opening with
 # "27, S. 53." or "2017, S. 41" is not mistaken for a definition.
@@ -294,6 +296,28 @@ def split_small_type_block(
     for i in range(end, bottom):
         if not small(i) and len(lines[i].strip()) > FURNITURE_MAX_CHARS:
             return None
+
+    # A contents set smaller than its heading is a run of "N. Title" lines in
+    # small type, the very shape of an apparatus -- both of Kuijsten's contents
+    # pages went into the notes whole, and with them every chapter title.
+    from scriptor.reflow.toc import is_contents_heading
+    if any(is_contents_heading(ln) for ln in lines[:start]):
+        return None
+
+    # The fixed ratio decides which lines are small, not where the block begins.
+    # OCR guesses a size from glyph height, and a body line can land just under
+    # the threshold -- on screenshots set at a different scale per page the last
+    # body line above the apparatus measured 11.6pt against a 13pt body and 9pt
+    # notes (Kuijsten p. 3). A line above the block's first note that sits nearer
+    # the body than the notes' own size is body text; the notes' size is read
+    # from the first note down, where the block is certainly apparatus.
+    first = note_starts(lines[start:end], last_note)
+    if first:
+        top = start + first[0][0]
+        block = sorted(s for s in sizes[top:end] if s is not None)
+        mid = block[len(block) // 2]
+        while start < top and abs(body_size - sizes[start]) < abs(sizes[start] - mid):
+            start += 1
 
     notes = lines[start:end]
     if not definition_numbers(notes, last_note):
