@@ -312,6 +312,49 @@ def test_definition_may_be_a_bare_number_and_a_space():
     assert not match_definition("2017, S. 41, 42.")
 
 
+def test_definition_may_lose_the_space_after_its_dot():
+    # Kuijsten p. 3: the OCR layer reads "5.The theory is recognized ...".
+    from scriptor.reflow.footnotes import match_definition
+    assert match_definition("5.The theory is recognized as possibly the best").group(2) \
+        == "The theory is recognized as possibly the best"
+    assert match_definition("6.“Knowing God,” in this volume.")
+    # without the space only a capital or a quotation mark opens a note
+    assert not match_definition("2017.12, S. 41.")
+    assert not match_definition("7.1bid., p. 116.")
+
+
+def test_a_body_line_measured_just_below_the_threshold_stays_in_the_body():
+    # Kuijsten p. 3, screenshots OCR'd at a scale of their own: the last body
+    # line reads 11.59pt against a 12.96pt body -- under the ratio -- and
+    # the notes below it 8.5-9.6pt. Nearer the body than the notes, it is body.
+    lines = [
+        "subject have generally failed to account for all of the different aspects of",
+        "both ancient and modern spirituality, Jaynes's theory offers a compelling",
+        "4. Michael Persinger, \"Foreword,\" in M. Kuijsten (ed.), Reflections on the",
+        "Jaynes Society, 2006).",
+        "5.The theory is recognized as possibly the best explanation for the origin",
+    ]
+    sizes = [12.7, 11.59, 8.49, 9.23, 9.57]
+    split = split_small_type_block(lines, sizes, body_size=12.96)
+    assert split is not None
+    assert split.body == lines[:2]
+    assert split.notes == lines[2:]
+
+
+def test_a_contents_list_set_small_under_its_heading_is_no_apparatus():
+    # Kuijsten's contents pages: "CONTENTS" in body size, then numbered
+    # entries in smaller type -- the shape of a footnote block, whole.
+    lines = [
+        "CONTENTS",
+        "Introduction: Julian Jaynes's Four Hypotheses on the Origin of Mind",
+        "1. Julian Jaynes, the Bicameral Mind, and the Origin of Consciousness",
+        "2. Consciousness and Language, Marcel Kuijsten",
+        "3. Julian Jaynes and the Features of Consciousness, Brian J. McVeigh",
+    ]
+    sizes = [12.9, 10.1, 10.2, 10.0, 10.3]
+    assert split_small_type_block(lines, sizes, body_size=12.96) is None
+
+
 def test_block_is_found_although_furniture_sits_below_it():
     lines, sizes = _bauer_page()
     split = split_small_type_block(lines, sizes, body_size=10.0)
