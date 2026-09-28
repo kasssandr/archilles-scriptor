@@ -81,7 +81,7 @@ a 400-page volume is not.
 Working: three text ingestion paths, the reflow, Pandoc footnotes, the
 confidence layer, within-document glyph learning that carries across a
 corrected corpus, the decision loop, a translation profile, and a DOCX footnote
-binder. 224 tests, about 3,900 lines of Python. It has been run against real
+binder. 1,394 tests, about 16,500 lines of Python. It has been run against real
 volumes (Baynes, *Byzantium*; Snell, *Die Entdeckung des Geistes*), which is
 where most of the edge cases came from.
 
@@ -387,7 +387,7 @@ it, the license invites forks.
 
 The interchange contract between the tools — the *prepared document* — is
 specified in [docs/PREPARED_FORMAT_SPEC.md](docs/PREPARED_FORMAT_SPEC.md),
-currently version 0.4.0.
+currently version 0.5.0.
 
 - [archilles](https://github.com/kasssandr/archilles) — Informed RAG over a
   personal research library: retrieval grounded in page-level citations rather
