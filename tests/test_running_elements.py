@@ -330,3 +330,179 @@ def test_grouping_a_volume_that_has_no_running_head_stays_fast():
     # close to the new value -- the point is to catch the return of an O(n^2)
     # run of full comparisons, not to pin a machine's speed.
     assert elapsed < 8.0, f"grouping took {elapsed:.1f}s"
+
+
+# --- The page that opens a running head's run keeps its title ------------------
+#
+# Taubes, *Vom Kult zur Kultur* (1996): the essay title is the recto running
+# head, and the essay's first page prints it at the top without a folio. With
+# no readable contents to recognise it by, the stripper deleted all of them.
+
+from scriptor.reflow.headings import MARK
+
+_HEAD = "Die Kloester des Westens"
+
+
+def _run(first, *, before="Damit endet der Abschnitt.", n=4):
+    """A page before the section, then the section: its opening page starts
+    with ``first`` (lines), every later page with folio and running head."""
+    # A full page of text: a short one would read as a section's end.
+    pages = ["\n".join([*_DISTINCT[4:11], before])]
+    pages.append("\n".join([*first, _DISTINCT[1], _DISTINCT[2]]))
+    for i in range(n - 1):
+        pages.append(f"{20 + i}\n{_HEAD}\n{_DISTINCT[3 + i]}")
+    return pages
+
+
+def _strip(pages):
+    kept: list = []
+    cleaned = remove_running_headers(
+        pages, [_HEAD], RescuedFolios(len(pages)), kept=kept)
+    return cleaned, kept
+
+
+def test_the_opening_page_keeps_its_title_marked():
+    cleaned, kept = _strip(_run([_HEAD]))
+    assert cleaned[1].split("\n")[0] == MARK + _HEAD
+    assert kept == [(1, _HEAD)]
+    assert all(_HEAD not in page for page in cleaned[2:])
+
+
+def test_a_title_set_over_two_lines_is_one_heading():
+    cleaned, kept = _strip(_run(["Die Kloester", "des Westens"]))
+    assert cleaned[1].split("\n")[0] == MARK + "Die Kloester des Westens"
+    assert "des Westens" not in cleaned[1].split("\n")[1]
+    assert kept == [(1, "Die Kloester des Westens")]
+
+
+def test_a_run_that_begins_in_mid_sentence_opens_nothing():
+    # The volume prints no running head on the chapter's first page; the run
+    # begins on the second, and the text before it has not ended.
+    pages = _run([_HEAD], before="und der Satz geht auf der naechsten Seite")
+    cleaned, kept = _strip(pages)
+    assert kept == []
+    assert _HEAD not in cleaned[1]
+
+
+def test_a_head_region_with_a_folio_is_a_running_page():
+    cleaned, kept = _strip(_run(["17", _HEAD]))
+    assert kept == []
+    assert _HEAD not in cleaned[1]
+
+
+def test_the_heading_lower_on_the_page_leaves_the_head_line_furniture():
+    # Bauer p. 23: the running head is set from the state at the page's end,
+    # and the heading it repeats stands further down the same page.
+    cleaned, kept = _strip(_run([_HEAD, _DISTINCT[8], _DISTINCT[9], _HEAD]))
+    assert kept == []
+    assert cleaned[1].split("\n")[0] == _DISTINCT[8]
+
+
+def test_a_wording_without_a_run_after_it_opens_nothing():
+    # Nor is it furniture: two occurrences four pages apart never run, so the
+    # line stays, unmarked (test_a_head_that_never_runs_is_left_standing).
+    pages = _run([_HEAD], n=1) + [_DISTINCT[9]] * 3 + [f"30\n{_HEAD}\n{_DISTINCT[10]}"]
+    cleaned, kept = _strip(pages)
+    assert kept == []
+    assert cleaned[1].split("\n")[0] == _HEAD
+
+
+def test_a_mangled_folio_on_the_head_line_is_still_a_folio():
+    # L'Empire chrétien p. 199: the OCR read the folio as "I99".
+    cleaned, kept = _strip(_run([f"I99 {_HEAD}"]))
+    assert kept == []
+
+
+def test_a_section_opening_in_mid_page_has_its_heading_on_the_page_before():
+    # Gli Actus p. XIX: the heading stands in the text of the page before, and
+    # the running head begins on the next page, which opens nothing.
+    pages = _run([_HEAD])
+    pages[0] = pages[0].replace(_DISTINCT[7], _HEAD)
+    cleaned, kept = _strip(pages)
+    assert kept == []
+    assert _HEAD not in cleaned[1]
+
+
+def test_a_head_that_opens_again_and_again_is_the_volumes():
+    # La masonería: the book title heads the pages of every chapter but its
+    # first, so each chapter's second page looks like an opening.
+    gap = [_DISTINCT[9], _DISTINCT[10], _DISTINCT[11]]
+    pages = _run([_HEAD]) + gap + _run([_HEAD]) + gap + _run([_HEAD])
+    assert len(_strip(_run([_HEAD]) + gap + _run([_HEAD]))[1]) == 2
+    cleaned, kept = _strip(pages)
+    assert kept == []
+    assert all(_HEAD not in page for page in cleaned)
+
+
+def test_a_roman_folio_changes_within_the_run():
+    # Gli Actus: "LE DIREZIONI DELLA RICERCA XIX", two pages on "… XXI".
+    pages = _run([f"{_HEAD} XVII"], n=1)
+    pages += [f"{_HEAD} XIX\n{_DISTINCT[5]}", f"{_HEAD} XXI\n{_DISTINCT[6]}",
+              f"{_HEAD} XXIII\n{_DISTINCT[7]}"]
+    cleaned, kept = _strip(pages)
+    assert kept == []
+
+
+def test_a_roman_numeral_that_stays_is_the_sections_own():
+    # Baynes: "XIV THE BYZANTINE INHERITANCE IN RUSSIA" over the whole chapter.
+    head = f"XIV {_HEAD}"
+    pages = _run([head], n=1) + [f"{n}\n{head}\n{_DISTINCT[4 + n % 3]}" for n in (20, 21, 22)]
+    cleaned, kept = _strip(pages)
+    assert kept == [(1, head)]
+
+
+def test_each_chapter_number_is_a_head_of_its_own():
+    # Chaldaean Oracles: "CHAPTER IV" two pages before "CHAPTER V", one
+    # wording to the detector; neither the folio rule nor the cap may take
+    # the fifth chapter's opening for the fourth's running page.
+    pages = []
+    for n, numeral in enumerate(("III", "IV", "V")):
+        head = f"CHAPTER {numeral}"
+        pages += [f"{_DISTINCT[11]}\nDamit endet das Kapitel.",
+                  f"{head}\n{_DISTINCT[n]}\n{_DISTINCT[n + 1]}",
+                  f"{30 + n}\n{head}\n{_DISTINCT[n + 4]}"]
+    kept: list = []
+    remove_running_headers(pages, ["CHAPTER IV"], RescuedFolios(len(pages)), kept=kept)
+    assert [line for _i, line in kept] == ["CHAPTER III", "CHAPTER IV", "CHAPTER V"]
+
+
+def test_a_head_the_ocr_spells_three_ways_is_one_head():
+    # La masonería: the detector made three groups of "… MITO DE HIRAM".
+    variants = ["TII. Mas alla del mito de Hiram", "MI. Mas alla del mito de Hiram",
+                "TI. Mas alla del mito de Hikam"]
+    pages = _run([variants[0]], n=1)
+    pages += [f"{v}\n{_DISTINCT[4 + k]}" for k, v in enumerate(variants[1:])]
+    kept: list = []
+    remove_running_headers(pages, variants, RescuedFolios(len(pages)), kept=kept)
+    assert kept == [(1, variants[0])]
+
+
+def test_a_chapter_line_above_the_head_joins_the_title():
+    # La masonería p. 87: "CAPÍTULO III" / "MÁS ALLÁ DEL MITO DE HIRAM"; the
+    # numeral belongs to the chapter line, not to the running head.
+    # The running head carries the numeral ("III. Más allá …"), so the two
+    # opening lines together read as it, and neither alone does.
+    head = f"III. {_HEAD}"
+    pages = _run(["Kap. III", _HEAD], n=1)
+    pages += [f"{n}\n{head}\n{_DISTINCT[n % 7]}" for n in (20, 21, 22)]
+    kept: list = []
+    remove_running_headers(pages, [head], RescuedFolios(len(pages)), kept=kept)
+    assert kept == [(1, f"Kap. III {_HEAD}")]
+
+
+def test_a_head_that_never_runs_is_left_standing():
+    # L'Empire chrétien: "CHAPITRE III" over a chapter's first page only.
+    label = "CHAPITRE DEUX"
+    gap = [_DISTINCT[9], _DISTINCT[10], _DISTINCT[11], _DISTINCT[8]]
+    pages = []
+    for k in range(3):
+        pages += [f"{label}\n{_DISTINCT[k]}"] + gap
+    rescued = RescuedFolios(len(pages))
+    cleaned = remove_running_headers(pages, [label], rescued)
+    assert sum(label in page for page in cleaned) == 3
+
+
+def test_a_number_closing_a_line_of_prose_is_no_folio():
+    # Taubes p. 7: "Einleitung", then "… reichen von 1953".
+    cleaned, kept = _strip(_run([_HEAD, "Die Texte reichen von 1953"]))
+    assert kept == [(1, _HEAD)]
