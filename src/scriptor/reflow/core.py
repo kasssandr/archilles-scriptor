@@ -1840,13 +1840,17 @@ def main(
     # download banner ending in the year and with the chapter's running head
     # ending in the folio. Choosing between them here would be deciding on one
     # source while a second exists; the fit is where that belongs.
+    opening_titles: list[tuple[int, str]] = []
     cleaned, headers, footers = strip_running_elements(
         raw_texts, rescued, foot_blocks=fn_blocks, known=known, heads=heads,
-        lists=lists)
+        lists=lists, kept=opening_titles)
     fn_blocks = remove_running_footers_from_blocks(fn_blocks, footers, rescued)
     rescued_by_ordinal = rescued.by_position()
     if headers:
         print(f"Running headers removed ({len(headers)}): {headers[:3]}", file=sys.stderr)
+    if opening_titles:
+        print(f"Running heads kept as the title of the page they open: "
+              f"{len(opening_titles)}", file=sys.stderr)
     if footers:
         print(f"Running footers removed ({len(footers)}): {footers[:3]}", file=sys.stderr)
 

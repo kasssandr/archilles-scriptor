@@ -112,7 +112,11 @@ def _sample(page) -> str:
     """A line of the page a reader can search for."""
     if page is None:
         return ""
-    text = next((ln.strip() for ln in page.body_lines if ln.strip()), "")
+    from scriptor.reflow.headings import read_mark
+
+    # Without the marks a heading line carries: they are the pipeline's, and
+    # nobody searching the book types them.
+    text = next((read_mark(ln.strip())[0] for ln in page.body_lines if ln.strip()), "")
     return text[:SAMPLE_CHARS]
 
 
