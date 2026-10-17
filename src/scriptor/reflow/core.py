@@ -19,6 +19,7 @@ from pathlib import Path
 
 from scriptor._text import plural
 from scriptor.reflow.footnotes import (
+    FOOTNOTE_BARE_RE,
     FOOTNOTE_RE,
     PLACED_MARKER_RE,
     SUPERSCRIPT_DIGITS,
@@ -28,6 +29,7 @@ from scriptor.reflow.footnotes import (
     note_starts,
     split_small_type_block,
     substitute_markers,
+    witnessed_block_start,
 )
 from scriptor.reflow.pagelabel import PAGE_MARKER_RE, decode_label, detect_page_label
 
@@ -141,6 +143,7 @@ def parse_page(
     geometry_verified: bool = False,
     deferred_top: int = 0,
     last_note: int | None = None,
+    last_read: int | None = None,
 ) -> Page | None:
     """Parse a single page file. Returns None if empty.
 
@@ -150,6 +153,9 @@ def parse_page(
     note has to follow the one before it or start the count again
     (``footnotes.follows``); otherwise it is the next line of that note,
     opening with a number that is no note -- a page, a day, a year.
+    ``last_read`` is the last note of the last page that had notes: on bare
+    text a "NN Text" line continuing it opens the block
+    (``footnotes.witnessed_block_start``).
 
     ``fn_block`` carries the page's footnote block where the geometry already
     verified it (small type at the bottom, see ``split_small_type_block``).
@@ -215,12 +221,22 @@ def parse_page(
     # numbered list ("1) …") swallow the page from its first item on, which is
     # exactly the defect the empty case was fixed for.
     fn_start = None
+    shape = FOOTNOTE_RE.match
     if not geometry_verified:
         for i, ln in enumerate(lines):
             m = FOOTNOTE_RE.match(ln)
-            if m and continues(int(m.group(1)), last_note):
+            # "28)" under "(Röm. 11," closes the parenthesis the line above
+            # opened; read as note 28 it took the rest of the page into the
+            # apparatus (Taubes pp. 87, 345).
+            if (m and continues(int(m.group(1)), last_note)
+                    and not (i and lines[i - 1].count("(") > lines[i - 1].count(")"))):
                 fn_start = i
                 break
+        if fn_start is None:
+            # "NN Text", where the count or a marker above vouches for NN.
+            fn_start = witnessed_block_start(lines, last_read)
+            if fn_start is not None:
+                shape = FOOTNOTE_BARE_RE.match
 
     body_lines: list[str] = []
     fn_lines: list[str] = []
@@ -231,7 +247,7 @@ def parse_page(
         fn_lines = lines[fn_start:]
 
     # Assemble footnotes (join multi-line notes, dehyphenate)
-    footnotes, _ = _assemble_footnotes(fn_lines, FOOTNOTE_RE.match, last_note)
+    footnotes, _ = _assemble_footnotes(fn_lines, shape, last_note)
 
     # The size-verified block from the page geometry. Lines above its first
     # definition are the tail of a note that began on the previous page.
@@ -244,7 +260,9 @@ def parse_page(
             fn_continuation = dehyphenate_join(leading).strip() or None
 
     # Replace footnote markers in the body with [NN] (in-place on body_lines)
-    body_lines = substitute_markers(body_lines, footnotes)
+    # On bare text only a marker glued to its word is trusted (see there).
+    body_lines = substitute_markers(body_lines, footnotes,
+                                    loose=geometry_verified or bool(fn_block))
 
     return Page(
         num=page_num,
@@ -267,29 +285,60 @@ def _assemble_footnotes(
     follow one another (``footnotes.note_starts``, ``last`` being the
     volume's highest note so far). Any other line that opens with a number
     is the next line of the note before: "S. 390," / "393 Rn. 10 ff.",
-    "(Paris," / "1958); J. H. W." """
+    "(Paris," / "1958); J. H. W."
+
+    Numbers the OCR read as a column of their own ("3" / "4" / "Franz
+    Overbeck, …" / "Eberhard Vischer, …") stand on empty notes, and the text
+    after them belongs to all of them. It is dealt out where the numbers count
+    up one by one and the text falls into exactly as many notes as there are
+    numbers, each ending a sentence; any other count says nothing, and the
+    text stays with the last number and the others stay empty, as before. An
+    empty note is kept: a continuation from the next page joins the last
+    note of the page, and dropping "33)" handed La masonería's continuation
+    to note 27."""
     footnotes: dict[int, str] = {}
     leading: list[str] = []
-    cur_num: int | None = None
-    cur_buf: list[str] = []
+    entries: list[tuple[int, list[str]]] = []
     starts = dict(note_starts(fn_lines, last, matcher))
-
-    def flush():
-        if cur_num is None:
-            return
-        footnotes[cur_num] = dehyphenate_join(cur_buf).strip()
 
     for i, ln in enumerate(fn_lines):
         if i in starts:
-            flush()
-            cur_num = starts[i]
-            cur_buf = [matcher(ln).group(2)]
-        elif cur_num is None:
+            entries.append((starts[i], [matcher(ln).group(2)]))
+        elif not entries:
             leading.append(ln)
         else:
-            cur_buf.append(ln)
-    flush()
+            entries[-1][1].append(ln)
+
+    stacked: list[int] = []
+    for num, buf in entries:
+        footnotes[num] = dehyphenate_join(buf).strip()
+        if not footnotes[num]:
+            stacked.append(num)
+            continue
+        if stacked:
+            parts = _sentences([part for part in buf if part.strip()])
+            if (len(parts) == len(stacked) + 1
+                    and stacked + [num] == list(range(stacked[0], num + 1))):
+                for n, part in zip(stacked, parts):
+                    footnotes[n] = dehyphenate_join(part).strip()
+                footnotes[num] = dehyphenate_join(parts[-1]).strip()
+            stacked = []
     return footnotes, leading
+
+
+_NOTE_ENDS = re.compile(r"[.!?][\"'“”»«)\]]*$")
+
+
+def _sentences(lines: list[str]) -> list[list[str]]:
+    """Lines grouped into notes: a group ends on a line closing a sentence,
+    and the next opens on a capital or a quotation mark."""
+    groups: list[list[str]] = [[]]
+    for i, ln in enumerate(lines):
+        groups[-1].append(ln)
+        nxt = lines[i + 1].lstrip() if i + 1 < len(lines) else ""
+        if nxt and _NOTE_ENDS.search(ln.rstrip()) and (nxt[0].isupper() or nxt[0] in "\"'„“»«"):
+            groups.append([])
+    return groups
 
 
 def attach_continuations(pages: list[Page]) -> int:
@@ -1594,17 +1643,20 @@ def main(
         describe as describe_characters,
         learn_broken_glyphs,
         resolve_characters,
+        sets_low_quote,
     )
     glyphs = learn_broken_glyphs(page_lines + [b for b in fn_blocks if b])
-    page_lines, char_report = resolve_characters(page_lines, glyphs)
+    low_quote = sets_low_quote(page_lines + [b for b in fn_blocks if b])
+    page_lines, char_report = resolve_characters(page_lines, glyphs, low_quote)
     if any(fn_blocks):
         resolved_blocks, block_report = resolve_characters(
-            [b or [] for b in fn_blocks], glyphs
+            [b or [] for b in fn_blocks], glyphs, low_quote
         )
         fn_blocks = [r if b else None for r, b in zip(resolved_blocks, fn_blocks)]
         char_report.soft_hyphens += block_report.soft_hyphens
         char_report.zero_width += block_report.zero_width
         char_report.dropped += block_report.dropped
+        char_report.low_quotes += block_report.low_quotes
     said = describe_characters(char_report)
     if said:
         print(f"Invisible characters: {said}", file=sys.stderr)
@@ -1862,15 +1914,17 @@ def main(
 
     pages: list[Page] = []
     page_headers: list[str | None] = []
-    last_note = None
+    last_note = last_read = None
     for ordinal, (text, raw, fn_block, sp, rec) in enumerate(
         zip(cleaned, raw_texts, fn_blocks, source_pages, reconstructions), start=1
     ):
         deferred = {c.text.strip() for c in heads.at(ordinal - 1)}
         pg = parse_page(text, fn_block=fn_block, geometry_verified=rec.measured,
-                        deferred_top=_leading(text, deferred), last_note=last_note)
+                        deferred_top=_leading(text, deferred), last_note=last_note,
+                        last_read=last_read)
         if pg is not None and pg.footnotes:
             last_note = max(last_note or 0, *pg.footnotes)
+            last_read = max(pg.footnotes)
         if pg is None and rescued_by_ordinal.get(ordinal):
             # The page was not empty: everything it carried was furniture, and
             # the strippers took it. That is not the same as a blank leaf, and
