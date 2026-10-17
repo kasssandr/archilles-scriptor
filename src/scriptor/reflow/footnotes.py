@@ -31,6 +31,14 @@ FOOTNOTE_DOT_RE = re.compile(r"^(\d{1,4})\.(?:\s+|(?=[A-Z“\"‘']))(\S.*)$")
 # space after it. Requires the space, so a continuation line opening with
 # "27, S. 53." or "2017, S. 41" is not mistaken for a definition.
 FOOTNOTE_SPACE_RE = re.compile(r"^(\d{1,4})\s+(\S.*)$")
+# "NN Text…" on bare text, or "NN" alone on its line where the OCR read the
+# column of note numbers apart from the notes ("3" / "4" / "Franz Overbeck,
+# …" / "Eberhard Vischer, …", Taubes p. 182). Only ever trusted where the
+# count or a marker vouches for the number (``witnessed_block_start``).
+# Not "92 c) ihrerseits den
+# Klöstern …": Aniane marks sub-notes so, and a line opening with one is prose
+# behind its marker, which the count (91 -> 92) would have taken for a note.
+FOOTNOTE_BARE_RE = re.compile(r"^(\d{1,3})(?:\s+(?![a-z]\))|$)(.*)$")
 # Marker in the finished body: already replaced with [NN] — recognised during reflow.
 PLACED_MARKER_RE = re.compile(r"\[(\d{1,4})\]")
 
@@ -41,6 +49,46 @@ SUPERSCRIPT_DIGITS = str.maketrans({
     "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7",
     "⁸": "8", "⁹": "9",
 })
+
+
+def witnessed_block_start(lines: list[str], last_read: int | None = None) -> int | None:
+    """Where a page's footnote block begins, on bare text: the first line
+    "NN Text" (or "NN" alone) whose number a witness vouches for.
+
+    Without type sizes the only convention trusted on bare text was "NN)";
+    a volume that sets "NN Text" kept its whole apparatus in the running text
+    (Taubes, Vom Kult zur Kultur: 2 notes found in 383 pages), and only the
+    notes after the first came apart, wherever a short line happened to end
+    a paragraph. Two witnesses stand in for the geometry:
+
+    * the count -- NN continues the note read last on the pages before
+      (``last_read``), one lost number allowed;
+    * the marker -- the body above prints NN glued to a word or a mark
+      ("Streitschrift1", "Gegenwart“2"), the shape the raised number takes
+      once flattened. A number after a space ("S. 2", "Bd. 13") is no
+      marker.
+
+    A line opening with a number nothing vouches for is prose ("2 Bände
+    …"), and the first line of a page is never a note. A number alone on its
+    line is as often the raised marker itself, which the OCR set on a line of
+    its own ("…aufzuklären bleibt.\"" / "41", Taubes p. 38): it opens the
+    block only where no line below opens the same note with its text.
+    """
+    for i, line in enumerate(lines):
+        m = FOOTNOTE_BARE_RE.match(line)
+        if not m or i == 0:
+            continue
+        num = int(m.group(1))
+        if not m.group(2).strip() and any(
+                (b := FOOTNOTE_BARE_RE.match(below)) and int(b.group(1)) == num
+                and b.group(2).strip() for below in lines[i + 1:]):
+            continue
+        if last_read is not None and last_read < num <= last_read + 2:
+            return i
+        marker = re.compile(rf"(?<=[^\s\d]){num}(?!\w)")
+        if any(marker.search(above) for above in lines[:i]):
+            return i
+    return None
 
 
 # How far past the note read last the next may stand. A page carries a few
@@ -327,7 +375,8 @@ def split_small_type_block(
     )
 
 
-def substitute_markers(body_lines: list[str], footnotes: dict[int, str]) -> list[str]:
+def substitute_markers(body_lines: list[str], footnotes: dict[int, str],
+                       loose: bool = True) -> list[str]:
     """
     Replaces footnote markers in the body with '[NN]'. Two-pass procedure:
 
@@ -340,6 +389,14 @@ def substitute_markers(body_lines: list[str], footnotes: dict[int, str]) -> list
     passes would find a marker for the same NN, pass 1 wins.
     False positives on numbers in the running text are largely avoided,
     because only numbers from the footnotes set count as candidates at all.
+
+    ``loose=False`` narrows pass 2 to a number alone on its line. On bare
+    text, where the notes are found by convention and witness rather than by
+    type size, a free-standing number inside a line is too often the text's
+    own: "(Barth, S. 5)" and "also etwas 5 Jahre nach Fridugis Tod" lost
+    their 5 to notes 5 (Taubes, Aniane). Alone on its line it is the raised
+    marker the OCR set apart ("…zu vollbringen.'" / "7"). A note whose
+    marker is neither is placed at the end of its page instead.
     """
     if not footnotes or not body_lines:
         return body_lines
@@ -368,7 +425,8 @@ def substitute_markers(body_lines: list[str], footnotes: dict[int, str]) -> list
     for num in sorted(footnotes.keys()):
         if num in consumed:
             continue
-        pat = re.compile(rf"(?<=\s){num}(?=$|[^\w])", re.MULTILINE)
+        pat = re.compile(rf"(?<=\s){num}(?=$|[^\w])" if loose else rf"^{num}$",
+                         re.MULTILINE)
         new_body, n = pat.subn(f"[{num}]", body, count=1)
         if n > 0:
             body = new_body

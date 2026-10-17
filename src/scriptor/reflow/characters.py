@@ -57,6 +57,25 @@ GLYPH_MARGIN = 2.0
 
 _WORD = re.compile(r"[^\W\d_]{2,}", re.UNICODE)
 
+# The low opening quote „ read as two commas, and as often as not without the
+# space before it: "im Titel,,Surrealismus\"", "herangezogen,,,die ihn" (a
+# comma and the quote). Taubes' Vom Kult zur Kultur prints the misreading
+# some 1500 times. Two commas before a space are left alone -- nothing says
+# what they were.
+#
+# The reading is earned on the document, as a ligature is: only a volume that
+# also prints „ read right sets the low quote at all. An English one does not,
+# and its double commas are a high quote or debris -- the Chaldaean Oracles
+# came out with nine „ and not one of them right.
+_LOW_QUOTE = re.compile(r"(?<!,)(,?),,(?=[^\s,])")
+MIN_LOW_QUOTES = 5
+# The quote read right and a comma read after it as well ("die „,Kultur“",
+# 176 times in Taubes): no comma opens a quotation.
+_QUOTE_COMMA = re.compile(r"„,(?=\w)")
+# After these the quote follows without a space: an opening bracket, a
+# compound hyphen ("Anti-„Gesetz“"), another quotation mark.
+_NO_SPACE_BEFORE = "([{/-‐'\"‚„«»‹›‘’“”"
+
 
 def _is_broken(ch: str) -> bool:
     """A character that stands for something the file failed to state."""
@@ -71,6 +90,7 @@ class CharacterReport:
     dropped: Counter = field(default_factory=Counter)        # char -> count
     soft_hyphens: int = 0        # turned into line-break hyphens
     zero_width: int = 0          # removed
+    low_quotes: int = 0          # double commas read as „
 
 
 def learn_broken_glyphs(pages: list[list[str]]) -> dict[str, str]:
@@ -136,6 +156,7 @@ def learn_broken_glyphs(pages: list[list[str]]) -> dict[str, str]:
 def resolve_characters(
     pages: list[list[str]],
     glyphs: dict[str, str] | None = None,
+    low_quote: bool | None = None,
 ) -> tuple[list[list[str]], CharacterReport]:
     """Rewrite every page's lines so nothing invisible survives.
 
@@ -146,10 +167,13 @@ def resolve_characters(
     ``glyphs`` lets a caller supply a reading learnt elsewhere -- the body and
     the apparatus of one volume are set in the same font and have to be read
     the same way, but the apparatus alone is too little text to learn from.
+    ``low_quote`` likewise: whether the volume sets „ (``sets_low_quote``).
     """
     report = CharacterReport(
         resolved=learn_broken_glyphs(pages) if glyphs is None else dict(glyphs)
     )
+    if low_quote is None:
+        low_quote = sets_low_quote(pages)
     out: list[list[str]] = []
     for lines in pages:
         new_lines: list[str] = []
@@ -173,9 +197,36 @@ def resolve_characters(
                     line = line.replace(ch, "")
                 else:
                     line = line.replace(ch, reading)
+            if low_quote and (",," in line or "„," in line):
+                line, n = _resolve_low_quotes(line)
+                report.low_quotes += n
             new_lines.append(line)
         out.append(new_lines)
     return out, report
+
+
+def sets_low_quote(pages: list[list[str]]) -> bool:
+    """Does the volume print „ itself, read right, often enough to say so?"""
+    return sum(line.count("„") for lines in pages for line in lines) >= MIN_LOW_QUOTES
+
+
+def _resolve_low_quotes(line: str) -> tuple[str, int]:
+    """Every double comma before a word read as „, with the space before it
+    that the misreading swallowed."""
+    def quote(m: re.Match) -> str:
+        if m.group(1):
+            return ", „"
+        before = line[:m.start()]
+        # A dash stands apart from its words ("Johannesevangelium -„denn");
+        # a hyphen joins them ("Anti-„Gesetz“").
+        if (not before or before[-1].isspace()
+                or (before[-1] in _NO_SPACE_BEFORE
+                    and not (before[-1] == "-" and before[-2:-1].isspace()))):
+            return "„"
+        return " „"
+    line, n = _LOW_QUOTE.subn(quote, line)
+    line, m = _QUOTE_COMMA.subn("„", line)
+    return line, n + m
 
 
 def describe(report: CharacterReport) -> str | None:
@@ -185,6 +236,8 @@ def describe(report: CharacterReport) -> str | None:
         parts.append(f"{report.soft_hyphens} soft hyphens read as line breaks")
     if report.zero_width:
         parts.append(f"{report.zero_width} zero-width marks removed")
+    if report.low_quotes:
+        parts.append(f"{report.low_quotes} double commas read as the low quote „")
     if report.resolved:
         shown = ", ".join(f"U+{ord(c):04X}->{lig}"
                           for c, lig in sorted(report.resolved.items()))
