@@ -62,6 +62,22 @@ def test_a_marker_set_on_a_line_of_its_own_opens_nothing():
     assert witnessed_block_start(lines, last_read=40) == 3
 
 
+def test_a_marker_on_its_own_line_above_a_column_of_numbers_opens_nothing():
+    # Study and Knowledge p. 90: the note numbers stand apart from their
+    # texts at the foot, so no line below opens 23 with text -- the 23 there
+    # is alone too. Read as the block start, the marker took the page.
+    lines = ["midrash. This attitude also prevails in Yonah Frenkel's monumental",
+             "work.2",
+             "23",
+             "IV",
+             "A definition of a phenomenon demands that a boundary be established",
+             "23",
+             "24",
+             "See above, note 9.",
+             "Talmudic tradition names thirteen such middot, and the later work."]
+    assert witnessed_block_start(lines, last_read=22) == 5
+
+
 def test_a_sub_note_marker_opening_a_line_is_prose():
     # Aniane marks sub-notes "92 c)"; the count (91 -> 92) must not take the
     # prose behind it for note 92.
