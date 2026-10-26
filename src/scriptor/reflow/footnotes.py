@@ -72,7 +72,12 @@ def witnessed_block_start(lines: list[str], last_read: int | None = None) -> int
     …"), and the first line of a page is never a note. A number alone on its
     line is as often the raised marker itself, which the OCR set on a line of
     its own ("…aufzuklären bleibt.\"" / "41", Taubes p. 38): it opens the
-    block only where no line below opens the same note with its text.
+    block only where no line below opens the same note -- with its text, or
+    alone again in the column of numbers the OCR read apart from the notes
+    ("work.2" / "23" / "IV" … "23" / "24" / "See above, note 9.", Study and
+    Knowledge p. 90). Asking only for the text, 83 such markers had opened
+    the block in the upper half of their page, and the body below them went
+    into the apparatus.
     """
     for i, line in enumerate(lines):
         m = FOOTNOTE_BARE_RE.match(line)
@@ -81,7 +86,7 @@ def witnessed_block_start(lines: list[str], last_read: int | None = None) -> int
         num = int(m.group(1))
         if not m.group(2).strip() and any(
                 (b := FOOTNOTE_BARE_RE.match(below)) and int(b.group(1)) == num
-                and b.group(2).strip() for below in lines[i + 1:]):
+                for below in lines[i + 1:]):
             continue
         if last_read is not None and last_read < num <= last_read + 2:
             return i
