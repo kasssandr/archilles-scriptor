@@ -125,6 +125,22 @@ def test_glued_markers_are_set_off_and_numbers_of_the_text_left_alone():
                                    "a question of books. [2] And of scribes, [3] too."]
 
 
+def test_a_section_number_is_no_marker():
+    # Artificial Humanities: "2.1  Social Robots" and "2.6.1" number sections;
+    # "1" after "2." is no note. The marker glued to "sounds." is.
+    pages = _pages(["## 2.1  Social Robots: Hanson's Sophia",
+                    "articulate sounds.1 Visible Speech",
+                    "### 2.6.1  Linguistic Execution: Jonze"],
+                   ["notes"])
+    part = read_notes(_stream(1, "Chapter 2", "1. Bell, Visible Speech."))
+    apply_skeleton(pages, [1], part)
+    bound = bind(pages, part, [0])
+    assert bound.found == 1
+    assert pages[0].body_lines == ["## 2.1  Social Robots: Hanson's Sophia",
+                                   "articulate sounds. [1] Visible Speech",
+                                   "### 2.6.1  Linguistic Execution: Jonze"]
+
+
 def test_a_lost_marker_hangs_on_the_page_of_the_next_found_one():
     pages = _pages(["Erstens [1]."], ["Zweitens ohne Marker."], ["Drittens [3]."],
                    ["notes"])

@@ -65,8 +65,10 @@ _HEAD_LATE = 4
 # the text's own: a page's worth of them on a bad scan.
 _MAX_LOST = 6
 # A marker glued to its word: "question.1", "Bibel23". Not after a digit, a
-# colon or a dash: "12:9" is a verse, "29–30" a range.
-_GLUED = re.compile(r"(?<=[^\s\d:\-–—/\[(])(\d{1,3})(?=$|[^\w:\-–—/\]])")
+# colon or a dash: "12:9" is a verse, "29–30" a range. Nor after a digit's
+# period: "2.1 Social Robots" and "2.6.1" number sections (*Artificial
+# Humanities*).
+_GLUED = re.compile(r"(?<=[^\s\d:\-–—/\[(])(?<!\d\.)(\d{1,3})(?=$|[^\w:\-–—/\]])")
 # A raised marker the OCR set as a line of its own.
 _ALONE = re.compile(r"^(\d{1,3})$")
 
