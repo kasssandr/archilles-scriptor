@@ -22,7 +22,13 @@ control characters and private-use codes
     guessed but read off the document's own spelling: where "first" also occurs
     unbroken, "\\x7frst" proves that U+007F is "fi". Counted per character over
     the whole document; a character nothing vouches for is dropped and
-    reported, never invented.
+    reported, never invented. The pipeline's own marks live in the same range
+    and are not the document's: they pass.
+
+``U+FB00``-``U+FB06`` ligatures
+    A font that kept its mapping and mapped the ligature to its presentation
+    form. Nothing is broken, but "scientiﬁc" is not "scientific" to anyone
+    searching or translating the master, so the letters are written out.
 """
 
 from __future__ import annotations
@@ -32,7 +38,24 @@ import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
 
+from scriptor.reflow.headings import MARK as HEADING_MARK
+from scriptor.reflow.headings import PLACED as PLACED_MARK
+from scriptor.reflow.tables import BREAK as TABLE_BREAK
+
 SOFT_HYPHEN = "­"
+
+# Marks the reflow sets itself, from the Private Use Area so that no document
+# can contain them, and reads back at the very end. A folded table reaches this
+# module carrying its row breaks: dropped as unreadable, every table of the
+# volume came out as one line (McNamara, 35 breaks in 7 tables).
+PIPELINE_MARKS = HEADING_MARK + PLACED_MARK + TABLE_BREAK
+
+# The latin ligatures in their presentation forms, written out. Only this
+# block: the Hebrew presentation forms that follow it (U+FB1D on) are letters
+# of their own script and stay as they are.
+_LIGATURE_FORMS = {chr(cp): unicodedata.normalize("NFKC", chr(cp))
+                   for cp in range(0xFB00, 0xFB07)}
+_LIGATURE_FORM_RE = re.compile("[" + "".join(_LIGATURE_FORMS) + "]")
 
 # Break opportunities and byte-order marks. No text, no structure, no trace.
 ZERO_WIDTH = "​‌‍﻿"
@@ -79,7 +102,8 @@ _NO_SPACE_BEFORE = "([{/-‐'\"‚„«»‹›‘’“”"
 
 def _is_broken(ch: str) -> bool:
     """A character that stands for something the file failed to state."""
-    if ch in ZERO_WIDTH or ch == SOFT_HYPHEN or ch in "\n\t\r":
+    if (ch in ZERO_WIDTH or ch == SOFT_HYPHEN or ch in "\n\t\r"
+            or ch in PIPELINE_MARKS):
         return False
     return unicodedata.category(ch) in ("Cc", "Cf", "Co")
 
@@ -91,6 +115,7 @@ class CharacterReport:
     soft_hyphens: int = 0        # turned into line-break hyphens
     zero_width: int = 0          # removed
     low_quotes: int = 0          # double commas read as „
+    ligatures: int = 0           # presentation forms written out
 
 
 def learn_broken_glyphs(pages: list[list[str]]) -> dict[str, str]:
@@ -111,6 +136,8 @@ def learn_broken_glyphs(pages: list[list[str]]) -> dict[str, str]:
     broken: set[str] = set()
     for lines in pages:
         for line in lines:
+            # "ﬁrst" vouches for "first" as the rewritten line will spell it.
+            line = _write_out_ligatures(line)[0]
             for word in _WORD.findall(line):
                 intact[word.lower()] += 1
             # A damaged word form is letters and damaged characters and nothing
@@ -190,6 +217,8 @@ def resolve_characters(
                 if ch in line:
                     report.zero_width += line.count(ch)
                     line = line.replace(ch, "")
+            line, n = _write_out_ligatures(line)
+            report.ligatures += n
             for ch in {c for c in line if _is_broken(c)}:
                 reading = report.resolved.get(ch)
                 if reading is None:
@@ -203,6 +232,11 @@ def resolve_characters(
             new_lines.append(line)
         out.append(new_lines)
     return out, report
+
+
+def _write_out_ligatures(line: str) -> tuple[str, int]:
+    """The line with each latin ligature form as its letters, and how many."""
+    return _LIGATURE_FORM_RE.subn(lambda m: _LIGATURE_FORMS[m.group()], line)
 
 
 def sets_low_quote(pages: list[list[str]]) -> bool:
@@ -238,6 +272,8 @@ def describe(report: CharacterReport) -> str | None:
         parts.append(f"{report.zero_width} zero-width marks removed")
     if report.low_quotes:
         parts.append(f"{report.low_quotes} double commas read as the low quote „")
+    if report.ligatures:
+        parts.append(f"{report.ligatures} ligatures written out as letters")
     if report.resolved:
         shown = ", ".join(f"U+{ord(c):04X}->{lig}"
                           for c, lig in sorted(report.resolved.items()))

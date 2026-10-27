@@ -73,6 +73,51 @@ def test_a_hyphen_continuation_never_starts_a_paragraph():
     assert "" not in out
 
 
+def test_a_quotation_on_the_paragraph_indent_opens_one_paragraph_not_one_per_line():
+    # McNamara p. 190: the quotation sits 15pt in, where the paragraphs start,
+    # and every one of its lines came out a paragraph of its own.
+    lines = [t for t, _ in BODY_EDGE[:5]] + [
+        "Todd and Dewhurst (1955) have reviewed the role the Double played as",
+        "the immortal soul in traditional societies and tribal religions (see",
+        "also Hallam, 1980). In these cultures, the Double represents the soul",
+    ]
+    indents = [x for _, x in BODY_EDGE[:5]] + [46.3, 46.3, 46.4]
+    out = mark_indent_breaks(lines, indents)
+    assert out.count("") == 1
+    assert out[out.index("") + 1].startswith("Todd and Dewhurst")
+
+
+def test_verse_on_the_indent_keeps_a_paragraph_per_line():
+    # Bauer quotes Goethe on the paragraph indent: short lines, each its own.
+    lines = [t for t, _ in BODY_EDGE[:5]] + [
+        "Meister: Allein du übst die Hand,",
+        "Du übst den Blick, nun üb’ auch den Verstand.",
+        "Zum Ungemeinem aufzuschwingen:",
+    ]
+    indents = [x for _, x in BODY_EDGE[:5]] + [40.1, 40.1, 40.1]
+    assert mark_indent_breaks(lines, indents).count("") == 3
+
+
+def test_a_paragraph_of_one_line_does_not_swallow_the_next():
+    # Zuckerman: a one-line paragraph, then a list item, both indented.
+    lines = [t for t, _ in BODY_EDGE[:5]] + [
+        "The clues to this problem are the following:",
+        "(1) The taunts of the nations. These are typical of polemical",
+    ]
+    indents = [x for _, x in BODY_EDGE[:5]] + [40.1, 40.1]
+    assert mark_indent_breaks(lines, indents).count("") == 2
+
+
+def test_a_list_on_the_indent_keeps_one_item_to_a_paragraph():
+    # Zuckerman: each item fills its line and closes with a semicolon.
+    lines = [t for t, _ in BODY_EDGE[:5]] + [
+        "4. to allow Guifred to open a gate in the walls wherever he wishes;",
+        "5. to restore to Guifred half of all income derived on land and water,",
+    ]
+    indents = [x for _, x in BODY_EDGE[:5]] + [40.1, 40.1]
+    assert mark_indent_breaks(lines, indents).count("") == 2
+
+
 def test_without_a_stable_left_edge_nothing_happens():
     lines = ["kurz", "auch kurz", "drittens"]
     assert mark_indent_breaks(lines, [31.0, 40.0, 55.0]) == lines

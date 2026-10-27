@@ -1743,6 +1743,7 @@ def main(
         char_report.zero_width += block_report.zero_width
         char_report.dropped += block_report.dropped
         char_report.low_quotes += block_report.low_quotes
+        char_report.ligatures += block_report.ligatures
     said = describe_characters(char_report)
     if said:
         print(f"Invisible characters: {said}", file=sys.stderr)

@@ -24,6 +24,7 @@ suspiciously wide gap so the caller can say so out loud.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from scriptor.page import Line, SourcePage
@@ -366,6 +367,20 @@ def linked_lines(page: SourcePage) -> list[tuple[int, str]]:
 # paragraph start. Zuckerman indents by ~8.8pt.
 INDENT_MIN = 4.0
 INDENT_MAX = 18.0
+# Two lines this close share one indent. A first-line indent is followed by a
+# line on the edge; a run of full lines on the same indent is a block quotation,
+# and only its first line opens a paragraph (McNamara sets its quotations 15pt
+# in, exactly where its paragraphs start, and every line came out a paragraph).
+SAME_INDENT = 1.0
+# ... but only where the line above runs full: this share of the page's lines
+# on the edge. A short line on the indent is a verse (Bauer quotes Goethe) or a
+# paragraph of one line ("The clues to this problem are the following:",
+# Zuckerman), and the next indented line opens a paragraph as before.
+FULL_LINE = 0.8
+# Nor where it has closed a sentence or a clause: a list on the indent sets
+# one item to a line ("4. to allow Guifred to open a gate ... wherever he
+# wishes;", Zuckerman), and a quotation split there still splits no sentence.
+_CLOSED = re.compile(r"[.:;!?][\"'’”»)\]]*$")
 # Lines that must sit on the modal edge before it counts as stable.
 EDGE_MIN_LINES = 5
 
@@ -378,8 +393,10 @@ def mark_indent_breaks(
     The blank line is the same signal ``parse_page``/merge already read as a
     paragraph end, so the geometry flows through the existing seam. Only added
     when the page has a stable left edge, the offset falls inside the indent
-    band, and the previous line does not end in a line-break hyphen — a
-    continuation of a hyphenated word can never start a paragraph.
+    band, the previous line does not end in a line-break hyphen — a
+    continuation of a hyphenated word can never start a paragraph — and the
+    previous line is not a full line on the same indent: that is a quotation
+    going on.
     """
     if len(lines) != len(indents):
         return lines
@@ -393,12 +410,20 @@ def mark_indent_breaks(
     if count < EDGE_MIN_LINES:
         return lines
 
+    on_edge = sorted(len(line.rstrip()) for line, x in zip(lines, indents)
+                     if x is not None and round(x) == edge)
+    full = FULL_LINE * on_edge[len(on_edge) // 2]
+
     out: list[str] = []
     for i, (line, x) in enumerate(zip(lines, indents)):
         if (
             x is not None
             and INDENT_MIN <= x - edge <= INDENT_MAX
             and not (i > 0 and lines[i - 1].rstrip().endswith("-"))
+            and not (i > 0 and indents[i - 1] is not None
+                     and abs(indents[i - 1] - x) <= SAME_INDENT
+                     and len(lines[i - 1].rstrip()) >= full
+                     and not _CLOSED.search(lines[i - 1].rstrip()))
         ):
             out.append("")
         out.append(line)
