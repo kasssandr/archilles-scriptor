@@ -121,6 +121,13 @@ class Page:
     # How much the source consensus trusts this page's label, 0..1. None where
     # no verdict has run.
     label_confidence: float | None = None
+    # Endnotes this page's markers claim (reflow/endnotes.py): number -> (the
+    # head of their collection, label and physical position of the page they
+    # are printed on). Their texts stand in ``footnotes`` like any note's.
+    endnotes: dict[int, tuple[str | None, str | None, int]] = field(default_factory=dict)
+    # A page of the notes part whose notes have left for the definitions. It
+    # keeps its page marker even where nothing else of it stays.
+    notes_part: bool = False
 
     def __post_init__(self) -> None:
         # ``num`` is the ordinal, ``label`` the identity. For an arabic page the
@@ -339,6 +346,64 @@ def _sentences(lines: list[str]) -> list[list[str]]:
         if nxt and _NOTE_ENDS.search(ln.rstrip()) and (nxt[0].isupper() or nxt[0] in "\"'„“»«"):
             groups.append([])
     return groups
+
+
+def notes_sidecar(records: list, pages: list[Page]) -> dict:
+    """The notes sidecar (PREPARED_FORMAT_SPEC §6.6): one record per footnote,
+    in the order of its document-wide id, so that a consumer can name the note
+    behind ``[^N]`` the way the volume prints it.
+
+    A page is given as the volume prints it -- label, and the occurrence of
+    that label counted from the start, where a volume prints one twice -- and
+    by its physical position. An endnote carries the head of its collection
+    and the page its text is printed on as well.
+    """
+    occurrence: dict[int, int] = {}
+    seen: Counter[str] = Counter()
+    for p in pages:
+        if p.label is not None:
+            seen[p.label] += 1
+            occurrence[p.index] = seen[p.label]
+
+    def where(label: str | None, index: int) -> dict:
+        return {"label": label, "occurrence": occurrence.get(index), "position": index}
+
+    out = []
+    for nid, page, number, synthetic in records:
+        rec = {"id": nid, "number": number, "anchor": where(page.label, page.index),
+               "synthetic": synthetic}
+        if number in page.endnotes:
+            title, label, index = page.endnotes[number]
+            rec["collection"] = title
+            rec["printed_on"] = where(label, index)
+        out.append(rec)
+    return {"version": 1, "notes": out}
+
+
+def _without_folio(lines: list[str], page: Page) -> list[str]:
+    """A page's lines without the folio the consensus confirmed at either
+    edge. Only the confirmed one: Meisel p. 402 opens "20 TE, S. 136, 134,
+    135.", which reads as folio and head until the consensus rejects it -- and
+    is note 20 of the fourth chapter."""
+    from scriptor.reflow.pagelabel import strip_ornament
+
+    lines = list(lines)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if page.label is None:
+        return lines
+    # A bare number equal to the label is the folio whoever named the page:
+    # Van der Toorn's labels come from the PDF catalogue, and its folios stood
+    # in the notes as the last words of the collection heads above them.
+    confirmed = {c.text.strip() for c in page.folio_candidates
+                 if c.label == page.label and page.label_source == "printed"}
+    for edge in (-1, 0):
+        if lines and (lines[edge].strip() in confirmed
+                      or strip_ornament(lines[edge]) == page.label.strip()):
+            lines.pop(edge)
+    return lines
 
 
 def attach_continuations(pages: list[Page]) -> int:
@@ -863,14 +928,14 @@ def reconstruct_body(
         # page set in small type under its running head reaches us as nothing
         # but definitions, and skipping it skipped the rescue at its end too.
         # Baltrusch lost 33 pages of notes that way.
-        if p.mode != "main" or (not p.body_lines and not p.footnotes):
+        if p.mode != "main" or (not p.body_lines and not p.footnotes and not p.notes_part):
             continue
 
         # Note the page marker; insert it after any word left open. A page
         # without body has no word for it to stand before -- left pending, it
         # would be placed on the next page, and where that page has no label of
         # its own, its text would be cited under this one.
-        if p.label is not None and p.body_lines:
+        if p.label is not None and (p.body_lines or p.notes_part):
             pending_page_marker = f"[p. {p.label}]"
 
         # A confirmed chapter start: close whatever paragraph is running and
@@ -976,6 +1041,14 @@ def reconstruct_body(
                 bare = _TRAILING_MARKERS.sub("", stripped)
                 if len(bare) <= threshold and SENT_END.search(bare):
                     end_paragraph()
+
+        # A page of the notes part whose notes have all left: nothing of it
+        # but a head, or nothing at all. Its marker stands as a block of its
+        # own, so that the part keeps every page it was printed on.
+        if p.notes_part and pending_page_marker is not None:
+            end_paragraph()
+            flush_page_marker()
+            end_paragraph()
 
         # End of page: rescue this page's unanchored footnotes.
         # They land in the last-touched paragraph (open, or last closed
@@ -1209,17 +1282,20 @@ def format_paragraph_md(
     num_map: dict[FnKey, int] = {}
     seen = 0
 
-    def assign(key: FnKey) -> int:
+    def assign(key: FnKey, synthetic: bool = False) -> int:
         if key not in num_map:
             state["counter"] += 1
             num_map[key] = state["counter"]
             state["defs"].append(f"[^{state['counter']}]: {escape_md(fns[key])}")
+            if "notes" in state and "group" in state:
+                state["notes"].append(
+                    (state["counter"], state["group"][key[0]], key[1], synthetic))
         return num_map[key]
 
     def repl(m: re.Match) -> str:
         nonlocal seen
         if m.group(1) is not None:
-            return f"[^{assign(sentinel_keys[int(m.group(1))])}]"
+            return f"[^{assign(sentinel_keys[int(m.group(1))], synthetic=True)}]"
         position = seen
         seen += 1
         key = occurrences.get(position)
@@ -1274,6 +1350,9 @@ def render_main(
         for i, p in enumerate(pages):
             if p.label is not None:
                 page_order.setdefault(p.label, i)
+        # The FnKey's page component counts in this group; the notes sidecar
+        # needs the page itself.
+        state["group"] = pages
         return [
             format_paragraph_md(p, f, o, lvl, state, page_order, depths)
             for p, f, o, lvl in zip(paras, fns, occs, levels)
@@ -1377,11 +1456,16 @@ def render_book(
     chunking_strategy: str | None = None,
     pagination: str | None = None,
     structure=None,
+    notes: list | None = None,
 ) -> tuple[str, dict[str, list[int]]]:
     """Group pages by mode in source order and render each group accordingly.
 
     Returns the rendered document plus an audit dict of pages on which at
     least one footnote definition had no marker in the body.
+
+    ``notes``, where given, receives one (document-wide id, anchor page,
+    printed number, synthetic anchor?) per footnote, in id order -- what the
+    notes sidecar is written from (``notes_sidecar``).
 
     ``structure`` is called with the finished body and the depth of every
     heading the render wrote, in document order, and answers the ``structure:``
@@ -1402,6 +1486,8 @@ def render_book(
     # (true depth, heading text) in document order, one per '#' line written.
     depths: list[tuple[int, str]] = []
     state: dict = {"counter": 0, "defs": []}
+    if notes is not None:
+        state["notes"] = notes
     audit: dict[str, list[int]] = {}
     available_pages = {p.label for p in pages if p.label is not None}
     anchor_targets: set[str] = set()
@@ -2142,6 +2228,47 @@ def main(
         file=sys.stderr,
     )
 
+    # Endnotes (reflow/endnotes.py): the notes part read from its text as the
+    # strippers left it -- parse_page took each of its pages for a page of
+    # footnotes -- and each note hung on the page its marker stands on.
+    from scriptor.reflow import endnotes as endnotes_mod
+    from scriptor.reflow.regions import APPARATUS
+    # Each run of notes pages on its own, annotating the text since the run
+    # before it: a stray "Anmerkungen" on the contents' second page names one
+    # page and holds no note.
+    runs: list[list[int]] = []
+    for pos, p in enumerate(pages):
+        if p.region == "notes":
+            if runs and runs[-1][-1] == pos - 1:
+                runs[-1].append(pos)
+            else:
+                runs.append([pos])
+    since = 0
+    for notes_at in runs:
+        stream: list[tuple[int, str]] = []
+        for pos in notes_at:
+            p = pages[pos]
+            # The folio stays with the text when the small type is cut off
+            # below it (split_small_type_block), so it is taken off there,
+            # before the block is set back under the text it was cut from.
+            lines = (_without_folio(cleaned[p.index - 1].split("\n"), p)
+                     + list(fn_blocks[p.index - 1] or []))
+            stream += [(pos, ln) for ln in lines]
+        part = endnotes_mod.read_notes(stream)
+        if part.collections:
+            endnotes_mod.apply_skeleton(pages, notes_at, part)
+            scope = [pos for pos in range(since, notes_at[0])
+                     if pages[pos].mode == "main" and pages[pos].region not in APPARATUS]
+            since = notes_at[-1] + 1
+            bound = endnotes_mod.bind(pages, part, scope)
+            print(
+                f"Endnotes: {sum(r[1] for r in bound.rows)} in "
+                f"{plural(len(bound.rows), 'collection')}, markers {bound.form}: "
+                f"{bound.found} found, {bound.hanging} hanging, "
+                f"{bound.unbound} left in the notes part",
+                file=sys.stderr,
+            )
+
     # The numbered lines no entry placed, judged against the volume's own
     # table of schemes (§5.4). After the regions, so that a contents page or a
     # bibliography is not asked; before the calibration, because a line that
@@ -2227,13 +2354,22 @@ def main(
         return held["line"]
 
     decisions.reset_report()
+    note_records: list = []
     clean_output, _ = render_book(
         pages, threshold, fmt, decisions=decisions, evidence=evidence,
         chunking_strategy=chunking_strategy, pagination=pagination,
-        structure=structure_line,
+        structure=structure_line, notes=note_records,
     )
     Path(out_path).write_text(clean_output, encoding="utf-8")
     print(f"Written: {out_path}", file=sys.stderr)
+    if fmt == "md" and note_records:
+        import json
+        notes_path = Path(out_path).with_name(Path(out_path).name + ".notes.json")
+        notes_path.write_text(
+            json.dumps(notes_sidecar(note_records, pages), ensure_ascii=False, indent=1),
+            encoding="utf-8")
+        print(f"Notes: {plural(len(note_records), 'footnote')} -> {notes_path}",
+              file=sys.stderr)
 
     if decisions.accepted:
         print(

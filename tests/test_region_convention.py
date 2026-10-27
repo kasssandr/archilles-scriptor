@@ -627,6 +627,24 @@ def test_a_singular_note_is_not_a_notes_section():
     assert region_of_heading("Anmerkungen") == "notes"
 
 
+def test_two_registers_in_one_word_and_a_bibliographical_survey():
+    # Meisel: "PERSONEN- UND SACHREGISTER", "Bibliographische Übersicht".
+    assert region_of_heading("PERSONEN- UND SACHREGISTER") == "index"
+    assert region_of_heading("Orts- und Namenregister") == "index"
+    assert region_of_heading("Bibliographische Übersicht") == "bibliography"
+
+
+def test_the_running_head_of_an_endnotes_part_names_it():
+    # Van der Toorn: "Notes to Pages 29–30" over every page of the notes,
+    # handed on by the stripper without its last number.
+    from scriptor.reflow.regions import region_of_running_head
+    assert region_of_running_head("Notes to Pages 29–") == "notes"
+    assert region_of_running_head("Notes to Page") == "notes"
+    assert region_of_running_head("Notes to pp. 12–15") == "notes"
+    assert region_of_running_head("Anmerkungen zu den Seiten 12–15") == "notes"
+    assert region_of_running_head("Notes to the Reader") is None
+
+
 def test_a_running_head_on_half_the_volume_is_not_a_signal():
     """Bresson prints the volume title on every verso and the section title on
     every recto. Read naively, the verso head closes the region on every other
@@ -911,8 +929,8 @@ def test_preface_does_not_swallow_prose_opening_with_the_word():
 
 def test_format_version_is_declared_and_current():
     from scriptor.reflow.regions import FORMAT_VERSION
-    assert FORMAT_VERSION == "0.5.0"
-    assert "format_version: 0.5.0" in render_metadata_block()
+    assert FORMAT_VERSION == "0.6.0"
+    assert "format_version: 0.6.0" in render_metadata_block()
 
 
 # ── multi-level ordinals and compound German titles ──────────────────

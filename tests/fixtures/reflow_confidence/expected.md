@@ -1,5 +1,5 @@
 ---
-format_version: 0.5.0
+format_version: 0.6.0
 chunking_strategy: basic
 ---
 

@@ -502,6 +502,54 @@ def test_a_head_that_never_runs_is_left_standing():
     assert sum(label in page for page in cleaned) == 3
 
 
+def test_numbered_chapter_lines_stay_with_their_number():
+    # Meisel: "1. Kapitel" … "15. Kapitel" over each chapter's first page,
+    # about twenty pages apart; one up in twenty pages counts no pages.
+    pages = []
+    for n in range(1, 6):
+        pages.append(f"{n}. Kapitel\n{_DISTINCT[n]}\n{_DISTINCT[n + 5]}")
+        pages += [""] * 19
+    cleaned, _headers, _ = strip_running_elements(pages)
+    assert [n for n in range(1, 6) if f"{n}. Kapitel" in cleaned[(n - 1) * 20]] == [1, 2, 3, 4, 5]
+
+
+def test_numbered_lines_that_count_the_pages_still_go():
+    # The same wording far apart, but its number is the page's: a running
+    # head the OCR lost on the pages between. The folio is rescued as before.
+    pages = []
+    for n in range(5):
+        pages.append(f"Die Kloester des Westens {100 + 20 * n}\n{_DISTINCT[n]}\n{_DISTINCT[n + 5]}")
+        pages += [""] * 19
+    rescued = RescuedFolios(len(pages))
+    cleaned, _headers, _ = strip_running_elements(pages, rescued)
+    assert not any("Kloester" in page for page in cleaned)
+    assert len(rescued.by_position()) == 5
+
+
+def test_endnotes_at_the_head_of_their_pages_are_no_running_head():
+    # Meisel's endnotes: "28 A. a. O., S. 292." opens a few of their pages
+    # and stands on many more lower down.
+    pages = []
+    for k, n in enumerate((25, 3, 28, 12)):
+        pages.append("\n".join([
+            f"{n} A. a. O., S. {290 + k}.", _DISTINCT[k], _DISTINCT[k + 4],
+            f"{n + 1} A. a. O., S. {291 + k}.", f"{n + 2} A. a. O., S. {293 + k} f.",
+            _DISTINCT[k + 8]]))
+    cleaned, headers, _ = strip_running_elements(pages)
+    assert headers == []
+    assert all(page.startswith(f"{n} A. a. O.") for page, n in zip(cleaned, (25, 3, 28, 12)))
+
+
+def test_a_running_head_that_also_opens_its_section_mid_page_still_goes():
+    # Gli Actus p. XIX: the section's heading stands once in mid-page, its
+    # running head on every page after.
+    pages = [f"{_DISTINCT[0]}\n{_DISTINCT[1]}\n{_DISTINCT[2]}\n{_HEAD}\n{_DISTINCT[3]}"]
+    pages += [f"{20 + i}\n{_HEAD}\n{_DISTINCT[4 + i]}" for i in range(4)]
+    cleaned, headers, _ = strip_running_elements(pages)
+    assert headers
+    assert sum(_HEAD in page for page in cleaned) == 1
+
+
 def test_a_number_closing_a_line_of_prose_is_no_folio():
     # Taubes p. 7: "Einleitung", then "… reichen von 1953".
     cleaned, kept = _strip(_run([_HEAD, "Die Texte reichen von 1953"]))

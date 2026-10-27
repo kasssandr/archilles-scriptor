@@ -29,7 +29,7 @@ from scriptor.languages import NOT_ATTESTED, _NotAttested
 # The version of PREPARED_FORMAT_SPEC this producer writes. Stated in the
 # document itself (§4.1), because a prepared document outlives the release
 # notes that describe it.
-FORMAT_VERSION = "0.5.0"
+FORMAT_VERSION = "0.6.0"
 
 # The marker of §4.4, on a line of its own.
 REGION_MARKER = "[region: {name}]"
@@ -94,6 +94,9 @@ _VOCABULARY: dict[str, dict[str, tuple[str, ...] | _NotAttested]] = {
             r"quellenverzeichnis", r"quellen und literatur",
             r"bibliographie und quellen", r"quellen und bibliographie",
             r"verzeichnis der (?:zitierten |verwendeten )?literatur",
+            # Meisel, *Der Mythus der herrschenden Klasse*, over the list of
+            # Mosca's writings.
+            r"bibliographische (?:[üu]bersicht|hinweise)",
         ),
         "en": (
             r"(?:select(?:ed)?\s+|primary\s+|secondary\s+|general\s+)?bibliography",
@@ -173,6 +176,8 @@ _VOCABULARY: dict[str, dict[str, tuple[str, ...] | _NotAttested]] = {
         # Personen-, Sach-, Orts-, Namen-, Stellen-, Autoren-, Bibelstellen-
         "de": (
             r"(?:\w+[-\s]?)?register",
+            # "Personen- und Sachregister", "Orts- und Namenregister" (Meisel).
+            r"\w+-\s*und\s+\w*register",
             r"(?:namen|orts|personen|sach|stellen)verzeichnis",
             r"index(?: der \w+)?",
         ),
@@ -498,12 +503,17 @@ _TITLED_VOCABULARY: dict[str, dict[str, tuple[str, ...]]] = {
             # or transliteration are lists of another kind and stay unnamed
             # until the vocabulary has a name for them.
             r"notes on (?:the )?(?:text|translation|sources|editions)\b.*",
+            # The running head of an endnotes part, naming the pages its notes
+            # annotate: Van der Toorn, *Scribal Culture*, "Notes to Pages
+            # 29–30". The stripper hands it on with its trailing number gone.
+            r"notes to (?:pages?|pp\.?)(?:\s+[\d\s–—,-]*)?",
             r"(?:bibliographical|biographical|translator['’]?s|editor['’]?s|"
             r"explanatory|textual|critical|additional|supplementary|general)\s+notes",
         ),
         "de": (
             r"fu(?:ß|ss)noten",
             r"anmerkungen zu(?:m| den)? (?:kapitel|text)\b.*",
+            r"anmerkungen zu(?:r| den)? (?:seiten?|s\.)(?:\s+[\d\s–—,-]*)?",
         ),
         "fr": (r"notes\s+(?:compl[ée]?mentaires|additionnelles)",),
     },

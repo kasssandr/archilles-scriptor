@@ -1,6 +1,6 @@
 # The Prepared Document Format
 
-**Version 0.5.0 (draft) · 2026-09-23 · MIT**
+**Version 0.6.0 (draft) · 2026-10-27 · MIT**
 
 This specification defines the *prepared document*: a scholarly text converted
 to plain Markdown in which the scholarly apparatus — footnotes, printed page
@@ -63,6 +63,7 @@ For a deliverable named `book.md`, the full set is:
 | `book.md.decisions.txt` | **Decision sidecar.** The still-open choices, one checkbox line per candidate. | if open choices exist |
 | `book.md.pagination.json`, `.txt` | **Pagination sidecar.** Where every page label came from (§6.3). | if pages carry markers |
 | `book.md.structure.json`, `.txt` | **Structure sidecar.** The volume's division as the producer read it (§6.5). | if headings are marked |
+| `book.md.notes.json` | **Notes sidecar.** The printed number, page and collection behind every `[^N]` (§6.6). | if the document has footnotes |
 | `book.translate.md` | **Translation profile.** Deliverable with `<dnt>` protection applied. | on demand |
 | `book.translate.briefing.txt` | **Briefing sidecar.** Instructions for the translating model. | with the translation profile |
 
@@ -199,6 +200,22 @@ appears only after every sentence it might have belonged to). That the anchor
 is synthetic — “somewhere on this page before this point, exact position
 unknown” — is recorded in the audit sidecar, keyed by printed page and
 printed footnote number.
+
+**Endnotes.** A volume that collects its notes behind the text — at the end
+of the book, numbered through or afresh per chapter — is rendered the same
+way: each note becomes a `[^N]` definition, its anchor stands where its marker
+stands in the body, and the definitions are collected at the document end in
+anchor order. The unit a note belongs to is its *collection* — the run of
+notes the volume counts from 1, usually under a head of its own ("Notes to
+Chapter 3", "Zum 3. Kapitel") — not a page. For a hanging endnote the bound of
+rule 1 is therefore the next confidently placed anchor *of the same
+collection*, on whatever page it stands; only where none follows does rule 2
+apply, on the page of the collection's last placed anchor. The notes section
+itself keeps its headings and its page markers, so that every printed page
+still has its marker; its notes are no longer text there, and the page a note
+is printed on is recorded in the notes sidecar (§6.6). A note no marker in the
+body can be found for — a collection whose markers are all lost — stays where
+it is printed, as text of the notes section: it is not attached to a guess.
 
 ### 4.4 Headings and structural regions
 
@@ -541,17 +558,38 @@ or reworded makes its record stale, and a stale record is flagged, not
 applied. `chapter_level` MAY be recomputed from the headings by a consumer
 whose sidecar is stale; the rule is shared code, not a guess.
 
-### 6.6 Notes sidecar (reserved)
+### 6.6 Notes sidecar (`*.md.notes.json`)
 
-**(Reserved.)** A future producer writes `*.md.notes.json`: one record per
-footnote, carrying the document-wide id `N`, the printed label and occurrence
-of the page its anchor stands on, the number printed beside it, and the
-physical position of that page. It is written from the pass that numbers the
+One record per footnote of the deliverable, in the order of its
+document-wide id `N`. It is written from the pass that numbers the
 definitions, so it cannot disagree with the document. A consumer that needs
 the printed number behind `[^N]` — a reader checking against the volume, a
 link into the apparatus — reads it here; the audit sidecar (§6.1) lists only
-the notes the producer was unsure of. Until it is written, `[^N]` is a cache
-valid for one production of the document.
+the notes the producer was unsure of. `[^N]` itself remains a cache valid for
+one production of the document.
+
+```json
+{"version": 1, "notes": [
+  {"id": 1, "number": 1, "synthetic": false,
+   "anchor": {"label": "9", "occurrence": 1, "position": 13},
+   "collection": "Zur Einführung",
+   "printed_on": {"label": "395", "occurrence": 1, "position": 399}}
+]}
+```
+
+- `id` is the `N` of `[^N]`; `number` the number printed beside the note.
+- `anchor` is the page the anchor stands on: its printed `label` (§4.2), the
+  `occurrence` of that label counted from the start of the document (§4.7),
+  and the physical `position` (§6.3, `pages[].pos`). `label` and
+  `occurrence` are null where the page has no label.
+- `synthetic` is true where the anchor is a hanging reference's (§4.3).
+- An endnote (§4.3) also carries `collection`, the head its collection is set
+  under, verbatim (null where the volume sets none), and `printed_on`, the
+  page its text is printed on, in the same form as `anchor`. A footnote
+  carries neither.
+
+A note is addressed by `anchor` and `number` (§4.7); for an endnote,
+`collection` and `number` name it as the volume's notes section does.
 
 ## 7. The do-not-translate convention (`<dnt>`)
 
@@ -764,6 +802,11 @@ producer's own list of apparatus regions assumed until then. The name and
 what it marks are unchanged, so this redefines nothing: which regions leave a
 search was always the consumer's choice, and a consumer may keep excluding
 appendices.
+
+0.6.0 states how endnotes are rendered (§4.3) — as footnotes, which is what
+any consumer already reads — and defines the notes sidecar (§6.6) that 0.4.0
+reserved. Additive: the sidecar is a separate file, and a consumer that knows
+neither reads the document exactly as before.
 
 Producers SHOULD state the spec version they target, in the document's
 `format_version` field (§4.1) and in tool `--version` output. Until version
