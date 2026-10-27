@@ -10,6 +10,8 @@ strippers as a *rescued* number and states its case to the consensus like every
 other witness (reflow/pagination/witnesses.rescued_observations).
 """
 
+import random
+
 from scriptor.reflow.rescued import RescuedFolios
 from scriptor.reflow.running_elements import (
     strip_running_elements,
@@ -532,12 +534,55 @@ def test_endnotes_at_the_head_of_their_pages_are_no_running_head():
     pages = []
     for k, n in enumerate((25, 3, 28, 12)):
         pages.append("\n".join([
-            f"{n} A. a. O., S. {290 + k}.", _DISTINCT[k], _DISTINCT[k + 4],
-            f"{n + 1} A. a. O., S. {291 + k}.", f"{n + 2} A. a. O., S. {293 + k} f.",
+            # The pages cited leap ahead of the volume's: they count nothing.
+            f"{n} A. a. O., S. {290 + 17 * k}.", _DISTINCT[k], _DISTINCT[k + 4],
+            f"{n + 1} A. a. O., S. {291 + 17 * k}.", f"{n + 2} A. a. O., S. {293 + 17 * k} f.",
             _DISTINCT[k + 8]]))
     cleaned, headers, _ = strip_running_elements(pages)
     assert headers == []
     assert all(page.startswith(f"{n} A. a. O.") for page, n in zip(cleaned, (25, 3, 28, 12)))
+
+
+_WORDS = ("Einhard Alkuin Theodulf Paulinus Angilbert Hrabanus Walahfrid Notker "
+          "Regino Thegan Nithard Hinkmar Lupus Sedulius Dhuoda Agobard Jonas Florus "
+          "schrieb lobte tadelte kannte Reich Kloster Pfalz Kaiser Bischof Abt Synode "
+          "Brief Vers Chronik Psalter Kapitular über gegen nach durch").split()
+# Lines of prose, each its own (the head detection groups similar lines):
+# eight words drawn without a pattern.
+_PROSE = [" ".join(random.Random(seed).sample(_WORDS, 8)) + "." for seed in range(30)]
+
+
+def test_a_head_that_runs_goes_though_sections_elsewhere_bear_its_name():
+    # Militarizing Men: "Заключение" heads every other page of the
+    # conclusion, and each chapter's last section is called so in mid-page.
+    pages = []
+    for n in range(5):
+        pages.append("\n".join([_PROSE[n], _PROSE[n + 5], _PROSE[n + 10],
+                                "Zusammenfassung", _PROSE[n + 15]]))
+        pages += [""] * 9
+    for n in range(5):
+        pages.append(f"Zusammenfassung\n{_PROSE[20 + n]}\n{_PROSE[25 + n]}")
+        pages.append("")
+    cleaned, headers, _ = strip_running_elements(pages)
+    assert headers == ["Zusammenfassung"]
+    # The sections keep their name; the head goes after the page it opens.
+    assert sum("Zusammenfassung" in page for page in cleaned[:50]) == 5
+    assert not any("Zusammenfassung" in page for page in cleaned[52::2])
+
+
+def test_a_head_a_spread_sets_in_mid_page_goes_with_its_folio():
+    # Les apologistes grecs, scanned two pages to the image: the right page's
+    # head "180  DE TATIEN À THÉOPHILE" stands in mid-image, numbered by the
+    # pages it counts. It is the head, not the body printing its wording.
+    pages = []
+    for n in range(6):
+        left = "\n".join([f"Die Apologeten der Kirche {101 + 4 * n}", _PROSE[n],
+                          _PROSE[n + 6], _PROSE[n + 12]])
+        right = f"{102 + 4 * n}  Die Apologeten der Kirche\n{_PROSE[n + 18]}"
+        pages.append(left + "\n" + right if n % 2 else right + "\n" + left)
+    cleaned, headers, _ = strip_running_elements(pages)
+    assert headers
+    assert not any(page.startswith(("Die Apologeten", "1")) for page in cleaned)
 
 
 def test_a_running_head_that_also_opens_its_section_mid_page_still_goes():
