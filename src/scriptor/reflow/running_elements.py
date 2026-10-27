@@ -90,6 +90,86 @@ def _extract_edge_page_number(line: str) -> str | None:
     return None
 
 
+# A number at the edge of a head line is a folio where it counts the pages
+# between two of its lines. Meisel, *Der Mythus der herrschenden Klasse*, opens
+# each chapter "1. Kapitel", "2. Kapitel", … some twenty pages apart; *De
+# eerste minister* each "Hoofdstuk 1", "Hoofdstuk 2", …. Such a wording never
+# runs, and a head that never runs is left standing -- but only where no
+# number stands on it that the consensus would miss, and these lines carry one
+# on every page. One up in twenty pages counts nothing. The period an ordinal
+# carries is allowed for here; the folio rules never read "1." as a number.
+_LEAD_NUMBER = re.compile(r"^(\d{1,4})\.?\s+\S")
+_TRAIL_NUMBER = re.compile(r"\S\s+(\d{1,4})\.?$")
+# How far the number may run from the page count and still be counting it:
+# one scan image per two-page spread doubles it (Les apologistes grecs), a
+# plate or a lost blank page shifts it.
+_FOLIO_RATE = (0.5, 2.5)
+
+
+def _numbers_count_no_pages(members: list[tuple[int, str]]) -> bool:
+    """Whether the numbers a wording carries at its edges are the text's own:
+    one edge numbered on at least two lines, and at no edge does the number
+    count the pages from one numbered line to the next in at least half the
+    steps. ``members`` are (page index, line), in page order."""
+    numbered = False
+    for edge in (_LEAD_NUMBER, _TRAIL_NUMBER):
+        found = [(i, int(m.group(1))) for i, line in members
+                 if (m := edge.search(line.strip()))]
+        if len(found) < 2:
+            continue
+        numbered = True
+        steps = list(zip(found, found[1:]))
+        counting = sum(1 for (i, u), (j, v) in steps
+                       if j > i and _FOLIO_RATE[0] <= (v - u) / (j - i) <= _FOLIO_RATE[1])
+        if counting * 2 >= len(steps):
+            return False
+    return numbered
+
+
+def _below_head(pages_text: list[str]) -> list[tuple[int, str]]:
+    """(page index, normalized line) of every line under a page's head region,
+    the head region counted as ``detect_running_headers`` counts it."""
+    out = []
+    for index, page_text in enumerate(pages_text):
+        lines_checked = 0
+        for line in page_text.strip().split("\n"):
+            if not line.strip():
+                continue
+            if lines_checked < 3:
+                lines_checked += 1
+                continue
+            normalized = _normalize_header_line(line)
+            if normalized and len(normalized) > 5:
+                out.append((index, normalized))
+    return out
+
+
+def _printed_in_body(
+    wording: str,
+    heads_at: set[int],
+    below: list[tuple[int, str]],
+    similarity_threshold: float,
+) -> bool:
+    """Whether the volume prints this wording under the head region of at
+    least as many pages as it heads. A running head stands at the head of its
+    pages, and at most once more where its section opens in mid-page. Meisel's
+    endnotes print "28 A. a. O., S. 292." and "Zum 12. Kapitel" at the top of
+    a few pages because a note happens to begin there -- and dozens of times
+    lower down, where the stripper never looked."""
+    width = len(wording)
+    pages: set[int] = set()
+    for index, normalized in below:
+        # The bound ``real_quick_ratio`` would compute, without building the
+        # matcher: most lines of prose are far longer than a running head.
+        if 2 * min(width, len(normalized)) < similarity_threshold * (width + len(normalized)):
+            continue
+        if index not in pages and _strings_are_similar(normalized, wording, similarity_threshold):
+            pages.add(index)
+            if len(pages) >= len(heads_at):
+                return True
+    return False
+
+
 def detect_running_headers(
     pages_text: list[str],
     min_occurrences: int = 3,
@@ -98,8 +178,8 @@ def detect_running_headers(
     if len(pages_text) < min_occurrences:
         return []
 
-    first_lines: list[str] = []
-    for page_text in pages_text:
+    first_lines: list[tuple[int, str, str]] = []
+    for index, page_text in enumerate(pages_text):
         lines_checked = 0
         for line in page_text.strip().split("\n"):
             if lines_checked >= 3:
@@ -109,22 +189,27 @@ def detect_running_headers(
             lines_checked += 1
             normalized = _normalize_header_line(line)
             if normalized and len(normalized) > 5:
-                first_lines.append(normalized)
+                first_lines.append((index, line, normalized))
 
-    groups: list[list] = []  # [canonical, count]
-    for normalized in first_lines:
+    groups: list[list] = []  # [canonical, count, [(page index, line)]]
+    for index, line, normalized in first_lines:
         matched = False
         for g in groups:
             if _strings_are_similar(normalized, g[0], similarity_threshold):
                 if len(normalized) > len(g[0]):
                     g[0] = normalized
                 g[1] += 1
+                g[2].append((index, line))
                 matched = True
                 break
         if not matched:
-            groups.append([normalized, 1])
+            groups.append([normalized, 1, [(index, line)]])
 
-    return [g[0] for g in groups if g[1] >= min_occurrences]
+    frequent = [g for g in groups if g[1] >= min_occurrences]
+    below = _below_head(pages_text) if frequent else []
+    return [g[0] for g in frequent
+            if not _printed_in_body(g[0], {i for i, _line in g[2]}, below,
+                                    similarity_threshold)]
 
 
 def header_of_page(
@@ -497,6 +582,17 @@ def remove_running_headers(
     runless = {header for header, idx in at_pages.items()
                if all(j - i > _OPENING_LOOKBACK for i, j in zip(idx, idx[1:]))}
     canon = _canonical(running_headers, similarity_threshold)
+    # Of those, the ones whose numbers are their own (``_numbers_count_no_pages``):
+    # "1. Kapitel" stays with its number, which is no folio.
+    own_numbers = {
+        header for header in runless
+        if _numbers_count_no_pages([
+            (i, line) for i in at_pages[header]
+            for _k, line in _head_lines(pages_text[i])
+            if any(canon.get(h) == header
+                   and _strings_are_similar(_normalize_header_line(line), h,
+                                            similarity_threshold)
+                   for h in running_headers)])}
     cleaned_pages = []
     for index, page_text in enumerate(pages_text):
         a_list = index in lists
@@ -574,14 +670,16 @@ def remove_running_headers(
                 continue
             if (canon.get(matched) in runless and not a_list and not placed_here
                     and _could_head(line)
-                    and not _extract_edge_page_number(line)
-                    and not _MANGLED_EDGE.search(line.strip())
+                    and (canon.get(matched) in own_numbers
+                         or (not _extract_edge_page_number(line)
+                             and not _MANGLED_EDGE.search(line.strip())))
                     and not _foliated(_head_lines(page_text), set())):
                 # Not furniture (see ``runless``), and no number on it or near
                 # it that the consensus would miss: left standing above a bare
                 # folio, the line would push it off the first line, where
                 # parse_page reads it (Chaldaean Oracles p. 222, printed ->
-                # computed). The line stays as the page printed it.
+                # computed). A number the wording carries as its own is not one
+                # the consensus misses. The line stays as the page printed it.
                 cleaned_lines.append(line)
                 continue
             # The title goes, and so does the number's place in the text;
