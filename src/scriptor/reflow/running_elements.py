@@ -106,11 +106,12 @@ _TRAIL_NUMBER = re.compile(r"\S\s+(\d{1,4})\.?$")
 _FOLIO_RATE = (0.5, 2.5)
 
 
-def _numbers_count_no_pages(members: list[tuple[int, str]]) -> bool:
-    """Whether the numbers a wording carries at its edges are the text's own:
-    one edge numbered on at least two lines, and at no edge does the number
-    count the pages from one numbered line to the next in at least half the
-    steps. ``members`` are (page index, line), in page order."""
+def _numbers_count_pages(members: list[tuple[int, str]]) -> bool | None:
+    """Whether the numbers a wording carries at its edges count its pages:
+    None where no edge is numbered on at least two lines, True where at one
+    edge the number counts the pages from one numbered line to the next in at
+    least half the steps, False otherwise. ``members`` are (page index,
+    line), in page order."""
     numbered = False
     for edge in (_LEAD_NUMBER, _TRAIL_NUMBER):
         found = [(i, int(m.group(1))) for i, line in members
@@ -122,13 +123,19 @@ def _numbers_count_no_pages(members: list[tuple[int, str]]) -> bool:
         counting = sum(1 for (i, u), (j, v) in steps
                        if j > i and _FOLIO_RATE[0] <= (v - u) / (j - i) <= _FOLIO_RATE[1])
         if counting * 2 >= len(steps):
-            return False
-    return numbered
+            return True
+    return False if numbered else None
 
 
-def _below_head(pages_text: list[str]) -> list[tuple[int, str]]:
-    """(page index, normalized line) of every line under a page's head region,
-    the head region counted as ``detect_running_headers`` counts it."""
+def _numbers_count_no_pages(members: list[tuple[int, str]]) -> bool:
+    """Whether the numbers a wording carries at its edges are the text's own:
+    numbered, and counting no pages (``_numbers_count_pages``)."""
+    return _numbers_count_pages(members) is False
+
+
+def _below_head(pages_text: list[str]) -> list[tuple[int, str, str]]:
+    """(page index, line, normalized line) of every line under a page's head
+    region, the head region counted as ``detect_running_headers`` counts it."""
     out = []
     for index, page_text in enumerate(pages_text):
         lines_checked = 0
@@ -140,14 +147,22 @@ def _below_head(pages_text: list[str]) -> list[tuple[int, str]]:
                 continue
             normalized = _normalize_header_line(line)
             if normalized and len(normalized) > 5:
-                out.append((index, normalized))
+                out.append((index, line, normalized))
     return out
+
+
+def _runs(pages: set[int]) -> bool:
+    """Whether the pages follow one another, every page or every other one:
+    the run a running head makes over its section (recto and verso heads
+    alternate)."""
+    order = sorted(pages)
+    return len(order) >= 2 and all(j - i <= 2 for i, j in zip(order, order[1:]))
 
 
 def _printed_in_body(
     wording: str,
     heads_at: set[int],
-    below: list[tuple[int, str]],
+    below: list[tuple[int, str, str]],
     similarity_threshold: float,
 ) -> bool:
     """Whether the volume prints this wording under the head region of at
@@ -155,19 +170,31 @@ def _printed_in_body(
     pages, and at most once more where its section opens in mid-page. Meisel's
     endnotes print "28 A. a. O., S. 292." and "Zum 12. Kapitel" at the top of
     a few pages because a note happens to begin there -- and dozens of times
-    lower down, where the stripper never looked."""
+    lower down, where the stripper never looked.
+
+    Two things still make it a running head. Its heads run over their pages,
+    and the wording stands lower down only outside that run: *Militarizing
+    Men* heads its conclusion "Заключение" on every other page and also names
+    a section so in each chapter. (Endnotes that open page after page print
+    their wording lower down on those pages too.) Or the lines lower down
+    carry a number counting their pages: they are the head itself, which the
+    scan of a two-page spread (*Les apologistes grecs*) sets in mid-page,
+    "180  DE TATIEN À THÉOPHILE" -- where Meisel's "5 A. a. O., S. 5."
+    counts nothing."""
     width = len(wording)
-    pages: set[int] = set()
-    for index, normalized in below:
+    found: dict[int, str] = {}
+    for index, line, normalized in below:
         # The bound ``real_quick_ratio`` would compute, without building the
         # matcher: most lines of prose are far longer than a running head.
         if 2 * min(width, len(normalized)) < similarity_threshold * (width + len(normalized)):
             continue
-        if index not in pages and _strings_are_similar(normalized, wording, similarity_threshold):
-            pages.add(index)
-            if len(pages) >= len(heads_at):
-                return True
-    return False
+        if index not in found and _strings_are_similar(normalized, wording, similarity_threshold):
+            found[index] = line
+    if len(found) < len(heads_at):
+        return False
+    if _runs(heads_at) and not any(min(heads_at) <= i <= max(heads_at) for i in found):
+        return False
+    return not _numbers_count_pages(sorted(found.items()))
 
 
 def detect_running_headers(
