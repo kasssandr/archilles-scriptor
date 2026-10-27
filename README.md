@@ -27,7 +27,9 @@ It rebuilds the paragraphs that the PDF's hard line wraps broke apart, joins
 hyphenated words, drops running headers, and keeps page boundaries as inline
 `[p. NN]` markers. The marker carries the page label as *printed*, so a
 roman-paginated preface stays citable as `[p. xiv]` rather than being renumbered
-or dropped. Page-local footnotes become document-wide Pandoc footnotes.
+or dropped. Page-local footnotes become document-wide Pandoc footnotes, and
+so do endnotes: a notes section at the end of the book, counted through or
+afresh per chapter, is read by its count and each note hung on its marker.
 
 Where it recognises one, it also names the region a passage belongs to —
 `[region: bibliography]`, `[region: index]` — on a line of its own, governing
@@ -81,7 +83,7 @@ a 400-page volume is not.
 Working: three text ingestion paths, the reflow, Pandoc footnotes, the
 confidence layer, within-document glyph learning that carries across a
 corrected corpus, the decision loop, a translation profile, and a DOCX footnote
-binder. 1,394 tests, about 16,500 lines of Python. It has been run against real
+binder. 1,450 tests, about 16,500 lines of Python. It has been run against real
 volumes (Baynes, *Byzantium*; Snell, *Die Entdeckung des Geistes*), which is
 where most of the edge cases came from.
 
@@ -115,6 +117,7 @@ scriptor all book.pdf --out book.md
 | `book.md.decisions.txt` | The still-open choices, one line per candidate, each with an empty box. This is the file you edit. |
 | `book.md.pagination.json`, `.txt` | Where every page label came from: printed on the page, confirmed by the contents, or merely counted. |
 | `book.md.structure.json`, `.txt` | The volume's division as scriptor read it: every heading with its true depth, the page it stands on and the witness that placed it, plus the contents entries it found nowhere. |
+| `book.md.notes.json` | The number printed behind every `[^N]`, the page its anchor stands on, and for an endnote the head it is collected under and the page it is printed on. |
 
 ## Input formats
 
@@ -387,7 +390,7 @@ it, the license invites forks.
 
 The interchange contract between the tools — the *prepared document* — is
 specified in [docs/PREPARED_FORMAT_SPEC.md](docs/PREPARED_FORMAT_SPEC.md),
-currently version 0.5.0.
+currently version 0.6.0.
 
 - [archilles](https://github.com/kasssandr/archilles) — Informed RAG over a
   personal research library: retrieval grounded in page-level citations rather
