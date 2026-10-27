@@ -132,6 +132,48 @@ def test_a_reading_must_leave_more_behind_than_the_ligature():
     assert learn_broken_glyphs(pages) == {}
 
 
+def test_the_pipelines_own_marks_are_not_broken_glyphs():
+    """McNamara: a folded table reaches this module with its row breaks in it,
+    and the breaks come from the Private Use Area like a broken font's glyphs.
+    Dropped as unreadable, all seven tables of the volume came out as one line
+    each ("| Manic | ↑ || --- | --- |")."""
+    from scriptor.reflow.headings import MARK, PLACED
+    from scriptor.reflow.tables import BREAK
+
+    row = "| a | b |" + BREAK + "| --- | --- |" + BREAK + "| c | d |"
+    pages = [[row], [MARK + "3 Methodology"], [PLACED + "1Introduction"]]
+    out, report = resolve_characters(pages)
+    assert out == pages
+    assert report.dropped == {}
+
+
+# --- ligature forms -----------------------------------------------------------
+
+def test_a_ligature_form_is_written_out_as_its_letters():
+    # McNamara maps its ligatures correctly -- to U+FB01 and U+FB02, which no
+    # one searching for "scientific" or "reflect" will ever type.
+    pages = [["the Scientiﬁc Study", "to reﬂect on ﬀ, ﬃ, ﬄ"]]
+    out, report = resolve_characters(pages)
+    assert out == [["the Scientific Study", "to reflect on ff, ffi, ffl"]]
+    assert report.ligatures == 5
+
+
+def test_hebrew_presentation_forms_are_not_ligatures():
+    # The block goes on past the latin ligatures into the Hebrew presentation
+    # forms, which are letters of their script (Kreisel).
+    pages = [["שׁ יִ ﭏ"]]
+    out, report = resolve_characters(pages)
+    assert out == pages
+    assert report.ligatures == 0
+
+
+def test_a_ligature_form_vouches_for_a_broken_one():
+    # The document writes "ﬁrst" and "ﬁeld" with the ligature and breaks the
+    # same ligature elsewhere: its spelling still says what the break was.
+    pages = [["the ﬁrst ﬁeld"], ["in the \x7frst place, across the \x7feld"]]
+    assert learn_broken_glyphs(pages) == {"\x7f": "fi"}
+
+
 def test_a_document_without_invisibles_is_returned_unchanged():
     pages = [["Ganz gewoehnlicher Text."], ["Zweite Seite."]]
     out, report = resolve_characters(pages)
