@@ -68,3 +68,20 @@ def test_unknown_schema_version_is_refused():
 
 def test_schema_version_is_one():
     assert SCHEMA_VERSION == 1
+
+
+def test_spaced_superscript_digits_read_as_one_note_number():
+    # Goodman: an OCR layer sets "11" as two tiny digit spans with a space.
+    line = Line(spans=[
+        Span(text="1", box=Box(46, 494, 48, 500), size=2.9),
+        Span(text=" ", box=Box(48, 494, 49, 500), size=2.9),
+        Span(text="1", box=Box(49, 494, 51, 500), size=2.9),
+        Span(text=" Smallwood, Jews", box=Box(51, 498, 120, 507), size=8.4),
+    ])
+    assert line.text == "11 Smallwood, Jews"
+
+
+def test_spaced_digits_in_body_size_stay_as_they_are():
+    line = Line(spans=[Span(text="1 1", box=Box(0, 0, 10, 9), size=8.4),
+                       Span(text=" if", box=Box(10, 0, 20, 9), size=8.4)])
+    assert line.text == "1 1 if"
