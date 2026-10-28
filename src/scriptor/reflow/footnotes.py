@@ -157,8 +157,12 @@ def follows(num: int, prev: int) -> bool:
     page after lost its apparatus: A comemoração kept 24 of 117 note blocks,
     Bauer 248 of 1320 notes (A/B of 19.9.).
     """
-    return (prev < num <= prev + MAX_NOTE_STEP or num <= RESTART_MAX
-            or misread(num, prev))
+    return counts_on(num, prev) or num <= RESTART_MAX
+
+
+def counts_on(num: int, prev: int) -> bool:
+    """Is ``num`` the count carried on from ``prev``, not a fresh start?"""
+    return prev < num <= prev + MAX_NOTE_STEP or misread(num, prev)
 
 
 def definition_start(line: str) -> re.Match | None:
@@ -166,6 +170,13 @@ def definition_start(line: str) -> re.Match | None:
     return (FOOTNOTE_RE.match(line)
             or FOOTNOTE_DOT_RE.match(line)
             or FOOTNOTE_SPACE_RE.match(line))
+
+
+def _shape_kind(line: str) -> int:
+    """Which print convention opens ``line``: "NN)", "NN." or a bare "NN "."""
+    if FOOTNOTE_RE.match(line):
+        return 0
+    return 1 if FOOTNOTE_DOT_RE.match(line) else 2
 
 
 def note_starts(lines: list[str], last: int | None = None,
@@ -183,10 +194,12 @@ def note_starts(lines: list[str], last: int | None = None,
     two notes of one run -- the second would overwrite the first.
     """
     cands: list[tuple[int, int]] = []
+    kinds: list[int] = []
     for i, line in enumerate(lines):
         m = shape(line)
         if m:
             cands.append((i, int(m.group(1))))
+            kinds.append(_shape_kind(line) if shape is definition_start else 0)
     if not cands:
         return []
     # best[j]: (length of the best run ending at j, it continues the volume,
@@ -198,6 +211,11 @@ def note_starts(lines: list[str], last: int | None = None,
             best[j] = (1, last is not None and last < num <= last + MAX_NOTE_STEP, -j)
         for k in range(j):
             if best[k] is None or not follows(num, cands[k][1]):
+                continue
+            # A block keeps one print convention: a count that starts again
+            # in another one is the line of a note that opens with a number
+            # ("p. 106 n." / "3) in finding", Goodman p. 5).
+            if kinds[j] != kinds[k] and not counts_on(num, cands[k][1]):
                 continue
             used, p = set(), k
             while p is not None:
