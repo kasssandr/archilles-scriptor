@@ -22,6 +22,7 @@ knowledge.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -77,6 +78,12 @@ class Link:
     target: int
 
 
+# A superscript is set well under the line's largest type; a run of such spans
+# that holds nothing but digits and spaces is a note number.
+SUPERSCRIPT_MAX_RATIO = 0.6
+SPACED_DIGITS_RE = re.compile(r"\d(?: ?\d)+ ?")
+
+
 @dataclass
 class Line:
     spans: list[Span]
@@ -87,7 +94,35 @@ class Line:
 
     @property
     def text(self) -> str:
-        return "".join(s.text for s in self.spans)
+        """The spans' text, a superscript number read as one number.
+
+        Some OCR layers set a two-digit note number as separate digits with a
+        space between ("1 1", Goodman): taken as read it opens note 1 and
+        starts the text with "1". A run of tiny spans that is nothing but
+        digits and spaces is closed up; the space after it stays.
+        """
+        sizes = [s.size for s in self.spans if s.size is not None]
+        if len(sizes) < 2:
+            return "".join(s.text for s in self.spans)
+        tiny = max(sizes) * SUPERSCRIPT_MAX_RATIO
+        out: list[str] = []
+        run: list[str] = []
+
+        def flush() -> None:
+            joined = "".join(run)
+            if SPACED_DIGITS_RE.fullmatch(joined):
+                joined = joined.replace(" ", "") + (" " if joined.endswith(" ") else "")
+            out.append(joined)
+            run.clear()
+
+        for span in self.spans:
+            if span.size is not None and span.size <= tiny:
+                run.append(span.text)
+            else:
+                flush()
+                out.append(span.text)
+        flush()
+        return "".join(out)
 
     @property
     def size(self) -> float | None:
