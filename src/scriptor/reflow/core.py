@@ -782,6 +782,7 @@ from scriptor.reflow.headings import MARK as HEADING_MARK  # noqa: E402
 from scriptor.reflow.headings import PLACED as PLACED_MARK  # noqa: E402
 from scriptor.reflow.headings import read_mark  # noqa: E402
 from scriptor.reflow.tables import BREAK as TABLE_BREAK  # noqa: E402
+from scriptor.page import RAISED  # noqa: E402
 from scriptor.structure import MAX_MARKDOWN_DEPTH  # noqa: E402
 
 
@@ -1573,7 +1574,7 @@ def render_book(
     # they belong to, and the placement's carries its depth digit with it); a
     # folded table's row breaks become the newlines they stand for, and the
     # table needs a blank line around it to be one in Markdown.
-    result = result.replace(HEADING_MARK, "")
+    result = result.replace(HEADING_MARK, "").replace(RAISED, "")
     result = re.sub(rf"{PLACED_MARK}\d", "", result)
     depths = [(d, re.sub(rf"{PLACED_MARK}\d", "", t.replace(HEADING_MARK, "")))
               for d, t in depths]
