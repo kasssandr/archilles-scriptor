@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pymupdf
 
-from scriptor.page import Box, Glyph, Line, Link, SourcePage, Span, dumps
+from scriptor.page import RAISED, Box, Glyph, Line, Link, SourcePage, Span, dumps
 
 _BOLD = 16      # span["flags"] bit 4
 _ITALIC = 2     # span["flags"] bit 1
@@ -52,10 +52,38 @@ def _span(raw: dict) -> Span:
     )
 
 
-def _glyphs(raw_line: dict) -> list[Glyph]:
+# Text in white ink, set on the bare page, is in the file and not on the page.
+# Word leaves it there: Fried's Donation of Constantine carries its footnote
+# separator as a white "h" above every apparatus (118 times), and its contents
+# page sets a white "1" before each printed page number, so the text layer reads
+# "135" where the page shows 35. The Russian volumes of the corpus hide truncated
+# chapter titles so; Josephus and Jesus a 1-pt producer stamp. Rendered, none of
+# them leaves a dark pixel (measured 2026-11-04 over 25 volumes). White ink over
+# an image or a filled shape is printed and stays: a cover title set light on
+# dark is text the page shows.
+_WHITE = 0xFFFFFF
+
+
+def _ground(page: pymupdf.Page) -> list[pymupdf.Rect]:
+    """What white ink could be printed on: images and shapes filled in a colour."""
+    under = [pymupdf.Rect(info["bbox"]) for info in page.get_image_info()]
+    under += [d["rect"] for d in page.get_drawings()
+              if d.get("fill") is not None and tuple(d["fill"]) != (1.0, 1.0, 1.0)]
+    return under
+
+
+def _invisible(raw: dict, ground: list[pymupdf.Rect]) -> bool:
+    if raw.get("color") != _WHITE:
+        return False
+    x0, y0, x1, y1 = raw["bbox"]
+    centre = pymupdf.Point((x0 + x1) / 2, (y0 + y1) / 2)
+    return not any(centre in rect for rect in ground)
+
+
+def _glyphs(raw_spans: list[dict]) -> list[Glyph]:
     return [
         Glyph(char=c["c"], box=_box(c["bbox"]))
-        for span in raw_line["spans"]
+        for span in raw_spans
         for c in span.get("chars", ())
     ]
 
@@ -89,17 +117,56 @@ def _links(page: pymupdf.Page) -> list[Link]:
     return out
 
 
-def read_page(page: pymupdf.Page, index: int, *, glyphs: bool = False) -> SourcePage:
-    """One page of the model. ``glyphs`` costs roughly twenty times the size."""
+def read_page(page: pymupdf.Page, index: int, *, glyphs: bool = False,
+              unseen: list[str] | None = None) -> SourcePage:
+    """One page of the model. ``glyphs`` costs roughly twenty times the size.
+
+    Text the page does not show (white ink on the bare page) is not read; what
+    it said is appended to ``unseen``, so the caller can report it.
+    """
     raw = page.get_text("rawdict" if glyphs else "dict")
+    white = any(s.get("color") == _WHITE
+                for block in raw["blocks"] if block.get("type") == 0
+                for raw_line in block["lines"] for s in raw_line["spans"])
+    ground = _ground(page) if white else []
     lines: list[Line] = []
     for block in raw["blocks"]:
         if block.get("type") != 0:      # 0 = text, 1 = image
             continue
         for raw_line in block["lines"]:
-            spans = [_span(s) for s in raw_line["spans"] if _span_text(s)]
+            kept = []
+            hidden = False
+            gap = False
+            for s in raw_line["spans"]:
+                if not _span_text(s):
+                    continue
+                if white and _invisible(s, ground):
+                    hidden = True
+                    gap = bool(kept)
+                    if unseen is not None and _span_text(s).strip():
+                        unseen.append(_span_text(s).strip())
+                    continue
+                if gap and not (_span_text(kept[-1])[-1:].isspace()
+                                or _span_text(s)[:1].isspace()):
+                    # The unseen text held a place on the page, and the page
+                    # shows it as space: Fried's contents read "Introduction
+                    # ......1" once the white "11" between leader and page
+                    # number was gone, and no page number was found.
+                    s = {**s, "text": " " + _span_text(s)}
+                gap = False
+                kept.append(s)
+            spans = [_span(s) for s in kept]
             if not spans:
                 continue
+            box = _box(raw_line["bbox"])
+            if hidden:
+                # What is left of the line is what the page shows: the run of
+                # blanks the separator stood behind is no line, and the box
+                # shrinks to the ink that remains.
+                if not "".join(sp.text for sp in spans).strip():
+                    continue
+                box = Box(min(sp.box.x0 for sp in spans), min(sp.box.y0 for sp in spans),
+                          max(sp.box.x1 for sp in spans), max(sp.box.y1 for sp in spans))
             # The baseline of the first span. Within a line all spans share it,
             # and it is what reflow/textlines.py clusters on -- the box top moves
             # with the ascenders of the words that happen to stand in the line.
@@ -107,9 +174,9 @@ def read_page(page: pymupdf.Page, index: int, *, glyphs: bool = False) -> Source
             lines.append(
                 Line(
                     spans=spans,
-                    box=_box(raw_line["bbox"]),
+                    box=box,
                     baseline=baseline,
-                    glyphs=_glyphs(raw_line) if glyphs else None,
+                    glyphs=_glyphs(kept) if glyphs else None,
                 )
             )
     # The catalogue's printed label for this page (PDF PageLabels). An empty
@@ -139,6 +206,7 @@ def extract(
 
     written: list[Path] = []
     blank = 0
+    unseen: list[str] = []
     with pymupdf.open(pdf_path) as doc:
         # The catalogue's outline: chapter titles with their physical start
         # page. A measured fact, written as a sidecar; whether to believe it
@@ -154,7 +222,7 @@ def extract(
             out_dir,
         )
         for index, page in enumerate(doc, start=1):
-            source_page = read_page(page, index, glyphs=glyphs)
+            source_page = read_page(page, index, glyphs=glyphs, unseen=unseen)
             path = out_dir / f"{index:08d}.json"
             path.write_text(dumps(source_page), encoding="utf-8")
             written.append(path)
@@ -167,9 +235,16 @@ def extract(
                 txt_dir = out_dir / "txt"
                 txt_dir.mkdir(exist_ok=True)
                 (txt_dir / f"{index:08d}.txt").write_text(
-                    source_page.text + "\n", encoding="utf-8"
+                    source_page.text.replace(RAISED, "") + "\n", encoding="utf-8"
                 )
 
+    if unseen:
+        sample = ", ".join(repr(t) for t in dict.fromkeys(unseen))
+        print(
+            f"Text in white ink on the bare page, not read: {len(unseen)} spans "
+            f"({sample[:120]})",
+            file=sys.stderr,
+        )
     # A page without a text layer is not an empty page -- it is a page this backend
     # cannot read. Say so, rather than handing the reflow stage a file that looks
     # like a plate or a blank leaf. Sigilla Veri: 606 of 606.
