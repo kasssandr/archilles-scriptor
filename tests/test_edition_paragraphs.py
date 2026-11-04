@@ -52,6 +52,18 @@ def test_a_numbered_paragraph_that_runs_on_is_no_heading():
                                "ordinibus eidem sacrosanctae")
 
 
+def test_a_subsection_title_wrapped_onto_two_lines_stays_a_heading():
+    # Libros de no poco sobresalto: several levels of numbering are no
+    # paragraph's, whatever the line below.
+    _p, _f, _o, levels = reconstruct_body([_body_page([
+        "3.2.2. Tragedias de amor: inicio in extrema res y final in medias res de",
+        "la comedia palaciega.",
+        "",
+        "El primer caso es el de la obra temprana.",
+    ])], threshold=40)
+    assert levels[0] == 3
+
+
 def test_a_numbered_heading_is_still_a_heading():
     _p, _f, _o, levels = reconstruct_body([_body_page([
         "3.4. Probleme um Welf VI.",

@@ -823,7 +823,13 @@ def _runs_on(line: str, below: str) -> bool:
     30 paragraphs set as chapters). A heading ends with its line, and what
     follows opens a sentence of its own. Only the text's own reading is
     overruled here; a line the typesetter set apart, or the placement judged,
-    keeps its verdict. A sentence that runs on into a name ("… a beatissimo
+    keeps its verdict, and so does a subsection ("3.2.1. Tragedia de cizaña
+    en Desengaño de celos y …" / "…" wraps its title onto a second line,
+    Libros de no poco sobresalto) -- a numbering of several levels is no
+    paragraph's. What is lost is the run-in title that opens a paragraph
+    ("2. The ritual oracles.—The Chaldean theurgists …", Chaldaean Oracles):
+    read as a heading it was cut at the line's end, mid-sentence, and now it
+    stays the paragraph it opens. A sentence that runs on into a name ("… a beatissimo
     patre nostro" / "Silvestrio summo pontifice") is not seen: text cannot
     tell that capital from a sentence's first.
     """
@@ -1016,7 +1022,7 @@ def reconstruct_body(
             # noted for the following paragraph.
             if not cur_chunks and not pending_hyphen:
                 lvl = _level_of(stripped, marked, placed)
-                if (lvl > 0 and placed is None and not marked and i + 1 < n
+                if (lvl == 1 and placed is None and not marked and i + 1 < n
                         and _runs_on(stripped, read_mark(p.body_lines[i + 1])[0])):
                     lvl = 0
                 if lvl > 0:
