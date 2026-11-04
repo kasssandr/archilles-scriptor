@@ -11,6 +11,7 @@ move, not a change.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 
 # A note number has up to four digits: a volume that numbers its notes through
@@ -270,11 +271,75 @@ def dominant_size(
     return max(weights.items(), key=lambda kv: (kv[1], kv[0]))[0]
 
 
+# A note continued onto a line that opens with a number: "10 (1889), pp. 302-25"
+# under "… In: MIÖG", "12. Jahrhunderts (MGH Schriften 47)" under "… Ein
+# Gelehrter des". Read as a note, it took the number ("note 10" after note 7,
+# and note 8 below it went into note 10's text) -- six times in Fried's
+# Donation of Constantine, where the count alone cannot tell, because 10 may
+# follow 7 as well as 8 may. The page tells: the notes there hang their number
+# in a column of its own, 17pt left of the text, and a continuation line starts
+# where the text does. This mark sets such a line apart for the readers of the
+# block that see nothing but text; it is taken off with the line's number
+# kept. From the Private Use Area, like the reflow's other marks.
+CONTINUES = ""
+# How far the notes' own edge has to stand from the continuation lines' -- an em
+# of the block's type, which a note number set flush with its text (right-
+# aligned: "9" half a digit in from "10") never reaches -- and how near a line
+# has to stand to the continuation edge to be on it.
+HANG_MIN_EM = 1.0
+HANG_ON_EM = 0.25
+
+
+def hung_continuations(lines: list[str], indents: list[float | None],
+                       size: float | None, last: int | None = None) -> set[int]:
+    """Lines of a note block shaped like a note's start that continue a note.
+
+    The continuation lines -- those that open no note -- share a left edge.
+    Where the block's note starts stand an em or more off it, a line shaped
+    like a start that stands on it is a continuation. Only where those off
+    the edge are at least as many as those on it: in a block set flush, every
+    start stands on the continuation edge, and nothing is said.
+    """
+    if size is None:
+        return set()
+    starts = {i for i, ln in enumerate(lines) if definition_start(ln)}
+    # Measured below the first start only: what stands above it may be a
+    # quotation the small run took along, set in from the text (Libros de no
+    # poco sobresalto p. 70, six lines at 73pt over a note continued at 59pt),
+    # and it pulled the edge onto the real note 22.
+    first = min(starts, default=len(lines))
+    rest = [round(x) for i, (ln, x) in enumerate(zip(lines, indents))
+            if i > first and i not in starts and ln.strip() and x is not None]
+    if not starts or not rest:
+        return set()
+    edge = Counter(rest).most_common(1)[0][0]
+    on = {i for i in starts
+          if indents[i] is not None and abs(indents[i] - edge) <= size * HANG_ON_EM}
+    off = [i for i in starts
+           if indents[i] is not None and abs(indents[i] - edge) >= size * HANG_MIN_EM]
+    if not on or len(off) < len(on):
+        return set()
+    # The count outranks the edge where it vouches outright: the number after
+    # the start before it -- or after the volume's last note, for the block's
+    # first -- opens its note wherever the scan put it (L'Empire chrétien
+    # p. 229: "6. Elu par le Sénat …" / "7. Sur la reconnaissance …", set on
+    # the continuation edge, its marker in the text).
+    nums = {i: int(definition_start(lines[i]).group(1)) for i in starts}
+    order = sorted(starts)
+    vouched = set()
+    for k, i in enumerate(order):
+        before = nums[order[k - 1]] if k else last
+        if before is not None and nums[i] == before + 1:
+            vouched.add(i)
+    return on - vouched
+
+
 def split_small_type_block(
     lines: list[str],
     sizes: list[float | None],
     body_size: float | None = None,
     last_note: int | None = None,
+    indents: list[float | None] | None = None,
 ) -> SmallTypeSplit | None:
     """Cut the trailing small-type footnote block off a page, or return None.
 
@@ -290,6 +355,10 @@ def split_small_type_block(
     inside that run. A small block without a definition (a caption, a small-set
     quotation) is left alone. A bare page label at the very bottom is peeled
     first and stays with the body, so label detection still sees it.
+
+    ``indents`` (left edges, parallel to ``lines``) lets the block say which of
+    its lines that open with a number continue a note (``hung_continuations``);
+    they come back marked ``CONTINUES``.
     """
     from scriptor.reflow.pagelabel import detect_page_label
 
@@ -373,8 +442,34 @@ def split_small_type_block(
             start += 1
 
     notes = lines[start:end]
-    if not definition_numbers(notes, last_note):
+    if indents is not None and len(indents) == len(lines):
+        block_sizes = sorted(s for s in sizes[start:end] if s is not None)
+        hung = hung_continuations(notes, indents[start:end],
+                                  block_sizes[len(block_sizes) // 2] if block_sizes else None,
+                                  last_note)
+        notes = [CONTINUES + ln if k in hung else ln for k, ln in enumerate(notes)]
+    opened = definition_numbers(notes, last_note)
+    if not opened:
         return None
+
+    # The apparatus is the foot of a page of text: above it stands running
+    # text, or at least the marker of one of its notes (a title's note, on a
+    # page that holds nothing else). A page set small under its heading alone
+    # is a text set small -- Fried prints his appendix of sources in 9.5 pt
+    # against a 10.5 pt body, and the first page of each edition, under its
+    # title, went into the notes whole, its numbered paragraphs as notes 1-3.
+    def running(i: int) -> bool:
+        s = sizes[i]
+        large = (s is not None and s - body_size >= SMALL_TYPE_MIN_DELTA
+                 and body_size <= s * SMALL_TYPE_MAX_RATIO)
+        return (not small(i) and not large
+                and len(lines[i].strip()) > FURNITURE_MAX_CHARS)
+
+    if not any(running(i) for i in range(start)):
+        marker = re.compile(
+            r"(?<=[^\s\d])(?:%s)(?!\d)" % "|".join(str(n) for n in opened))
+        if not any(marker.search(ln.translate(SUPERSCRIPT_DIGITS)) for ln in lines[:start]):
+            return None
     return SmallTypeSplit(
         body=lines[:start] + lines[end:bottom] + tail, notes=notes, split_at=start
     )

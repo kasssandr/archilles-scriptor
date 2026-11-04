@@ -19,6 +19,7 @@ from pathlib import Path
 
 from scriptor._text import plural
 from scriptor.reflow.footnotes import (
+    CONTINUES,
     FOOTNOTE_BARE_RE,
     FOOTNOTE_RE,
     PLACED_MARKER_RE,
@@ -309,6 +310,9 @@ def _assemble_footnotes(
     starts = dict(note_starts(fn_lines, last, matcher))
 
     for i, ln in enumerate(fn_lines):
+        # A line the block's geometry said continues a note (CONTINUES) was
+        # kept from opening one; it reads on with its number.
+        ln = ln.replace(CONTINUES, "")
         if i in starts:
             entries.append((starts[i], [matcher(ln).group(2)]))
         elif not entries:
@@ -809,6 +813,31 @@ def heading_level(line: str, *, marked: bool = False) -> int:
     return (m.group(1) or m.group(2)).count(".") + 1
 
 
+def _runs_on(line: str, below: str) -> bool:
+    """Does the sentence ``line`` opens run on into the line below?
+
+    Then the number in front of it numbers a paragraph, not a heading. An
+    edition numbers its paragraphs so: "4. Nam sapiens retro semper" / "deus
+    edidit ex se, …", "15. Viris enim reverentissimis, … eidem sacro-" /
+    "sanctae Romanae ecclesiae …" (Fried, Donation of Constantine, appendix B:
+    30 paragraphs set as chapters). A heading ends with its line, and what
+    follows opens a sentence of its own. Only the text's own reading is
+    overruled here; a line the typesetter set apart, or the placement judged,
+    keeps its verdict, and so does a subsection ("3.2.1. Tragedia de cizaña
+    en Desengaño de celos y …" / "…" wraps its title onto a second line,
+    Libros de no poco sobresalto) -- a numbering of several levels is no
+    paragraph's. What is lost is the run-in title that opens a paragraph
+    ("2. The ritual oracles.—The Chaldean theurgists …", Chaldaean Oracles):
+    read as a heading it was cut at the line's end, mid-sentence, and now it
+    stays the paragraph it opens. A sentence that runs on into a name ("… a beatissimo
+    patre nostro" / "Silvestrio summo pontifice") is not seen: text cannot
+    tell that capital from a sentence's first.
+    """
+    below = below.lstrip()
+    return bool(re.search(r"[^\W\d_]-$", line.rstrip())
+                or (below[:1].isalpha() and below[:1].islower()))
+
+
 def _leading(text: str, deferred: set[str]) -> int:
     """How many lines this page opens with that a stripper left for later.
 
@@ -993,6 +1022,9 @@ def reconstruct_body(
             # noted for the following paragraph.
             if not cur_chunks and not pending_hyphen:
                 lvl = _level_of(stripped, marked, placed)
+                if (lvl == 1 and placed is None and not marked and i + 1 < n
+                        and _runs_on(stripped, read_mark(p.body_lines[i + 1])[0])):
+                    lvl = 0
                 if lvl > 0:
                     saved_marker = pending_page_marker
                     pending_page_marker = None
@@ -1574,7 +1606,7 @@ def render_book(
     # they belong to, and the placement's carries its depth digit with it); a
     # folded table's row breaks become the newlines they stand for, and the
     # table needs a blank line around it to be one in Markdown.
-    result = result.replace(HEADING_MARK, "").replace(RAISED, "")
+    result = result.replace(HEADING_MARK, "").replace(RAISED, "").replace(CONTINUES, "")
     result = re.sub(rf"{PLACED_MARK}\d", "", result)
     depths = [(d, re.sub(rf"{PLACED_MARK}\d", "", t.replace(HEADING_MARK, "")))
               for d, t in depths]
@@ -1679,6 +1711,13 @@ def main(
         f"{measured} of {len(reconstructions)} pages reassembled from geometry",
         file=sys.stderr,
     )
+    counted = [r.line_numbers for r in reconstructions if r.line_numbers]
+    if counted:
+        print(
+            f"Line numbers in the margin (an edition's count of its lines) dropped: "
+            f"{sum(counted)} on {plural(len(counted), 'page')}",
+            file=sys.stderr,
+        )
     wide_gaps = sum(1 for r in reconstructions if r.wide_gap_lines)
     if wide_gaps:
         print(
@@ -1705,7 +1744,7 @@ def main(
     last_note: int | None = None
     for r in reconstructions:
         split = split_small_type_block(r.lines, r.sizes, body_size=doc_body_size,
-                                       last_note=last_note)
+                                       last_note=last_note, indents=r.indents)
         splits.append(split)
         opened = definition_numbers(split.notes, last_note) if split else []
         if opened:

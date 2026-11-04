@@ -53,6 +53,7 @@ class Reconstruction:
     # italic). A run-in heading is exactly that: "3.2.1 Lexical Search (Grep)."
     # in italics, the prose of the same printed line in roman.
     emphases: list[int] = None
+    line_numbers: int = 0   # an edition's marginal line count, dropped (see there)
 
     def __post_init__(self) -> None:
         if self.sizes is None:
@@ -135,6 +136,52 @@ def _sideways(line: Line) -> bool:
     return width > 0 and (line.box.y1 - line.box.y0) / width >= SIDEWAYS_RATIO
 
 
+# An edition counts its lines in the margin, every fifth or tenth: Fuhrmann's
+# Constitutum Constantini, reprinted in Fried's Donation of Constantine, sets
+# "30" / "35" / … beside the text, left on the verso and right on the recto.
+# Read along, each number lands in the line it stands beside ("ab omni-" /
+# "30 bus Satanae" became "omni30 bus"). It is a count of the page's lines, not
+# of the text, and it goes; how many went is reported. A count by one -- a
+# lawbook's marginal paragraph numbers, which a citation names -- is not one.
+LINE_NUMBER_STEPS = (5, 10)
+LINE_NUMBER_MIN_RUN = 3
+
+
+def _margin_line_numbers(lines: list[Line], tolerance: float) -> set[int]:
+    """Indices of the fragments that are an edition's line count in the margin.
+
+    A fragment that is a number, outside the type area -- left of every line of
+    text or right of it -- and beside a line of text, on its baseline. Down the
+    page they count up in a constant step of five or ten, each a multiple of the
+    step; the folio, also a number outside the type area, breaks the step and
+    stays. Fewer than three say too little.
+    """
+    text = [ln for ln in lines if any(c.isalpha() for c in ln.text)]
+    if not text:
+        return set()
+    left = min(ln.box.x0 for ln in text)
+    right = max(ln.box.x1 for ln in text)
+    found: set[int] = set()
+    for outside in (lambda ln: ln.box.x1 < left, lambda ln: ln.box.x0 > right):
+        cands = sorted(
+            (ln.baseline, int(ln.text.strip()), i) for i, ln in enumerate(lines)
+            if ln.text.strip().isdigit() and len(ln.text.strip()) <= 4 and outside(ln)
+            and any(abs(o.baseline - ln.baseline) <= tolerance for o in text)
+        )
+        start = 0
+        while start < len(cands):
+            end = start + 1
+            step = cands[end][1] - cands[start][1] if end < len(cands) else 0
+            while (end < len(cands) and cands[end][1] - cands[end - 1][1] == step):
+                end += 1
+            run = cands[start:end]
+            if (step in LINE_NUMBER_STEPS and len(run) >= LINE_NUMBER_MIN_RUN
+                    and all(value % step == 0 for _b, value, _i in run)):
+                found.update(i for _b, _v, i in run)
+            start = max(end - 1, start + 1)
+    return found
+
+
 def _has_wide_gap(cluster: list[Line], threshold: float) -> bool:
     return any(
         b.box.x0 - a.box.x1 > threshold for a, b in zip(cluster, cluster[1:])
@@ -184,6 +231,8 @@ def reconstruct(
     # the last line the label detection looks at.
     upright = [ln for ln in page.lines if not _sideways(ln)]
     sideways = [ln for ln in page.lines if _sideways(ln)]
+    counted = _margin_line_numbers(upright, tolerance)
+    upright = [ln for i, ln in enumerate(upright) if i not in counted]
     page = SourcePage(
         index=page.index, lines=upright, width=page.width, height=page.height,
         source=page.source, label=page.label,
@@ -222,6 +271,7 @@ def reconstruct(
         sizes=sizes,
         indents=indents,
         emphases=emphases,
+        line_numbers=len(counted),
     )
 
 
