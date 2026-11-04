@@ -46,6 +46,22 @@ def test_a_number_set_flush_with_its_text_is_no_hanging_number():
     assert hung_continuations(lines, [83.6, 79.4, 79.4], 8.52) == set()
 
 
+def test_a_quotation_above_the_first_note_does_not_set_the_edge():
+    # Libros de no poco sobresalto p. 70: the small run took along a set-off
+    # quotation at 73pt; note 22 opens there with a first-line indent and is
+    # continued at 59pt, where "159) llama" -- a page of a citation -- stands.
+    lines = ["Viendo los estragos y enormes daños que los civiles y bajos, groseros",
+             "porquerizos con las crecidas manadas de sus colmilludos puercos en nues-",
+             "tras dehesas y pastos cada día hacen, no solamente comiendo y devorando",
+             "22 Nótese que estas coerciones aparecen ya en la obra inaugural. Refiere la",
+             "voz poética de Sireno en el canto de la ninfa Dórida: «Mi amo, aquel gran pastor,",
+             "/ es quien me hace partir» (II, p. 86, vv. 190-191). Torres Corominas (2021, p.",
+             "159) llama la atención sobre este «gran pastor», trasunto del rey, en el mundo",
+             "arcádico."]
+    indents = [73.13, 73.13, 73.13, 73.13, 58.95, 58.95, 58.95, 58.95]
+    assert hung_continuations(lines, indents, 9.5) == {6}
+
+
 def test_the_split_marks_the_continuation_and_the_count_runs_on():
     lines = [BODY, *NOTE_LINES]
     sizes = [10.5] + [8.52] * len(NOTE_LINES)

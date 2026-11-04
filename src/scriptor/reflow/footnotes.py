@@ -303,8 +303,13 @@ def hung_continuations(lines: list[str], indents: list[float | None],
     if size is None:
         return set()
     starts = {i for i, ln in enumerate(lines) if definition_start(ln)}
+    # Measured below the first start only: what stands above it may be a
+    # quotation the small run took along, set in from the text (Libros de no
+    # poco sobresalto p. 70, six lines at 73pt over a note continued at 59pt),
+    # and it pulled the edge onto the real note 22.
+    first = min(starts, default=len(lines))
     rest = [round(x) for i, (ln, x) in enumerate(zip(lines, indents))
-            if i not in starts and ln.strip() and x is not None]
+            if i > first and i not in starts and ln.strip() and x is not None]
     if not starts or not rest:
         return set()
     edge = Counter(rest).most_common(1)[0][0]
