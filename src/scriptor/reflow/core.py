@@ -19,6 +19,7 @@ from pathlib import Path
 
 from scriptor._text import plural
 from scriptor.reflow.footnotes import (
+    CONTINUES,
     FOOTNOTE_BARE_RE,
     FOOTNOTE_RE,
     PLACED_MARKER_RE,
@@ -309,6 +310,9 @@ def _assemble_footnotes(
     starts = dict(note_starts(fn_lines, last, matcher))
 
     for i, ln in enumerate(fn_lines):
+        # A line the block's geometry said continues a note (CONTINUES) was
+        # kept from opening one; it reads on with its number.
+        ln = ln.replace(CONTINUES, "")
         if i in starts:
             entries.append((starts[i], [matcher(ln).group(2)]))
         elif not entries:
@@ -1574,7 +1578,7 @@ def render_book(
     # they belong to, and the placement's carries its depth digit with it); a
     # folded table's row breaks become the newlines they stand for, and the
     # table needs a blank line around it to be one in Markdown.
-    result = result.replace(HEADING_MARK, "").replace(RAISED, "")
+    result = result.replace(HEADING_MARK, "").replace(RAISED, "").replace(CONTINUES, "")
     result = re.sub(rf"{PLACED_MARK}\d", "", result)
     depths = [(d, re.sub(rf"{PLACED_MARK}\d", "", t.replace(HEADING_MARK, "")))
               for d, t in depths]
@@ -1705,7 +1709,7 @@ def main(
     last_note: int | None = None
     for r in reconstructions:
         split = split_small_type_block(r.lines, r.sizes, body_size=doc_body_size,
-                                       last_note=last_note)
+                                       last_note=last_note, indents=r.indents)
         splits.append(split)
         opened = definition_numbers(split.notes, last_note) if split else []
         if opened:
