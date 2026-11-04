@@ -96,6 +96,13 @@ SPACED_DIGITS_RE = re.compile(r"\d(?: ?\d)+ ?")
 # 0.67, above the closer ratio the spaced digits are judged by.
 RAISED = ""
 RAISED_MAX_RATIO = 0.8
+# ... except where it is an edition: "Paris, 2002²", "de l'édition de 1924²"
+# (Pouderon, six times, each taking a note number from the marker it belongs
+# to). An edition is one digit behind a year, and never the first -- a first
+# edition is not marked, while note 1 behind a year is real ("1956¹" opens
+# the first collection of Artificial Humanities' endnotes). A note 2 to 9 set
+# behind a year stays as unplaced as it was.
+_EDITION_RE = re.compile(r"(?<!\d)(?:1[4-9]|20)\d\d$")
 
 
 @dataclass
@@ -137,8 +144,10 @@ class Line:
         raised = [self._raised_number(span, top) for span in self.spans]
         for i, span in enumerate(self.spans):
             text = span.text
-            if (raised[i] and i and not raised[i - 1]
-                    and self.spans[i - 1].text[-1:].isdigit()):
+            before = self.spans[i - 1].text if i else ""
+            if (raised[i] and i and not raised[i - 1] and before[-1:].isdigit()
+                    and not (len(span.text) == 1 and span.text != "1"
+                             and _EDITION_RE.search(before))):
                 text = RAISED + text
             if span.size is not None and span.size <= tiny:
                 run.append(text)

@@ -129,3 +129,25 @@ def test_a_raised_number_behind_a_word_needs_no_mark():
         baseline=100.88,
     )
     assert line.text == "the Donations8"
+
+
+def test_an_edition_raised_behind_a_year_is_no_marker():
+    # Pouderon: "Paris, 2002²" -- the second edition, not note 2.
+    line = Line(
+        spans=[Span("philosophie antique, Paris, 2002", box=Box(10, 92.97, 180, 103.47), size=10.5),
+               Span("2", box=Box(180, 90.61, 184, 97.63), size=7.02),
+               Span(", p. 75-102", box=Box(184, 92.97, 240, 103.47), size=10.5)],
+        baseline=100.88,
+    )
+    assert line.text == "philosophie antique, Paris, 20022, p. 75-102"
+
+
+def test_note_one_raised_behind_a_year_is_a_marker():
+    # Artificial Humanities: "1956¹" opens the first collection of endnotes.
+    from scriptor.page import RAISED
+    line = Line(
+        spans=[Span("in the summer of 1956", box=Box(10, 92.97, 120, 103.47), size=10.5),
+               Span("1", box=Box(120, 90.61, 124, 97.63), size=7.02)],
+        baseline=100.88,
+    )
+    assert line.text == f"in the summer of 1956{RAISED}1"
