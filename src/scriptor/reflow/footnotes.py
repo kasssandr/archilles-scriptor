@@ -428,8 +428,28 @@ def split_small_type_block(
         hung = hung_continuations(notes, indents[start:end],
                                   block_sizes[len(block_sizes) // 2] if block_sizes else None)
         notes = [CONTINUES + ln if k in hung else ln for k, ln in enumerate(notes)]
-    if not definition_numbers(notes, last_note):
+    opened = definition_numbers(notes, last_note)
+    if not opened:
         return None
+
+    # The apparatus is the foot of a page of text: above it stands running
+    # text, or at least the marker of one of its notes (a title's note, on a
+    # page that holds nothing else). A page set small under its heading alone
+    # is a text set small -- Fried prints his appendix of sources in 9.5 pt
+    # against a 10.5 pt body, and the first page of each edition, under its
+    # title, went into the notes whole, its numbered paragraphs as notes 1-3.
+    def running(i: int) -> bool:
+        s = sizes[i]
+        large = (s is not None and s - body_size >= SMALL_TYPE_MIN_DELTA
+                 and body_size <= s * SMALL_TYPE_MAX_RATIO)
+        return (not small(i) and not large
+                and len(lines[i].strip()) > FURNITURE_MAX_CHARS)
+
+    if not any(running(i) for i in range(start)):
+        marker = re.compile(
+            r"(?<=[^\s\d])(?:%s)(?!\d)" % "|".join(str(n) for n in opened))
+        if not any(marker.search(ln.translate(SUPERSCRIPT_DIGITS)) for ln in lines[:start]):
+            return None
     return SmallTypeSplit(
         body=lines[:start] + lines[end:bottom] + tail, notes=notes, split_at=start
     )
