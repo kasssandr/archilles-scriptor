@@ -62,6 +62,19 @@ def test_a_quotation_above_the_first_note_does_not_set_the_edge():
     assert hung_continuations(lines, indents, 9.5) == {6}
 
 
+def test_the_next_number_opens_its_note_wherever_it_stands():
+    # L'Empire chrétien p. 229: the scan set note 7 on the continuation edge;
+    # it is the number after 6, and the count vouches for it.
+    lines = ["5. Chron. Min. I, 243 et 297. — Selon un thème rhétorique. Théodose aurait",
+             "à regret, Pacatus, i i ; Claudien, de IVcons. Honorii, 47. La date du",
+             "6. Elu par le Sénat, dit Malalas, XIII, p. 344. Reconnu par le Sénat, dit Pacatus,",
+             "7. Sur la reconnaissance par le Sénat de Constantinople, Thémist., Or. XIV."]
+    assert hung_continuations(lines, [60.48, 44.64, 59.76, 44.64], 9.0, 4) == set()
+    # The same line opening a number the count does not vouch for continues.
+    lines[3] = "12. Sur la reconnaissance par le Sénat de Constantinople, Thémist., Or. XIV."
+    assert hung_continuations(lines, [60.48, 44.64, 59.76, 44.64], 9.0, 4) == {3}
+
+
 def test_the_split_marks_the_continuation_and_the_count_runs_on():
     lines = [BODY, *NOTE_LINES]
     sizes = [10.5] + [8.52] * len(NOTE_LINES)

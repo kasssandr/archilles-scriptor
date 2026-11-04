@@ -291,7 +291,7 @@ HANG_ON_EM = 0.25
 
 
 def hung_continuations(lines: list[str], indents: list[float | None],
-                       size: float | None) -> set[int]:
+                       size: float | None, last: int | None = None) -> set[int]:
     """Lines of a note block shaped like a note's start that continue a note.
 
     The continuation lines -- those that open no note -- share a left edge.
@@ -317,7 +317,21 @@ def hung_continuations(lines: list[str], indents: list[float | None],
           if indents[i] is not None and abs(indents[i] - edge) <= size * HANG_ON_EM}
     off = [i for i in starts
            if indents[i] is not None and abs(indents[i] - edge) >= size * HANG_MIN_EM]
-    return on if on and len(off) >= len(on) else set()
+    if not on or len(off) < len(on):
+        return set()
+    # The count outranks the edge where it vouches outright: the number after
+    # the start before it -- or after the volume's last note, for the block's
+    # first -- opens its note wherever the scan put it (L'Empire chrétien
+    # p. 229: "6. Elu par le Sénat …" / "7. Sur la reconnaissance …", set on
+    # the continuation edge, its marker in the text).
+    nums = {i: int(definition_start(lines[i]).group(1)) for i in starts}
+    order = sorted(starts)
+    vouched = set()
+    for k, i in enumerate(order):
+        before = nums[order[k - 1]] if k else last
+        if before is not None and nums[i] == before + 1:
+            vouched.add(i)
+    return on - vouched
 
 
 def split_small_type_block(
@@ -431,7 +445,8 @@ def split_small_type_block(
     if indents is not None and len(indents) == len(lines):
         block_sizes = sorted(s for s in sizes[start:end] if s is not None)
         hung = hung_continuations(notes, indents[start:end],
-                                  block_sizes[len(block_sizes) // 2] if block_sizes else None)
+                                  block_sizes[len(block_sizes) // 2] if block_sizes else None,
+                                  last_note)
         notes = [CONTINUES + ln if k in hung else ln for k, ln in enumerate(notes)]
     opened = definition_numbers(notes, last_note)
     if not opened:
