@@ -83,6 +83,27 @@ class Link:
 SUPERSCRIPT_MAX_RATIO = 0.6
 SPACED_DIGITS_RE = re.compile(r"\d(?: ?\d)+ ?")
 
+# A note number raised behind a number of the text: "1120 and 1150⁴⁶", "in
+# 778¹⁶⁶", "Vienna lat. 449³⁷⁷". Flattened, it is "115046" -- one number, and a
+# marker glued to a digit is exactly what the marker search must refuse, or the
+# last digit of every year births a note ("August 754" -> "75 [4]", Zuckerman).
+# The page tells the two apart, the text cannot: the raised digits sit smaller
+# and wholly above the baseline. They are set apart with this mark, from the
+# Private Use Area like the reflow's own marks, so that the marker search finds
+# them glued to something that is not a digit; the reflow removes it at the end
+# (Fried, Donation of Constantine: 20 of 454 notes). Smaller means under this
+# share of the line's largest type -- Fried sets 7 pt numbers in 10.5 pt text,
+# 0.67, above the closer ratio the spaced digits are judged by.
+RAISED = ""
+RAISED_MAX_RATIO = 0.8
+# ... except where it is an edition: "Paris, 2002²", "de l'édition de 1924²"
+# (Pouderon, six times, each taking a note number from the marker it belongs
+# to). An edition is one digit behind a year, and never the first -- a first
+# edition is not marked, while note 1 behind a year is real ("1956¹" opens
+# the first collection of Artificial Humanities' endnotes). A note 2 to 9 set
+# behind a year stays as unplaced as it was.
+_EDITION_RE = re.compile(r"(?<!\d)(?:1[4-9]|20)\d\d$")
+
 
 @dataclass
 class Line:
@@ -100,29 +121,48 @@ class Line:
         space between ("1 1", Goodman): taken as read it opens note 1 and
         starts the text with "1". A run of tiny spans that is nothing but
         digits and spaces is closed up; the space after it stays.
+
+        A number raised behind a digit of the text is set apart by ``RAISED``.
         """
         sizes = [s.size for s in self.spans if s.size is not None]
         if len(sizes) < 2:
             return "".join(s.text for s in self.spans)
-        tiny = max(sizes) * SUPERSCRIPT_MAX_RATIO
+        top = max(sizes)
+        tiny = top * SUPERSCRIPT_MAX_RATIO
         out: list[str] = []
         run: list[str] = []
 
         def flush() -> None:
             joined = "".join(run)
+            lead = RAISED if joined.startswith(RAISED) else ""
+            joined = joined[len(lead):]
             if SPACED_DIGITS_RE.fullmatch(joined):
                 joined = joined.replace(" ", "") + (" " if joined.endswith(" ") else "")
-            out.append(joined)
+            out.append(lead + joined)
             run.clear()
 
-        for span in self.spans:
+        raised = [self._raised_number(span, top) for span in self.spans]
+        for i, span in enumerate(self.spans):
+            text = span.text
+            before = self.spans[i - 1].text if i else ""
+            if (raised[i] and i and not raised[i - 1] and before[-1:].isdigit()
+                    and not (len(span.text) == 1 and span.text != "1"
+                             and _EDITION_RE.search(before))):
+                text = RAISED + text
             if span.size is not None and span.size <= tiny:
-                run.append(span.text)
+                run.append(text)
             else:
                 flush()
-                out.append(span.text)
+                out.append(text)
         flush()
         return "".join(out)
+
+    def _raised_number(self, span: Span, top: float) -> bool:
+        """Digits set smaller than the line and wholly above its baseline."""
+        return (span.text.isdigit() and span.size is not None
+                and span.box is not None and self.baseline is not None
+                and span.size <= top * RAISED_MAX_RATIO
+                and span.box.y1 < self.baseline)
 
     @property
     def size(self) -> float | None:

@@ -85,3 +85,69 @@ def test_spaced_digits_in_body_size_stay_as_they_are():
     line = Line(spans=[Span(text="1 1", box=Box(0, 0, 10, 9), size=8.4),
                        Span(text=" if", box=Box(10, 0, 20, 9), size=8.4)])
     assert line.text == "1 1 if"
+
+
+# Fried, Donation of Constantine p. 19: "produced between 1120 and 1150" with
+# note 46 raised behind the year -- the measured spans and baseline.
+def _fried_line(note: str = "46") -> Line:
+    return Line(
+        spans=[
+            Span("produced between 1120 and 1150", box=Box(79.43, 92.97, 222.35, 103.47), size=10.5),
+            Span(note, box=Box(222.29, 90.61, 229.34, 97.63), size=7.02),
+            Span(". But this was soon felt", box=Box(229.37, 92.97, 427.94, 103.47), size=10.5),
+        ],
+        box=Box(79.43, 90.61, 427.94, 103.47),
+        baseline=100.88,
+    )
+
+
+def test_a_note_number_raised_behind_a_year_is_set_apart():
+    from scriptor.page import RAISED
+    assert _fried_line().text == f"produced between 1120 and 1150{RAISED}46. But this was soon felt"
+
+
+def test_the_set_apart_number_is_found_as_a_glued_marker():
+    from scriptor.reflow.footnotes import substitute_markers
+    (out,) = substitute_markers([_fried_line().text], {46: "note"})
+    assert "1150" in out and out.endswith("[46]. But this was soon felt")
+
+
+def test_digits_on_the_baseline_behind_a_number_stay_one_number():
+    # Same size, same baseline: a year is a year ("August 754", Zuckerman).
+    line = Line(
+        spans=[Span("August 75", box=Box(10, 92.97, 60, 103.47), size=10.5),
+               Span("4", box=Box(60, 92.97, 66, 103.47), size=10.5)],
+        baseline=100.88,
+    )
+    assert line.text == "August 754"
+
+
+def test_a_raised_number_behind_a_word_needs_no_mark():
+    line = Line(
+        spans=[Span("the Donations", box=Box(10, 92.97, 80, 103.47), size=10.5),
+               Span("8", box=Box(80, 90.61, 84, 97.63), size=7.02)],
+        baseline=100.88,
+    )
+    assert line.text == "the Donations8"
+
+
+def test_an_edition_raised_behind_a_year_is_no_marker():
+    # Pouderon: "Paris, 2002²" -- the second edition, not note 2.
+    line = Line(
+        spans=[Span("philosophie antique, Paris, 2002", box=Box(10, 92.97, 180, 103.47), size=10.5),
+               Span("2", box=Box(180, 90.61, 184, 97.63), size=7.02),
+               Span(", p. 75-102", box=Box(184, 92.97, 240, 103.47), size=10.5)],
+        baseline=100.88,
+    )
+    assert line.text == "philosophie antique, Paris, 20022, p. 75-102"
+
+
+def test_note_one_raised_behind_a_year_is_a_marker():
+    # Artificial Humanities: "1956¹" opens the first collection of endnotes.
+    from scriptor.page import RAISED
+    line = Line(
+        spans=[Span("in the summer of 1956", box=Box(10, 92.97, 120, 103.47), size=10.5),
+               Span("1", box=Box(120, 90.61, 124, 97.63), size=7.02)],
+        baseline=100.88,
+    )
+    assert line.text == f"in the summer of 1956{RAISED}1"

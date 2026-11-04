@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 
 from scriptor.reflow.headings import MARK as HEADING_MARK
 from scriptor.reflow.headings import PLACED as PLACED_MARK
+from scriptor.page import RAISED
 from scriptor.reflow.tables import BREAK as TABLE_BREAK
 
 SOFT_HYPHEN = "­"
@@ -48,7 +49,7 @@ SOFT_HYPHEN = "­"
 # can contain them, and reads back at the very end. A folded table reaches this
 # module carrying its row breaks: dropped as unreadable, every table of the
 # volume came out as one line (McNamara, 35 breaks in 7 tables).
-PIPELINE_MARKS = HEADING_MARK + PLACED_MARK + TABLE_BREAK
+PIPELINE_MARKS = HEADING_MARK + PLACED_MARK + TABLE_BREAK + RAISED
 
 # The latin ligatures in their presentation forms, written out. Only this
 # block: the Hebrew presentation forms that follow it (U+FB1D on) are letters
