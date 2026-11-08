@@ -726,8 +726,8 @@ def detect_running_footers(
     if len(pages_text) < min_occurrences:
         return []
 
-    last_lines: list[str] = []
-    for page_text in pages_text:
+    last_lines: list[tuple[int, str, str]] = []
+    for index, page_text in enumerate(pages_text):
         lines = page_text.strip().split("\n")
         lines_checked = 0
         for line in reversed(lines):
@@ -738,22 +738,50 @@ def detect_running_footers(
             lines_checked += 1
             normalized = _normalize_header_line(line)
             if normalized and len(normalized) > 5:
-                last_lines.append(normalized)
+                last_lines.append((index, line, normalized))
 
-    groups: list[list] = []
-    for normalized in last_lines:
+    groups: list[list] = []  # [canonical, count, [(page index, line)]]
+    for index, line, normalized in last_lines:
         matched = False
         for g in groups:
             if _strings_are_similar(normalized, g[0], similarity_threshold):
                 if len(normalized) > len(g[0]):
                     g[0] = normalized
                 g[1] += 1
+                g[2].append((index, line))
                 matched = True
                 break
         if not matched:
-            groups.append([normalized, 1])
+            groups.append([normalized, 1, [(index, line)]])
 
-    return [g[0] for g in groups if g[1] >= min_occurrences]
+    # A footer that names its chapter repeats only as often as the chapter has
+    # pages: Ando's Matter of the Gods foots every recto with the chapter title
+    # and the folio, five to twelve times a chapter, never the thirteen this
+    # volume's length asks for -- and the title went into the last footnote of
+    # the page ("idols and their critics 39"), 32 times. Fewer lines are a
+    # footer where the number at their edge counts their pages and the pages
+    # run, as a running head's do. They have to count them exactly, at every
+    # step: a reference repeated in the apparatus ("POHLKAMP, Textfassungen
+    # cit. (nota 4), p. 146." in Gli Actus Silvestri, "Там же." in Making
+    # Martyrs) carries a note number that rises with the pages, roughly.
+    return [g[0] for g in groups
+            if g[1] >= min_occurrences
+            or (g[1] >= _FOOTER_MIN_COUNTED
+                and _runs({i for i, _line in g[2]})
+                and _folios_exact(sorted(g[2])))]
+
+
+_FOOTER_MIN_COUNTED = 3
+
+
+def _folios_exact(members: list[tuple[int, str]]) -> bool:
+    """Whether the number at one edge of every line steps exactly as its pages do."""
+    for edge in (_LEAD_NUMBER, _TRAIL_NUMBER):
+        found = [(i, int(m.group(1))) for i, line in members if (m := edge.search(line.strip()))]
+        if len(found) == len(members) and all(
+                v - u == j - i for (i, u), (j, v) in zip(found, found[1:])):
+            return True
+    return False
 
 
 def remove_running_footers(
