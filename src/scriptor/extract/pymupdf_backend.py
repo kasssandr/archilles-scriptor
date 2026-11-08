@@ -12,8 +12,8 @@ result -- every paragraph, footnote and marker twice. Susa and Thil-Lorrain carr
 an *invisible* OCR layer, which the same default deletes and replaces, in the
 default language, over a French text.
 
-We read ``page.get_text("dict")``: blocks, lines, spans, each with ``bbox``,
-``size``, ``font``, ``flags`` and ``origin``. Lines arrive in content-stream order
+We read ``page.get_text("rawdict")``: blocks, lines, spans, each with ``bbox``,
+``size``, ``font``, ``flags``, ``origin`` and its glyphs. Lines arrive in content-stream order
 and are **not** sorted here -- reading order across columns is a judgement, and
 judgements belong in scriptor code (``reflow/textlines.py``).
 """
@@ -21,6 +21,7 @@ judgements belong in scriptor code (``reflow/textlines.py``).
 from __future__ import annotations
 
 import sys
+import unicodedata
 from pathlib import Path
 
 import pymupdf
@@ -80,6 +81,85 @@ def _invisible(raw: dict, ground: list[pymupdf.Rect]) -> bool:
     return not any(centre in rect for rect in ground)
 
 
+# A word space the file never wrote. Some typesetters set the space after a full
+# stop, and after a raised note number, as a bare move of the pen: Ando's Matter
+# of the Gods (UC Press 2008) moves 1.56 pt and draws no space glyph, so MuPDF
+# reads "halves.The three" and "myths.3Regardless" -- 120 sentences and 40 note
+# numbers glued to the next word, and a marker glued to a word is no marker. The
+# same move stands between the letters of a letter-spaced running head and the
+# digits of a folio, so a gap alone is no space: it is one after a sentence's
+# punctuation, or after a number set smaller than the text it is followed by.
+#
+# Measured over the corpus (2026-11-08, ~400 PDFs) the move is no space either
+# inside an abbreviation ("A.D.", "a.a.O.", "D.C." -- one letter before the
+# stop) or a siglum (a capital before it: "BL.Add."), before right-to-left script (Arabic and Syriac set the stop before the
+# word), after a closing bracket in letter-spaced type, or after a subscript
+# index in a formula, or where the next word does not begin as a sentence does
+# (a capital and then a small letter or a space: "Ph.D.", "www.uni-hamburg.de"
+# and an OCR layer's "CHAI.D/" do not): those stay as the file wrote them.
+_GAP_EM = 0.05
+_STOPS = ".?!;:"
+_QUOTES = "”’"
+_OPENS = "“‘"
+
+
+def _ltr_letter(ch: str) -> bool:
+    return ch.isalpha() and unicodedata.bidirectional(ch) == "L"
+
+
+def _ends_sentence(before: str) -> bool:
+    """Whether the drawn text ``before`` the gap closes a sentence."""
+    if before[-1:] in _QUOTES:
+        before = before[:-1]
+        if before[-1:] in _QUOTES:
+            before = before[:-1]
+        return before[-1:] in _STOPS + ","
+    if before[-1:] not in _STOPS:
+        return False
+    word = before[:-1]
+    # One letter before the stop is an initial or an abbreviation's part; a
+    # capital before it a siglum ("BL.Add.12150", "PubL.Syri") or OCR debris.
+    return len(word) >= 2 and word[-1].islower() and word[-2].isalpha()
+
+
+def _opens_sentence(ch: str, after: str) -> bool:
+    """Whether a word beginning ``ch`` and going on ``after`` begins a sentence."""
+    if ch in _OPENS:
+        return True
+    return _ltr_letter(ch) and ch.isupper() and (after == "" or after.isspace() or after.islower())
+
+
+def _open_gaps(raw_spans: list[dict]) -> list[dict]:
+    """``rawdict`` spans with their text, a space put where the pen moved over one."""
+    flat = [c["c"] for s in raw_spans for c in s.get("chars", ())]
+    at = 0                      # index of the current char in ``flat``
+    out: list[dict] = []
+    prev = None                 # (char, span) last drawn
+    drawn = ""                  # the line's text so far
+    for s in raw_spans:
+        text = []
+        for c in s.get("chars", ()):
+            ch = c["c"]
+            if prev is not None and not ch.isspace() and not prev[0]["c"].isspace():
+                pc, ps = prev
+                gap = c["bbox"][0] - pc["bbox"][2]
+                if gap >= _GAP_EM * max(ps["size"], s["size"]) and (
+                        _ltr_letter(ch) or ch in _OPENS):
+                    raised = (pc["c"].isdigit() and ps is not s
+                              and ps["size"] < 0.85 * s["size"]
+                              and ps["origin"][1] < s["origin"][1] - 0.5)
+                    after = flat[at + 1] if at + 1 < len(flat) else ""
+                    if raised or (_ends_sentence(drawn) and _opens_sentence(ch, after)):
+                        text.append(" ")
+                        drawn += " "
+            text.append(ch)
+            drawn += ch
+            prev = (c, s)
+            at += 1
+        out.append({**s, "text": "".join(text)})
+    return out
+
+
 def _glyphs(raw_spans: list[dict]) -> list[Glyph]:
     return [
         Glyph(char=c["c"], box=_box(c["bbox"]))
@@ -124,7 +204,8 @@ def read_page(page: pymupdf.Page, index: int, *, glyphs: bool = False,
     Text the page does not show (white ink on the bare page) is not read; what
     it said is appended to ``unseen``, so the caller can report it.
     """
-    raw = page.get_text("rawdict" if glyphs else "dict")
+    # Always the glyphs: a space the file only moved over shows in their boxes.
+    raw = page.get_text("rawdict")
     white = any(s.get("color") == _WHITE
                 for block in raw["blocks"] if block.get("type") == 0
                 for raw_line in block["lines"] for s in raw_line["spans"])
@@ -137,7 +218,7 @@ def read_page(page: pymupdf.Page, index: int, *, glyphs: bool = False,
             kept = []
             hidden = False
             gap = False
-            for s in raw_line["spans"]:
+            for s in _open_gaps(raw_line["spans"]):
                 if not _span_text(s):
                     continue
                 if white and _invisible(s, ground):
