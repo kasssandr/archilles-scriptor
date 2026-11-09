@@ -18,7 +18,8 @@ DNT_CLOSE = "</dnt>"
 # during wrapping (see protect_urls), not here.
 URL_RE = re.compile(r"(?:https?://|www\.)[^\s<]+", re.IGNORECASE)
 
-# Title quote pairs: German „…“, straight "…", guillemets »…«.
+# Title quote pairs: German „…“, straight "…", guillemets »…« (turned round
+# to «…» where a line opens with «, see protect_quoted).
 QUOTE_PAIRS = [("„", "“"), ('"', '"'), ("»", "«")]
 
 # Pandoc footnote definition line (single-line).
@@ -100,7 +101,14 @@ def protect_quoted(text: str) -> str:
     """Tags quoted titles (all QUOTE_PAIRS) with <dnt>…</dnt>.
     Only outside existing tags; idempotent."""
     def _wrap(seg: str) -> str:
-        for open_q, close_q in QUOTE_PAIRS:
+        pairs = QUOTE_PAIRS
+        # Guillemets point either way: German »…«, French and Italian « … ».
+        # The first one in the line tells which; read the wrong way round, the
+        # pair would close over the text *between* two quotations.
+        first = re.search("[«»]", seg)
+        if first and first.group(0) == "«":
+            pairs = [p for p in QUOTE_PAIRS if p != ("»", "«")] + [("«", "»")]
+        for open_q, close_q in pairs:
             pattern = re.escape(open_q) + "[^" + re.escape(close_q) + "]*" + re.escape(close_q)
             seg = re.sub(
                 pattern,
