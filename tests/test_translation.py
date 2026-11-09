@@ -72,6 +72,20 @@ def test_protect_quoted_straight_and_guillemets():
     assert protect_quoted("a »Titel« b") == "a <dnt>»Titel«</dnt> b"
 
 
+def test_protect_quoted_romance_guillemets():
+    # Italian/French « … »: protect the journal titles, not the text between them.
+    src = 'in « Doxa », 1951, p. 140; R. Pichon, in « Les derniers écrivains », Paris'
+    assert protect_quoted(src) == (
+        'in <dnt>« Doxa »</dnt>, 1951, p. 140; R. Pichon, '
+        'in <dnt>« Les derniers écrivains »</dnt>, Paris'
+    )
+
+
+def test_protect_quoted_german_guillemets_stay_german():
+    src = "x »A« und »B« y"
+    assert protect_quoted(src) == "x <dnt>»A«</dnt> und <dnt>»B«</dnt> y"
+
+
 def test_protect_quoted_two_phrases():
     src = 'x „A“ und „B“ y'
     assert protect_quoted(src) == 'x <dnt>„A“</dnt> und <dnt>„B“</dnt> y'
