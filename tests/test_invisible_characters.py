@@ -50,6 +50,21 @@ def test_a_soft_hyphen_after_trailing_space_still_counts_as_a_line_end():
     assert out[0][0].rstrip() == "unprece-"
 
 
+def test_an_ocr_not_sign_at_a_line_end_is_a_line_break_hyphen():
+    # ABBYY (Internet Archive scans) marks its line-break hyphens with U+00AC.
+    pages = [["sep¬", "tentrionales et"]]
+    out, report = resolve_characters(pages)
+    assert out == [["sep-", "tentrionales et"]]
+    assert report.soft_hyphens == 1
+
+
+def test_a_not_sign_inside_a_line_or_after_no_letter_stays():
+    # Inside a line, or after a space, it may be the logic sign.
+    pages = [["¬p ∧ q", "a ¬"]]
+    out, _ = resolve_characters(pages)
+    assert out == [["¬p ∧ q", "a ¬"]]
+
+
 # --- zero-width marks ---------------------------------------------------------
 
 def test_zero_width_marks_are_removed():
