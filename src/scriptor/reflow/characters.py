@@ -46,6 +46,19 @@ from scriptor.reflow.footnotes import CONTINUES
 
 SOFT_HYPHEN = "­"
 
+# ABBYY FineReader -- the OCR behind every Internet Archive scan -- writes the
+# line-break hyphen it recognised as U+00AC NOT SIGN ("sep¬" / "tentrionales").
+# Piganiol, L'Empire chrétien: 1032 of them, every one at a line end, every one
+# left as two words with a space between. It is the soft hyphen's meaning
+# carried on another character, so it gets the soft hyphen's treatment -- but
+# only at a line end after a letter: inside a line it may be the logic sign.
+NOT_SIGN = "¬"
+
+
+def _ends_on_not_sign(stripped: str) -> bool:
+    return (len(stripped) >= 2 and stripped.endswith(NOT_SIGN)
+            and stripped[-2].isalpha())
+
 # Marks the reflow sets itself, from the Private Use Area so that no document
 # can contain them, and reads back at the very end. A folded table reaches this
 # module carrying its row breaks: dropped as unreadable, every table of the
@@ -210,9 +223,9 @@ def resolve_characters(
             # The soft hyphen first: at a line end it becomes the hyphen the
             # de-hyphenation knows, elsewhere it is an unused break and goes.
             stripped = line.rstrip()
-            if stripped.endswith(SOFT_HYPHEN):
+            if stripped.endswith(SOFT_HYPHEN) or _ends_on_not_sign(stripped):
                 report.soft_hyphens += 1
-                line = stripped[: -len(SOFT_HYPHEN)] + "-" + line[len(stripped):]
+                line = stripped[:-1] + "-" + line[len(stripped):]
             if SOFT_HYPHEN in line:
                 line = line.replace(SOFT_HYPHEN, "")
             for ch in ZERO_WIDTH:
