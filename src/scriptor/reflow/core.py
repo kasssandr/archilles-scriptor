@@ -821,12 +821,26 @@ def calibrate_threshold(pages: list[Page], peak_fraction: float = 0.25) -> tuple
 
 # Simple sentence-end detection. Both curly double quotes close sentences:
 # German quotations end on “ („…“), English ones on ” (“…”) — Zuckerman.
-SENT_END = re.compile(r"[.!?»“”\"’']$")
+# A closing quote ends a sentence only behind the full stop it closes over: a
+# short line on "known as “New Rome,”" (Gregory, Byzantium) or "si suole
+# chiamare «la caduta »" (Mazzarino) is the middle of a sentence, and both
+# opened a paragraph there. Where the stop stands outside the quote ("«la
+# caduta».") the line ends on the stop itself. A space may stand between the
+# stop and its quote: the OCR sets one before a broken pair ('S. 1-14. ""',
+# Taubes).
+SENT_END = re.compile(r"[.!?](\s*[»«“”\"’'])*$")
 
 # Placed footnote markers at the end of a line ("… Occident.” [1]" or even
 # "… country. [4] [5]"). They stand *after* the full stop and would hide it
 # from SENT_END — the paragraph-end check looks at the line without them.
 _TRAILING_MARKERS = re.compile(r"(\s*\[\d{1,4}\])+$")
+
+# A note number nobody placed, flattened from its superscript onto the line:
+# "as “Belgian Rome.”2", "had disintegrated.4". An endnote volume leaves every
+# one of them in the body, and a chapter whose paragraphs all close on a note
+# came out as two paragraphs (Gregory, Byzantium). Only directly behind the
+# closing punctuation, so that "in 410" stays a number in the sentence.
+_TRAILING_NOTE_NUMBER = re.compile(r"(?<=[.!?»«“”\"’'])\d{1,3}$")
 
 
 # Numbered heading at the start of a paragraph: "3.4. Probleme um Welf VI." and,
@@ -1148,7 +1162,10 @@ def reconstruct_body(
                 # Markers sit after the closing punctuation; strip them for the
                 # check, but keep their length out of the width measure too —
                 # "[N]" is not printed on the page.
-                bare = _TRAILING_MARKERS.sub("", stripped)
+                # Asking the line below whether it opens lowercase was tried and
+                # dropped: an index ("v. Tours", "a. 1066"), a Greek quotation
+                # and a list of "les nautae" open lowercase too (Kern, Waltzing).
+                bare = _TRAILING_NOTE_NUMBER.sub("", _TRAILING_MARKERS.sub("", stripped))
                 if len(bare) <= threshold and SENT_END.search(bare):
                     end_paragraph()
 
