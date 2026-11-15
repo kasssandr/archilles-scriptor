@@ -775,13 +775,36 @@ _FOOTER_MIN_COUNTED = 3
 
 
 def _folios_exact(members: list[tuple[int, str]]) -> bool:
-    """Whether the number at one edge of every line steps exactly as its pages do."""
-    for edge in (_LEAD_NUMBER, _TRAIL_NUMBER):
-        found = [(i, int(m.group(1))) for i, line in members if (m := edge.search(line.strip()))]
-        if len(found) == len(members) and all(
-                v - u == j - i for (i, u), (j, v) in zip(found, found[1:])):
-            return True
-    return False
+    """Whether the number at an edge of every line steps exactly as its pages do.
+
+    The edge may change from line to line. Wolf, *Verwandtschaft – Erbrecht –
+    Königswahlen*, foots its versos "382 # 8 Waren die Landgrafen von
+    Thüringen" and the chapter's opening page, a recto, "# 8 Waren die
+    Landgrafen von Thüringen 381": one wording, the folio on the outer edge
+    each time. Asked for one edge throughout, the opening page sank the whole
+    group, and the folio of every verso went to the catalogue -- 483 of 595.
+    What makes a folio is that it counts the pages, and that test stays exact:
+    every numbered line has to carry a number that is its page plus one offset
+    shared by all of them.
+
+    A line without a number says nothing against that, as long as such lines
+    are the fewer. On Wolf's plates the folio stands on a line of its own above
+    the wording, and the wording alone sank the group: chapter 30 has 41 lines
+    counting their pages and one plate.
+    """
+    offsets: set[int] | None = None
+    numbered = 0
+    for i, line in members:
+        s = line.strip()
+        mine = {int(m.group(1)) - i for edge in (_LEAD_NUMBER, _TRAIL_NUMBER)
+                if (m := edge.search(s))}
+        if not mine:
+            continue
+        numbered += 1
+        offsets = mine if offsets is None else offsets & mine
+        if not offsets:
+            return False
+    return bool(offsets) and numbered * 2 > len(members)
 
 
 def remove_running_footers(

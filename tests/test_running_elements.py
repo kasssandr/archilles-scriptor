@@ -265,6 +265,54 @@ def test_a_block_without_the_footer_is_left_alone():
     assert rescued.by_position() == {}
 
 
+# --- a chapter footer whose folio changes edge (Wolf) --------------------------
+
+_WOLF_FOOTER = "# 8 Waren die Landgrafen von Thüringen"
+
+
+def _wolf_pages(feet: dict[int, str], n: int = 70) -> list[str]:
+    """n pages with bodies unlike one another, footed where ``feet`` says."""
+    return [f"Seite {i} spricht von Urkunde {i * 7} und Zeuge {i * 13}.\n"
+            f"Dazu gehört Beleg {i * 31} aus dem Jahr {1000 + i}."
+            + (f"\n{feet[i]}" if i in feet else "")
+            for i in range(n)]
+
+
+def test_a_chapter_footer_is_found_where_its_opening_page_numbers_it_trailing():
+    # The opening page, a recto, numbers the wording at its end; the versos at
+    # their start. Each folio is its page plus the same offset.
+    feet = {1: f"{_WOLF_FOOTER} 381"}
+    feet.update({i: f"{380 + i} {_WOLF_FOOTER}" for i in range(2, 14, 2)})
+    footers = detect_running_footers(_wolf_pages(feet), min_occurrences=61)
+    assert any(_strings_are_similar(f, _WOLF_FOOTER) for f in footers), (
+        "ein Mitglied mit der Folio am anderen Rand darf die Gruppe nicht kippen"
+    )
+
+
+def test_a_plate_without_its_number_does_not_sink_the_footer():
+    # On a plate the folio stands on a line of its own; the wording is bare.
+    feet = {i: f"{380 + i} {_WOLF_FOOTER}" for i in range(2, 14, 2)}
+    feet[8] = _WOLF_FOOTER
+    footers = detect_running_footers(_wolf_pages(feet), min_occurrences=61)
+    assert any(_strings_are_similar(f, _WOLF_FOOTER) for f in footers)
+
+
+def test_bare_wordings_must_not_outnumber_the_counted_ones():
+    feet = {i: _WOLF_FOOTER for i in range(2, 14, 2)}
+    feet[2], feet[4] = f"382 {_WOLF_FOOTER}", f"384 {_WOLF_FOOTER}"
+    footers = detect_running_footers(_wolf_pages(feet), min_occurrences=61)
+    assert not any(_strings_are_similar(f, _WOLF_FOOTER) for f in footers)
+
+
+def test_numbers_at_changing_edges_must_still_count_the_pages():
+    # Same wording, edges changing, but the number at the trailing edge is off
+    # by one: no shared offset, so nothing here counts the pages.
+    feet = {1: f"{_WOLF_FOOTER} 382"}
+    feet.update({i: f"{380 + i} {_WOLF_FOOTER}" for i in range(2, 14, 2)})
+    footers = detect_running_footers(_wolf_pages(feet), min_occurrences=61)
+    assert not any(_strings_are_similar(f, _WOLF_FOOTER) for f in footers)
+
+
 # --- speed: the cheap bounds must not change a single answer ------------------
 
 def test_the_cheap_bounds_never_change_an_answer():
