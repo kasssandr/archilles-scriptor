@@ -68,6 +68,13 @@ _HEAD_MAX_CHARS = 60
 _HEAD_MAX_WORDS = 6
 _NOT_IN_HEAD = re.compile(r"[,;()\[\]\d]")
 
+# A folio between two dashes, "— 18 —": the house style of Russian journals
+# (Disciplina sets it under every page). Narrow on purpose -- a dash on BOTH
+# sides, nothing else on the line -- because ``detect_page_label`` deletes what
+# it reads, and a lone "18." or "(18)" is a list item or a note number far more
+# often than a page.
+_DASHED_LABEL = re.compile(r"^[—–-]\s*(\S+?)\s*[—–-]$")
+
 
 def _roman_to_int(s: str) -> int:
     values = [_ROMAN_VALUES[c] for c in s]
@@ -262,6 +269,10 @@ def detect_page_label(line: str) -> str | None:
 
     if decode_label(s) is not None:
         return s
+
+    m = _DASHED_LABEL.match(s)
+    if m and decode_label(m.group(1)) is not None:
+        return m.group(1)
 
     for rx, token_group, text_group in ((_HEAD_LEAD, 1, 2), (_HEAD_TRAIL, 2, 1)):
         m = rx.match(s)

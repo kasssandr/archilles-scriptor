@@ -203,13 +203,39 @@ def note_starts(lines: list[str], last: int | None = None,
             kinds.append(_shape_kind(line) if shape is definition_start else 0)
     if not cands:
         return []
+
+    def carries_volume(num: int) -> bool:
+        return last is not None and last < num <= last + MAX_NOTE_STEP
+
+    def opens_volume(num: int) -> bool:
+        # Before any note has been read, the count the volume is most likely
+        # to begin is its first. Only a tie-break: an excerpt may well open at
+        # note 45. Patzold's asterisk note cites "Herrschaft um / 500 //
+        # Chlodwigs Welt", and as the earlier of two single candidates "500"
+        # beat "1." -- and with the volume at note 500 on its first page,
+        # nothing after it could carry the count on.
+        return carries_volume(num) or (last is None and num <= RESTART_MAX)
+
+    # The conventions in which this block carries the volume's count on. Where
+    # there is one, a count that starts afresh in another convention is a list
+    # inside a note, not the notes: Disciplina's note 21 enumerates bishops
+    # "1) … 13)" under the notes "21." and "22.", and as the longer run the list
+    # took the block (Patzold, 15.11.: 42 notes out of three).
+    # Only the punctuated conventions vouch for this. A bare "NN " is what a
+    # footer looks like as well: Wolf's apparatus ends in "522 # 18 Hatte
+    # Heinrich der Löwe eine Schwester?", the folio carried the count on, and
+    # the notes "53"/"15." above it were thrown out as a list (A/B, 16.11.).
+    carrying = {kinds[j] for j, (_i, num) in enumerate(cands)
+                if carries_volume(num) and kinds[j] != 2}
     # best[j]: (length of the best run ending at j, it continues the volume,
     # -start), back[j]: the candidate before j in that run.
     best: list[tuple[int, bool, int] | None] = [None] * len(cands)
     back: list[int | None] = [None] * len(cands)
     for j, (_idx, num) in enumerate(cands):
+        if carrying and kinds[j] not in carrying and not carries_volume(num):
+            continue
         if continues(num, last):
-            best[j] = (1, last is not None and last < num <= last + MAX_NOTE_STEP, -j)
+            best[j] = (1, opens_volume(num), -j)
         for k in range(j):
             if best[k] is None or not follows(num, cands[k][1]):
                 continue
@@ -350,6 +376,120 @@ def hung_continuations(lines: list[str], indents: list[float | None],
         if before is not None and nums[i] == before + 1:
             vouched.add(i)
     return on - vouched
+
+
+# Margin notes that run over the page announce it. Disciplina sets "27, 28 >"
+# under the last margin note of a page -- the notes 27 and 28 are on the next
+# one -- and opens each there with "< 27."; a note that is *continued* over the
+# turn ends in ">" and goes on under "< (73)" or a bare "< 57". The arrows are
+# the layout's furniture, and they hide the note number from every definition
+# shape: Patzold's 93 notes came out with 16 of them merged into the one before.
+_POINTER_LIST = re.compile(r"^\(?\d{1,4}\)?(?:\s*,\s*\(?\d{1,4}\)?)*\s*>$")
+_POINTER_TRAIL = re.compile(r"\s+>$")
+_POINTER_BARE = re.compile(r"^<\s*\(?\d{1,4}\)?\.?$")
+_POINTER_CONTINUED = re.compile(r"^<\s*\(\d{1,4}\)\s*(\S.*)$")
+_POINTER_OPENS = re.compile(r"^[<>]\s*(\d{1,4})\.?\s*(?!\d*>)(\S.*)$")
+# Two announcements make a habit; one "12 >" might be anything.
+POINTER_MIN_LISTS = 2
+
+
+def drop_note_pointers(reconstructions, body_size: float | None
+                       ) -> tuple[int, dict[int, set[int]]]:
+    """Take the run-over arrows out of the small-type lines of a volume that
+    sets them (see ``_POINTER_LIST``).
+
+    Returns how many lines were touched, and per page (index into
+    ``reconstructions``) the notes it announces for the next page -- the
+    numbers outside parentheses; "(73)" is a note continued, not one moved.
+
+    Only in small type, and only where the volume shows the habit at least
+    ``POINTER_MIN_LISTS`` times: an angle bracket in the body, or in the
+    apparatus of an edition, is the author's or the editor's. Lines are edited
+    in place or dropped together with their size, indent and emphasis, so the
+    parallel lists stay parallel.
+    """
+    announced: dict[int, set[int]] = {}
+    if body_size is None:
+        return 0, announced
+
+    def small(s: float | None) -> bool:
+        return (s is not None and body_size - s >= SMALL_TYPE_MIN_DELTA
+                and s <= body_size * SMALL_TYPE_MAX_RATIO)
+
+    habit = sum(1 for r in reconstructions
+                for ln, s in zip(r.lines, r.sizes)
+                if small(s) and _POINTER_LIST.match(ln.strip()))
+    if habit < POINTER_MIN_LISTS:
+        return 0, announced
+
+    touched = 0
+    for page, r in enumerate(reconstructions):
+        keep: list[int] = []
+        for i, (ln, s) in enumerate(zip(r.lines, r.sizes)):
+            t = ln.strip()
+            if not small(s):
+                keep.append(i)
+                continue
+            if _POINTER_LIST.match(t):
+                moved = {int(n) for n in re.findall(r"(?<!\()\b\d{1,4}\b(?!\))", t)}
+                if moved:
+                    announced.setdefault(page, set()).update(moved)
+                touched += 1
+                continue
+            if _POINTER_BARE.match(t):
+                touched += 1
+                continue
+            m = _POINTER_CONTINUED.match(t)
+            if m:
+                r.lines[i] = m.group(1)
+            elif (m := _POINTER_OPENS.match(t)):
+                r.lines[i] = f"{m.group(1)}. {m.group(2)}"
+            elif _POINTER_TRAIL.search(t):
+                r.lines[i] = _POINTER_TRAIL.sub("", t)
+            else:
+                keep.append(i)
+                continue
+            touched += 1
+            keep.append(i)
+        if len(keep) < len(r.lines):
+            r.lines = [r.lines[i] for i in keep]
+            r.sizes = [r.sizes[i] for i in keep]
+            r.indents = [r.indents[i] for i in keep]
+            r.emphases = [r.emphases[i] for i in keep]
+    return touched, announced
+
+
+def pull_announced_notes(fn_blocks: list[list[str] | None],
+                         announced: dict[int, set[int]]) -> int:
+    """Move the notes a page announced for the next one back to that page.
+
+    Their marker stands in the text of the page that announced them, and a
+    marker is only ever looked for among the notes of its own page: Patzold's
+    notes 27/28, 32-34 and 74-76 got a synthetic anchor each. What moves is the
+    head of the next page's block -- the continuation of the last note, if
+    any, and the announced notes after it -- up to the first note that was not
+    announced. A block that does not open with them is left as it is.
+    Returns the number of notes moved.
+    """
+    moved = 0
+    for page in sorted(announced):
+        nums = announced[page]
+        if page + 1 >= len(fn_blocks) or not fn_blocks[page + 1]:
+            continue
+        block = fn_blocks[page + 1]
+        starts = note_starts(block, min(nums) - 1)
+        if not starts or starts[0][1] not in nums:
+            continue
+        cut, taken = len(block), 0
+        for idx, num in starts:
+            if num not in nums:
+                cut = idx
+                break
+            taken += 1
+        fn_blocks[page] = (fn_blocks[page] or []) + block[:cut]
+        fn_blocks[page + 1] = block[cut:] or None
+        moved += taken
+    return moved
 
 
 def split_small_type_block(
