@@ -125,6 +125,19 @@ def test_glued_markers_are_set_off_and_numbers_of_the_text_left_alone():
                                    "a question of books. [2] And of scribes, [3] too."]
 
 
+def test_notes_no_marker_claims_stay_in_the_notes_part():
+    # Klawans, Josephus: with its markers set free between spaces the walk
+    # found none, and the 832 notes left their emptied pages for nowhere.
+    pages = _pages(["Text without markers. 1 Here."], ["notes"])
+    part = read_notes(_stream(1, "Notes", "1. Friedman.", "2. Niditch."))
+    apply_skeleton(pages, [1], part)
+    bound = bind(pages, part, [])
+    assert (bound.form, bound.found, bound.unbound) == ("none", 0, 2)
+    assert [read_mark(s)[0] for s in pages[1].body_lines] == [
+        "Notes", "1 Friedman.", "2 Niditch."]
+    assert pages[0].footnotes == {}
+
+
 def test_a_section_number_is_no_marker():
     # Artificial Humanities: "2.1  Social Robots" and "2.6.1" number sections;
     # "1" after "2." is no note. The marker glued to "sounds." is.
