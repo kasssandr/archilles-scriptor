@@ -1177,10 +1177,13 @@ def reconstruct_body(
                 # Asking the line below whether it opens lowercase was tried and
                 # dropped: an index ("v. Tours", "a. 1066"), a Greek quotation
                 # and a list of "les nautae" open lowercase too (Kern, Waltzing).
-                bare = _TRAILING_NOTE_NUMBER.sub("", _TRAILING_MARKERS.sub("", stripped))
+                # A title carries no flattened note number: the quote has to end
+                # the line itself ("this "hieratic'1" is Lewy's OCR, no title).
+                unmarked = _TRAILING_MARKERS.sub("", stripped)
+                bare = _TRAILING_NOTE_NUMBER.sub("", unmarked)
                 if len(bare) <= threshold and (
                         SENT_END.search(bare)
-                        or (short_lines_only and _CLOSING_QUOTE.search(bare))):
+                        or (short_lines_only and _CLOSING_QUOTE.search(unmarked))):
                     end_paragraph()
 
         # A page of the notes part whose notes have all left: nothing of it
