@@ -29,6 +29,7 @@ from dataclasses import dataclass
 
 from scriptor.page import Line, SourcePage
 from scriptor.reflow.columns import Gutter, reading_order
+from scriptor.reflow.pagelabel import decode_label
 
 # Points. Fragments of one printed line scatter by ~0.4pt on the baseline. Two
 # points is already too generous: on the baseline it merges two real lines of Seeck
@@ -182,6 +183,58 @@ def _margin_line_numbers(lines: list[Line], tolerance: float) -> set[int]:
     return found
 
 
+def _split_margin_folio(clusters: list[list[Line]]) -> list[list[Line]]:
+    """Take a folio set in the margin beside the last line of text off that line.
+
+    Beck sets Fried's *Karl der Große* that way: the page number stands in the
+    outer margin on the baseline of the last line of text, the running title on
+    a line of its own below it. Clustered on the baseline, the number became the
+    line's last word on the recto and its first on the verso ("Austra- 35",
+    "Rom-" / "36 gründer" read as "Rom36 gründer"), the label detection never
+    saw it, and 87 % of the volume's pages went unattested. Where the text stops
+    short of the foot, the same number already stands alone and was read.
+
+    Taken off, it becomes a printed line of its own right after the line it
+    stood beside, which is the order a short page already gives: the label
+    detection decides what it is, and a number it refuses goes back into the
+    text as before. Narrow on purpose: a lone label, the outermost fragment of
+    the last line in the body's type size, wholly outside the area that size
+    covers. A table's last cell or a contents entry's page number stands inside
+    that area; a marginal paragraph number beside any other line is not
+    touched.
+    """
+    sized = [(ln, ln.size) for cluster in clusters for ln in cluster
+             if ln.size is not None and any(c.isalpha() for c in ln.text)]
+    if not sized:
+        return clusters
+    weights: dict[float, int] = {}
+    for ln, size in sized:
+        weights[size] = weights.get(size, 0) + len(ln.text)
+    body = max(weights.items(), key=lambda kv: (kv[1], kv[0]))[0]
+    in_body = [ln for ln, size in sized if abs(size - body) <= MARGIN_FOLIO_SIZE_SLACK]
+    left = min(ln.box.x0 for ln in in_body)
+    right = max(ln.box.x1 for ln in in_body)
+
+    body_ids = {id(ln) for ln in in_body}
+    last = max((i for i, cluster in enumerate(clusters)
+                if any(id(ln) in body_ids for ln in cluster)), default=None)
+    if last is None or len(clusters[last]) < 2:
+        return clusters
+    cluster = clusters[last]
+    for pos, outside in ((0, lambda ln: ln.box.x1 < left),
+                         (-1, lambda ln: ln.box.x0 > right)):
+        folio = cluster[pos]
+        if decode_label(folio.text) is not None and outside(folio):
+            rest = [ln for ln in cluster if ln is not folio]
+            return clusters[:last] + [rest] + clusters[last + 1:] + [[folio]]
+    return clusters
+
+
+# Points. Fragments of the body's type size vary by a tenth of a point where a
+# producer scales justified lines (Fried: 9.9 and 10.1 beside 10.0).
+MARGIN_FOLIO_SIZE_SLACK = 0.5
+
+
 def _has_wide_gap(cluster: list[Line], threshold: float) -> bool:
     return any(
         b.box.x0 - a.box.x1 > threshold for a, b in zip(cluster, cluster[1:])
@@ -242,6 +295,7 @@ def reconstruct(
     if sideways:
         blocks = [[ln] for ln in sideways] + blocks
     clusters = [cluster for block in blocks for cluster in _cluster(block, tolerance)]
+    clusters = _split_margin_folio(clusters)
 
     threshold = (page.width or 0.0) * WIDE_GAP_FRACTION
     inner = clusters[1:-1] if len(clusters) > 2 else []
