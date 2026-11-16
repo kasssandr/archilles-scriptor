@@ -129,17 +129,71 @@ def _opens_sentence(ch: str, after: str) -> bool:
     return _ltr_letter(ch) and ch.isupper() and (after == "" or after.isspace() or after.islower())
 
 
-def _open_gaps(raw_spans: list[dict]) -> list[dict]:
-    """``rawdict`` spans with their text, a space put where the pen moved over one."""
+# The reverse: a space glyph the pen moved back over. Some typesetters write a
+# word space and then set the next glyph back over it, so the file reads
+# "emerged). 1 One" where the page shows "emerged).¹ One", "War , ed." for
+# "War, ed." and "modiﬁ ed" for "modiﬁed" -- Klawans, Josephus and the
+# Theologies of Ancient Judaism (OUP 2012): 838 note numbers, 2169 stops and
+# commas, 2237 ligatures, and a marker standing free between spaces is no
+# marker (all 832 endnotes found none). The pen goes all the way back: the
+# next glyph begins where the space begins, 6432 times within 0.02 em of it,
+# where a real word space of the volume runs at least 0.12 em before the next
+# glyph begins, and of Ando's, Barbiero's and the Prüfvorrat's at least 0.08.
+#
+# Only drawn text in a horizontal line is asked. An OCR layer is invisible
+# (alpha 0), and its glyph boxes are the engine's guess: Lewy's carries 150
+# such "spaces" in its debris. Rotated text (McNamara's tables) does not move
+# along x at all. Right-to-left script runs the other way. And the space after
+# a raised number stays: it sets the marker off from what follows, and
+# "33b)101—is" is a range to the marker search where "33b)101 —is" is a note.
+_OVERDRAWN_EM = 0.03
+
+
+def _rtl(ch: str) -> bool:
+    return unicodedata.bidirectional(ch) in ("R", "AL")
+
+
+def _overdrawn(before: tuple[dict, dict], space: tuple[dict, dict],
+               c: dict, s: dict) -> bool:
+    """Whether ``c`` is drawn back over the ``space`` written after ``before``."""
+    bc, bs = before
+    sc, ss = space
+    if not all(span.get("alpha", 255) for span in (bs, ss, s)):
+        return False
+    if _rtl(bc["c"]) or _rtl(c["c"]):
+        return False
+    if bc["c"].isdigit() and bs["size"] < 0.85 * s["size"]:
+        return False
+    return abs(c["bbox"][0] - sc["bbox"][0]) <= _OVERDRAWN_EM * max(bs["size"], s["size"])
+
+
+def _open_gaps(raw_spans: list[dict], horizontal: bool = True) -> list[dict]:
+    """``rawdict`` spans with their text, a space put where the pen moved over
+    one, and taken out where the pen moved back over it."""
     flat = [c["c"] for s in raw_spans for c in s.get("chars", ())]
     at = 0                      # index of the current char in ``flat``
     out: list[dict] = []
     prev = None                 # (char, span) last drawn
+    before_space = None         # (char, span) drawn before ``prev``, if that is one space
     drawn = ""                  # the line's text so far
     for s in raw_spans:
         text = []
         for c in s.get("chars", ()):
             ch = c["c"]
+            if (horizontal and before_space is not None and not ch.isspace()
+                    and _overdrawn(before_space, prev, c, s)):
+                # The space just drawn is the last character written: in this
+                # span's text, or at the end of the span before.
+                if text and text[-1] == " ":
+                    text.pop()
+                    drawn = drawn[:-1]
+                elif not text and out and out[-1]["text"].endswith(" "):
+                    out[-1]["text"] = out[-1]["text"][:-1]
+                    drawn = drawn[:-1]
+            if ch == " " and prev is not None and not prev[0]["c"].isspace():
+                before_space = prev
+            else:
+                before_space = None
             if prev is not None and not ch.isspace() and not prev[0]["c"].isspace():
                 pc, ps = prev
                 gap = c["bbox"][0] - pc["bbox"][2]
@@ -218,7 +272,9 @@ def read_page(page: pymupdf.Page, index: int, *, glyphs: bool = False,
             kept = []
             hidden = False
             gap = False
-            for s in _open_gaps(raw_line["spans"]):
+            direction = raw_line.get("dir", (1.0, 0.0))
+            horizontal = abs(direction[0] - 1) < 1e-3 and abs(direction[1]) < 1e-3
+            for s in _open_gaps(raw_line["spans"], horizontal):
                 if not _span_text(s):
                     continue
                 if white and _invisible(s, ground):
