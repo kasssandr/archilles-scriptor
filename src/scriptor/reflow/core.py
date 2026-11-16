@@ -36,6 +36,9 @@ from scriptor.reflow.pagelabel import PAGE_MARKER_RE, decode_label, detect_page_
 
 # --- Configuration ---
 INDENT = "    "                # indent of footnotes at the end of the paragraph
+# An asterisk set as a note marker: glued to the word before it, standing
+# alone. "*kuningaz" opens a word and stays the author's.
+_ASTERISK_MARKER = re.compile(r"(?<=[^\s\d*\\])\*(?=\s|$)")
 # FOOTNOTE_RE, PLACED_MARKER_RE, SUPERSCRIPT_DIGITS and substitute_markers now
 # live in footnotes.py; page-label detection lives in pagelabel.py (both above).
 
@@ -260,16 +263,44 @@ def parse_page(
     # The size-verified block from the page geometry. Lines above its first
     # definition are the tail of a note that began on the previous page.
     fn_continuation: str | None = None
+    asterisk_note = False
     if fn_block:
         block = [ln.translate(SUPERSCRIPT_DIGITS).rstrip() for ln in fn_block]
         block_notes, leading = _assemble_footnotes(block, definition_start, last_note)
         footnotes.update(block_notes)
+
+        # An asterisk note: a line of the leading run opens with "*", and the
+        # page's text carries the asterisk glued to a word -- the title of an
+        # article, where the journal says where it first appeared. It is a
+        # note of its own, number 0, not the tail of the note before: on
+        # Patzold's first page there is no note before it, and as a
+        # continuation that could not be attached the whole of it was lost.
+        # Without the asterisk in the text the run stays a continuation.
+        # The asterisk itself stays where it is: it mostly stands in a title,
+        # and a heading resolves no marker -- "[0]" was left there as text. The
+        # note is anchored the way every note is whose marker went unplaced.
+        star = next((k for k, ln in enumerate(leading) if ln.lstrip().startswith("*")),
+                    None)
+        if (star is not None and 0 not in footnotes
+                and any(_ASTERISK_MARKER.search(ln) for ln in body_lines)):
+            footnotes[0] = dehyphenate_join(leading[star:]).lstrip("* ").strip()
+            leading = leading[:star]
+            asterisk_note = True
+        if leading and last_note is None and asterisk_note:
+            # Above the asterisk note, before any note of the volume: nothing
+            # this could continue. Small type the page set, not apparatus
+            # ("© Ш. Патцольд; Г. И. Борисов (перевод), 2017") -- back to the
+            # text rather than lost with an unattachable continuation.
+            body_lines = body_lines + leading
+            leading = []
         if leading:
             fn_continuation = dehyphenate_join(leading).strip() or None
 
     # Replace footnote markers in the body with [NN] (in-place on body_lines)
     # On bare text only a marker glued to its word is trusted (see there).
-    body_lines = substitute_markers(body_lines, footnotes,
+    body_lines = substitute_markers(body_lines,
+                                    {k: v for k, v in footnotes.items()
+                                     if not (asterisk_note and k == 0)},
                                     loose=geometry_verified or bool(fn_block))
 
     return Page(
@@ -1737,6 +1768,11 @@ def main(
     )
     if doc_body_size is not None:
         print(f"Dominant type size: {doc_body_size}pt", file=sys.stderr)
+    from scriptor.reflow.footnotes import drop_note_pointers
+    pointers, announced = drop_note_pointers(reconstructions, doc_body_size)
+    if pointers:
+        print(f"Run-over arrows of margin notes taken out: {pointers} lines",
+              file=sys.stderr)
     # In reading order, carrying the highest note opened so far: a four-digit
     # number opens a page's first note only where it continues the volume's
     # numbering. Within a block, each note follows the one before it.
@@ -1750,6 +1786,12 @@ def main(
         if opened:
             last_note = max(last_note or 0, *opened)
     fn_blocks = [s.notes if s else None for s in splits]
+    if announced:
+        from scriptor.reflow.footnotes import pull_announced_notes
+        pulled = pull_announced_notes(fn_blocks, announced)
+        if pulled:
+            print(f"Notes announced for the next page, moved back to their "
+                  f"marker's page: {pulled}", file=sys.stderr)
     cut = sum(1 for s in splits if s)
     if cut:
         print(f"Footnote blocks cut by type size: {cut} pages", file=sys.stderr)
