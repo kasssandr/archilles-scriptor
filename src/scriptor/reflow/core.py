@@ -830,6 +830,13 @@ def calibrate_threshold(pages: list[Page], peak_fraction: float = 0.25) -> tuple
 # Taubes).
 SENT_END = re.compile(r"[.!?](\s*[»«“”\"’'])*$")
 
+# A title, though, ends on the quote itself and on no stop: "IV. The wording
+# and meaning of the “Constitutum Constantini”" (Fried, Donation), "“Scribe”
+# and “Sage”" (van der Toorn), the cells of a family tree. A paragraph made of
+# short lines only still closes on the quote — the sentence a short line breaks
+# off has run full lines before it.
+_CLOSING_QUOTE = re.compile(r"[»«“”\"’']$")
+
 # Placed footnote markers at the end of a line ("… Occident.” [1]" or even
 # "… country. [4] [5]"). They stand *after* the full stop and would hide it
 # from SENT_END — the paragraph-end check looks at the line without them.
@@ -839,8 +846,9 @@ _TRAILING_MARKERS = re.compile(r"(\s*\[\d{1,4}\])+$")
 # "as “Belgian Rome.”2", "had disintegrated.4". An endnote volume leaves every
 # one of them in the body, and a chapter whose paragraphs all close on a note
 # came out as two paragraphs (Gregory, Byzantium). Only directly behind the
-# closing punctuation, so that "in 410" stays a number in the sentence.
-_TRAILING_NOTE_NUMBER = re.compile(r"(?<=[.!?»«“”\"’'])\d{1,3}$")
+# closing punctuation, so that "in 410" stays a number in the sentence, and
+# not behind a digit: "für 90.000" and "УДК 321.64" are one number (Bauer).
+_TRAILING_NOTE_NUMBER = re.compile(r"(?<=[.!?»«“”\"’'])(?<!\d[.,])\d{1,3}$")
 
 
 # Numbered heading at the start of a paragraph: "3.4. Probleme um Welf VI." and,
@@ -984,6 +992,7 @@ def reconstruct_body(
     cur_occ: dict[int, FnKey] = {}             # marker occurrence -> footnote
     occ_index = 0                              # [N] occurrences seen in this paragraph
     pending_hyphen = False                     # previous chunk ends on a line-break hyphen
+    short_lines_only = False                   # every line of the running paragraph was short
     pending_page_marker: str | None = None     # [p. NN] not yet inserted
 
     def end_paragraph(level: int = 0):
@@ -1148,6 +1157,9 @@ def reconstruct_body(
                     seen_this_page.add(num)
                 occ_index += 1
 
+            if not cur_chunks:
+                short_lines_only = True
+            short_lines_only = short_lines_only and len(stripped) <= threshold
             append_word_segment(content)
 
             if ends_hyphen:
@@ -1166,7 +1178,9 @@ def reconstruct_body(
                 # dropped: an index ("v. Tours", "a. 1066"), a Greek quotation
                 # and a list of "les nautae" open lowercase too (Kern, Waltzing).
                 bare = _TRAILING_NOTE_NUMBER.sub("", _TRAILING_MARKERS.sub("", stripped))
-                if len(bare) <= threshold and SENT_END.search(bare):
+                if len(bare) <= threshold and (
+                        SENT_END.search(bare)
+                        or (short_lines_only and _CLOSING_QUOTE.search(bare))):
                     end_paragraph()
 
         # A page of the notes part whose notes have all left: nothing of it

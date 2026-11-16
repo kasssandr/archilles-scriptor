@@ -46,3 +46,25 @@ def test_a_closing_quote_behind_the_stop_ends_the_sentence():
     for line in ("characterized as “old.”", "sich selbst offenbar machen.\"",
                  "zusammenschmelzen.«", "der Königssalbung.“", "Ebd., S. 18. \"\""):
         assert SENT_END.search(line), line
+
+
+def test_a_title_on_a_closing_quote_stays_its_own_paragraph():
+    # Fried, Donation of Constantine: the old rule took any quote for an end,
+    # and only that kept the title off the text below it.
+    paras = _paras(["IV. The wording of the “Constitutum Constantini”",
+                    FULL, "imagined to have become a ghost town."])
+    assert len(paras) == 2
+    assert paras[0].endswith("“Constitutum Constantini”")
+
+
+def test_a_title_over_two_short_lines_stays_its_own_paragraph():
+    paras = _paras(["The early tradition in the context of", "the “Constitutum Constantini”",
+                    FULL, "imagined to have become a ghost town."])
+    assert len(paras) == 2
+
+
+def test_a_number_with_a_thousands_point_is_no_note():
+    # Bauer: "für 90.000" / "bis 100.000 USD" is one sentence.
+    paras = _paras([FULL, "bei der Frieze Art Fair 2005 für 90.000",
+                    "bis 100.000 USD je Druck verkauft."])
+    assert len(paras) == 1
