@@ -732,6 +732,29 @@ def assign_modes(pages: list[Page]) -> None:
         p.mode = mode
 
 
+def end_entries_with_region(pages: list[Page]) -> int:
+    """Return to running text the bibliography-mode pages the regions read as
+    running text; the number of pages changed.
+
+    The mode is set by a trigger that fires once and then persists until the
+    next trigger. A bibliography closing the volume needs no end, but one in
+    the middle does: Klinghardt binds both parts of *Das älteste Evangelium*
+    into one PDF, the common bibliography at the end of part I, and from its
+    heading on, all of part II -- 831 pages -- was set as list entries,
+    whose renderer emits no footnotes. 211 of 941 notes went that way. The
+    regions close an apparatus on evidence the mode never consults (a chapter
+    the outline confirms, a run of prose pages), and they had closed this one
+    after its 59 pages. Only `main` takes a page back: an index or a list of
+    abbreviations behind the bibliography stays a list.
+    """
+    ended = 0
+    for p in pages:
+        if p.mode == "entries-versal" and p.region == "main":
+            p.mode = "main"
+            ended += 1
+    return ended
+
+
 def calibrate_threshold(pages: list[Page], peak_fraction: float = 0.25) -> tuple[int, Counter[int]]:
     """
     Collects the lengths of all body lines, determines the left edge of the
@@ -2305,6 +2328,13 @@ def main(
 
     from scriptor.reflow.regions import assign_regions
     assign_regions(pages, page_headers=page_headers)
+    ended = end_entries_with_region(pages)
+    if ended:
+        print(
+            f"Bibliography mode ended where the region did: {plural(ended, 'page')} "
+            f"back to running text",
+            file=sys.stderr,
+        )
     named = Counter(p.region for p in pages if p.region and p.region != "main")
     print(
         f"Regions named: {dict(named) if named else 'none — the document reads as running text'}",

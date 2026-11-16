@@ -119,6 +119,43 @@ def test_assign_modes_keeps_page1_fallback():
     assert p1.mode == "main"
 
 
+def _list_page(n=20):
+    return Page(-1, [f"AUTOR, A., Titel {k}, Ort 19{k:02d}" for k in range(n)], {})
+
+
+def test_bibliography_mode_ends_where_its_region_does():
+    # Klinghardt: two parts bound into one PDF, the bibliography between them.
+    # The mode's trigger fires once and persisted to the end of the volume, so
+    # part II was set as list entries and its footnotes were never emitted.
+    from scriptor.reflow.core import end_entries_with_region
+    from scriptor.reflow.regions import assign_regions
+
+    literatur = _list_page()
+    literatur.body_lines.insert(0, "6. Literatur")
+    pages = ([_prose_page(70, 15) for _ in range(4)] + [literatur, _list_page()]
+             + [_prose_page(70, 15) for _ in range(8)])
+    for k, p in enumerate(pages):
+        p.label, p.label_source = str(k + 1), "printed"
+    assign_modes(pages)
+    assert [p.mode for p in pages[4:]] == ["entries-versal"] * 10
+    assign_regions(pages)
+    assert [p.region for p in pages[4:6]] == ["bibliography"] * 2
+
+    assert end_entries_with_region(pages) == 8
+    assert [p.mode for p in pages[4:6]] == ["entries-versal"] * 2
+    assert all(p.mode == "main" for p in pages[6:])
+
+
+def test_list_behind_the_bibliography_stays_a_list():
+    from scriptor.reflow.core import end_entries_with_region
+
+    pages = [_list_page() for _ in range(3)]
+    for p, region in zip(pages, ["bibliography", "index", "abbreviations"]):
+        p.mode, p.region = "entries-versal", region
+    assert end_entries_with_region(pages) == 0
+    assert all(p.mode == "entries-versal" for p in pages)
+
+
 def test_calibrate_fallback_on_empty_histogram():
     # No main pages at all -> must not return 0 (which would suppress all
     # paragraph breaks); a sane positive fallback is required.
