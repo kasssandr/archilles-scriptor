@@ -198,10 +198,11 @@ def _split_margin_folio(clusters: list[list[Line]]) -> list[list[Line]]:
     stood beside, which is the order a short page already gives: the label
     detection decides what it is, and a number it refuses goes back into the
     text as before. Narrow on purpose: a lone label, the outermost fragment of
-    the last line in the body's type size, wholly outside the area that size
-    covers. A table's last cell or a contents entry's page number stands inside
-    that area; a marginal paragraph number beside any other line is not
-    touched.
+    the last line in the body's type size, that line on the block's leading,
+    the number wholly outside the area that size covers and the only one there
+    on the page. A table's last cell stands inside that area; a contents page
+    has a number out there on every line; a running footer stands off the
+    block; a marginal paragraph number beside any other line is not touched.
     """
     sized = [(ln, ln.size) for cluster in clusters for ln in cluster
              if ln.size is not None and any(c.isalpha() for c in ln.text)]
@@ -220,19 +221,47 @@ def _split_margin_folio(clusters: list[list[Line]]) -> list[list[Line]]:
                 if any(id(ln) in body_ids for ln in cluster)), default=None)
     if last is None or len(clusters[last]) < 2:
         return clusters
+
+    def outside(ln: Line) -> bool:
+        return ln.box.x1 < left or ln.box.x0 > right
+
+    # A contents page sets every entry's number past its short titles: there
+    # each line has one, and the last is no folio (Bauer, Carlomagno).
+    numbers = [ln for cluster in clusters for ln in cluster
+               if decode_label(ln.text) is not None and outside(ln)]
+    if len(numbers) != 1:
+        return clusters
     cluster = clusters[last]
-    for pos, outside in ((0, lambda ln: ln.box.x1 < left),
-                         (-1, lambda ln: ln.box.x0 > right)):
-        folio = cluster[pos]
-        if decode_label(folio.text) is not None and outside(folio):
-            rest = [ln for ln in cluster if ln is not folio]
-            return clusters[:last] + [rest] + clusters[last + 1:] + [[folio]]
+    # The line beside it is a line of the text block: it keeps the block's
+    # leading. A running footer stands apart from the block, and its folio
+    # belongs to it -- Wolf's "# 16 Die Babenberger … 482", Ando's "idols and
+    # their critics 39" are read as one furniture line downstream.
+    # Measured above the line, or on a plate with two lines of caption the
+    # footer's own distance is half the sample.
+    above = clusters[:last]
+    grid = sorted(b[0].baseline - a[0].baseline
+                  for a, b in zip(above, above[1:])
+                  if any(id(ln) in body_ids for ln in a)
+                  and any(id(ln) in body_ids for ln in b)
+                  and b[0].baseline > a[0].baseline)
+    if len(grid) < MARGIN_FOLIO_MIN_GRID:
+        return clusters
+    leading = grid[len(grid) // 2]
+    if cluster[0].baseline - clusters[last - 1][0].baseline > MARGIN_FOLIO_LEADING * leading:
+        return clusters
+    text = [ln for ln in cluster if ln is not numbers[0]]
+    if numbers[0] is cluster[0] or numbers[0] is cluster[-1]:
+        return clusters[:last] + [text] + clusters[last + 1:] + [[numbers[0]]]
     return clusters
 
 
 # Points. Fragments of the body's type size vary by a tenth of a point where a
 # producer scales justified lines (Fried: 9.9 and 10.1 beside 10.0).
 MARGIN_FOLIO_SIZE_SLACK = 0.5
+# How far below the line before it the line beside the folio may stand, in
+# the page's leading: a line of the block keeps it (Fried: 13.85pt each).
+MARGIN_FOLIO_LEADING = 1.25
+MARGIN_FOLIO_MIN_GRID = 3
 
 
 def _has_wide_gap(cluster: list[Line], threshold: float) -> bool:

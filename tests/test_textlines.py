@@ -289,6 +289,12 @@ def _fried_page(folio_x0, folio, body_x0, title_x0):
         _body(folio, folio_x0, 537.8, x1=folio_x0 + 10, size=9.0),
         _body("Die unbekannte Kindheit eines Herrschers", title_x0, 566.0,
               x1=366.0, size=8.0),
+        _body("haben. Doch besaß die Mutter, der vermutlich die Erziehung des ",
+              body_x0, 468.5),
+        _body("Kleinkindes, die Mutter, der Erziehung oblag, noch in ersten Jah-",
+              body_x0, 482.4),
+        _body("ren der Mutter, der vermutlich die Erziehung des Kindes oblag, ",
+              body_x0, 496.2),
         _body("Kleinkindes oblag, noch in Karls ersten Königsjahren einigen Ein-",
               body_x0, 510.1),
         _body("ﬂuß auf den Sohn und unter den Franken, bevor Karl sich ihm ent-",
@@ -313,6 +319,27 @@ def test_a_folio_beside_the_last_line_on_a_verso_is_a_line_of_its_own():
     assert result.lines[-3] == (
         "zog. Bertrada entstammte einer der mächtigsten Familien Austra-")
     assert result.lines[-1] == "36"
+
+
+def test_a_running_footer_keeps_its_folio():
+    # Wolf, Ando: the folio stands on the footer, which stands off the block.
+    page = _fried_page(356.0, "35", 46.0, 221.0)
+    title = page.lines[1]
+    page.lines[1] = _body(title.text, 221.0, 537.8 + 30.0, x1=340.0, size=10.0)
+    page.lines[0] = _body("35", 356.0, 537.8 + 30.0, x1=366.0, size=9.0)
+    result = reconstruct(page)
+    assert result.lines[-1] == "Die unbekannte Kindheit eines Herrschers 35"
+
+
+def test_a_contents_page_keeps_its_numbers():
+    # Every entry's number stands past the short titles; the last is no folio.
+    entries = ["Vorwort", "Prolog", "Der Knabe", "Die Umwelt", "Der Kriegskönig"]
+    lines = []
+    for k, title in enumerate(entries):
+        lines += [_body(title, 46.0, 100.0 + 14 * k, x1=46.0 + 8 * len(title)),
+                  _body(str(9 + 20 * k), 356.0, 100.0 + 14 * k, x1=366.0, size=9.0)]
+    result = reconstruct(SourcePage(index=5, width=394.0, height=618.0, lines=lines))
+    assert result.lines[-1] == "Der Kriegskönig 89"
 
 
 def test_a_number_inside_the_type_area_stays_on_its_line():
