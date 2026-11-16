@@ -914,7 +914,16 @@ def assign_regions(
             # a region that began in the body keeps being closable even once
             # it has run into the tail.
             in_tail = position >= tail_begins
-        elif current == "preface" and position >= zone_end:
+        elif (current == "preface" and position >= zone_end
+              and names_region(position + 1) != "preface"
+              and (names_region(position - 1) != "preface" or page.heading)):
+            # Unless a page headed with its name stands beside this one: a
+            # preface set with its name on the recto and the volume's title on
+            # the verso runs on across the verso (Making Martyrs, "Предисловие"
+            # on 7-37), and the zone rule alone ended it on every verso, the
+            # hyphen across each page break with it. Its last verso (38) is
+            # still the preface's until a heading opens the next chapter (39).
+            #
             # A preface ends where the front matter does. None of the closing
             # rules below reach it — they are written for an apparatus, and the
             # prose rule would end a preface on its second page, a preface

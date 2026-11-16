@@ -193,3 +193,35 @@ def test_a_contents_known_only_from_its_running_head_still_ends_the_zone():
 
     assign_regions(pages, page_headers=heads)
     assert pages[5].region == "preface"
+
+
+def _making_martyrs():
+    """Making Martyrs: the preface opens under its heading on 7 and runs to 38,
+    "Предисловие" heading every recto, the author's name every verso; the
+    first chapter opens on 39."""
+    pages = [_page(str(n), "frontmatter") for n in range(1, 7)]
+    pages.append(_page("7", "main", ("Vorwort",)))
+    pages += [_page(str(n)) for n in range(8, 39)]
+    chapter = _page("39")
+    chapter.heading = "Kapitel 1"
+    pages += [chapter] + [_page(str(n)) for n in range(40, 320)]
+    heads = [None] * 6 + [None] + [
+        "Vorwort" if n % 2 else "Julija Min'kova" for n in range(8, 39)]
+    heads += ["Kapitel 1"] * (len(pages) - len(heads))
+    return pages, heads
+
+
+def test_a_preface_headed_on_the_recto_runs_across_the_verso():
+    """The zone rule ended the preface on every verso, and the region flickered
+    preface/main page by page -- each page break a region break, each word
+    hyphenated across it torn in two."""
+    pages, heads = _making_martyrs()
+    assign_regions(pages, page_headers=heads)
+    assert all(p.region == "preface" for p in pages[6:38])
+
+
+def test_its_last_verso_is_the_prefaces_and_the_chapter_is_not():
+    pages, heads = _making_martyrs()
+    assign_regions(pages, page_headers=heads)
+    assert pages[37].region == "preface"          # 38, verso, no heading
+    assert all(p.region == "main" for p in pages[38:])
