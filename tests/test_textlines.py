@@ -273,3 +273,92 @@ def test_a_slightly_tall_scrap_is_not_a_margin_stamp():
     result = reconstruct(page)
 
     assert result.lines[-1] == "•־־׳־ 399"
+
+
+# --- a folio in the margin beside the last line of text ---------------------
+# Fried, *Karl der Große* (Beck 2013): the page number stands in the outer
+# margin on the baseline of the last line of text, the running title below.
+
+def _body(text, x0, baseline, x1=330.0, size=10.0):
+    box = Box(x0, baseline - 8.0, x1, baseline + 2.0)
+    return Line(spans=[Span(text, box=box, size=size)], box=box, baseline=baseline)
+
+
+def _fried_page(folio_x0, folio, body_x0, title_x0):
+    return SourcePage(index=35, width=394.0, height=618.0, lines=[
+        _body(folio, folio_x0, 537.8, x1=folio_x0 + 10, size=9.0),
+        _body("Die unbekannte Kindheit eines Herrschers", title_x0, 566.0,
+              x1=366.0, size=8.0),
+        _body("haben. Doch besaß die Mutter, der vermutlich die Erziehung des ",
+              body_x0, 468.5),
+        _body("Kleinkindes, die Mutter, der Erziehung oblag, noch in ersten Jah-",
+              body_x0, 482.4),
+        _body("ren der Mutter, der vermutlich die Erziehung des Kindes oblag, ",
+              body_x0, 496.2),
+        _body("Kleinkindes oblag, noch in Karls ersten Königsjahren einigen Ein-",
+              body_x0, 510.1),
+        _body("ﬂuß auf den Sohn und unter den Franken, bevor Karl sich ihm ent-",
+              body_x0, 523.9),
+        _body("zog. Bertrada entstammte einer der mächtigsten Familien Austra-",
+              body_x0, 537.8),
+    ])
+
+
+def test_a_folio_beside_the_last_line_on_a_recto_is_a_line_of_its_own():
+    result = reconstruct(_fried_page(356.0, "35", 46.0, 221.0))
+    assert result.lines[-3:] == [
+        "zog. Bertrada entstammte einer der mächtigsten Familien Austra-",
+        "Die unbekannte Kindheit eines Herrschers",
+        "35",
+    ]
+
+
+def test_a_folio_beside_the_last_line_on_a_verso_is_a_line_of_its_own():
+    # Read along, "Rom-" / "36 gründer" had become "Rom36 gründer".
+    result = reconstruct(_fried_page(29.0, "36", 66.0, 29.0))
+    assert result.lines[-3] == (
+        "zog. Bertrada entstammte einer der mächtigsten Familien Austra-")
+    assert result.lines[-1] == "36"
+
+
+def test_a_running_footer_keeps_its_folio():
+    # Wolf, Ando: the folio stands on the footer, which stands off the block.
+    page = _fried_page(356.0, "35", 46.0, 221.0)
+    title = page.lines[1]
+    page.lines[1] = _body(title.text, 221.0, 537.8 + 30.0, x1=340.0, size=10.0)
+    page.lines[0] = _body("35", 356.0, 537.8 + 30.0, x1=366.0, size=9.0)
+    result = reconstruct(page)
+    assert result.lines[-1] == "Die unbekannte Kindheit eines Herrschers 35"
+
+
+def test_a_contents_page_keeps_its_numbers():
+    # Every entry's number stands past the short titles; the last is no folio.
+    entries = ["Vorwort", "Prolog", "Der Knabe", "Die Umwelt", "Der Kriegskönig"]
+    lines = []
+    for k, title in enumerate(entries):
+        lines += [_body(title, 46.0, 100.0 + 14 * k, x1=46.0 + 8 * len(title)),
+                  _body(str(9 + 20 * k), 356.0, 100.0 + 14 * k, x1=366.0, size=9.0)]
+    result = reconstruct(SourcePage(index=5, width=394.0, height=618.0, lines=lines))
+    assert result.lines[-1] == "Der Kriegskönig 89"
+
+
+def test_a_number_inside_the_type_area_stays_on_its_line():
+    # A contents entry or a table's last cell ends at the measure, not past it.
+    page = SourcePage(index=5, width=394.0, height=618.0, lines=[
+        _body("Vorwort", 46.0, 100.0, x1=90.0),
+        _body("9", 320.0, 100.0, x1=330.0),
+        _body("Der Knabe und seine Welt, ein langer Titel der Zeile", 46.0, 114.0),
+    ])
+    result = reconstruct(page)
+    assert result.lines == ["Vorwort 9", "Der Knabe und seine Welt, ein langer Titel der Zeile"]
+
+
+def test_a_marginal_number_beside_another_line_is_not_taken():
+    # A paragraph number in the margin beside the first line counts the text.
+    page = SourcePage(index=5, width=394.0, height=618.0, lines=[
+        _body("12", 340.0, 100.0, x1=350.0),
+        _body("Erste Zeile des Absatzes mit seiner Randnummer daneben", 46.0, 100.0),
+        _body("Zweite Zeile des Absatzes, die ohne jede Nummer auskommt", 46.0, 114.0),
+    ])
+    result = reconstruct(page)
+    assert result.lines[0] == "Erste Zeile des Absatzes mit seiner Randnummer daneben 12"

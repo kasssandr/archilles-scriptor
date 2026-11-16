@@ -187,3 +187,29 @@ def test_the_sidecar_names_the_collection_and_the_page_a_note_is_printed_on():
         "collection": "Zur Einführung",
         "printed_on": {"label": "2", "occurrence": 1, "position": 2},
     }
+
+
+def test_a_citation_by_book_and_chapter_holds_no_marker():
+    # Fried, *Karl der Große* p. 85: Isidor "(14,1,1)" read as two markers 1
+    # started the count again; every chapter after took the next one's notes.
+    pages = _pages(["Erstens.1 Das Buch 14 setzte ein (14,1,1) und (2Tim 2,1).",
+                    "Zweitens.2"], ["notes"])
+    part = read_notes(_stream(1, "Zum 1. Kapitel", "1 Eins.", "2 Zwei."))
+    apply_skeleton(pages, [1], part)
+    bound = bind(pages, part, [0])
+    assert (bound.found, bound.hanging) == (2, 0)
+    assert pages[0].body_lines == [
+        "Erstens. [1] Das Buch 14 setzte ein (14,1,1) und (2Tim 2,1).",
+        "Zweitens. [2]"]
+
+
+def test_a_marker_before_a_colon_is_a_marker():
+    # Fried p. 261: "nach dem Maß der eigenen Seele2: Eine …". Without its 2
+    # the collection never opened.
+    pages = _pages(["Leo III.1 Karl war alt, nach dem Maß der Seele2: Eine Zeit."],
+                   ["notes"])
+    part = read_notes(_stream(1, "Zum 6. Kapitel", "1 Eins.", "2 Zwei."))
+    apply_skeleton(pages, [1], part)
+    bound = bind(pages, part, [0])
+    assert bound.found == 2
+    assert pages[0].footnotes == {1: "Eins.", 2: "Zwei."}

@@ -647,3 +647,25 @@ def test_a_number_closing_a_line_of_prose_is_no_folio():
     # Taubes p. 7: "Einleitung", then "… reichen von 1953".
     cleaned, kept = _strip(_run([_HEAD, "Die Texte reichen von 1953"]))
     assert kept == [(1, _HEAD)]
+
+
+def test_a_title_whose_folio_stands_on_a_line_of_its_own_is_a_footer():
+    # Fried, *Karl der Große*: the folio beside the last line of text, the
+    # chapter title below it, each on its own line. Fewer pages than the
+    # frequency path asks for; the bare numbers count them exactly.
+    feet = {i: f"Der Knabe\n{30 + i}" for i in range(4, 18, 2)}
+    footers = detect_running_footers(_wolf_pages(feet), min_occurrences=61)
+    assert any(_strings_are_similar(f, "Der Knabe") for f in footers)
+
+
+def test_a_title_beside_numbers_that_count_no_pages_is_no_footer():
+    feet = {i: f"Der Knabe\n{30 + 3 * i}" for i in range(4, 18, 2)}
+    footers = detect_running_footers(_wolf_pages(feet), min_occurrences=61)
+    assert not any(_strings_are_similar(f, "Der Knabe") for f in footers)
+
+
+def test_a_line_of_the_apparatus_beside_a_folio_is_no_footer():
+    # "A. a. O., S. 292." repeats with the pages; it is no title.
+    feet = {i: f"A. a. O., S. 29{i % 10}.\n{30 + i}" for i in range(4, 17)}
+    footers = detect_running_footers(_wolf_pages(feet), min_occurrences=61)
+    assert not any(_strings_are_similar(f, "A. a. O., S. 292.") for f in footers)

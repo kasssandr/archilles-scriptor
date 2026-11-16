@@ -727,6 +727,7 @@ def detect_running_footers(
         return []
 
     last_lines: list[tuple[int, str, str]] = []
+    bare_folios: dict[int, str] = {}
     for index, page_text in enumerate(pages_text):
         lines = page_text.strip().split("\n")
         lines_checked = 0
@@ -736,6 +737,8 @@ def detect_running_footers(
             if not line.strip():
                 continue
             lines_checked += 1
+            if _BARE_FOLIO.match(line.strip()):
+                bare_folios.setdefault(index, line.strip())
             normalized = _normalize_header_line(line)
             if normalized and len(normalized) > 5:
                 last_lines.append((index, line, normalized))
@@ -764,14 +767,43 @@ def detect_running_footers(
     # step: a reference repeated in the apparatus ("POHLKAMP, Textfassungen
     # cit. (nota 4), p. 146." in Gli Actus Silvestri, "Там же." in Making
     # Martyrs) carries a note number that rises with the pages, roughly.
+    #
+    # The folio need not stand on the footer's own line. Fried's *Karl der
+    # Große* sets it in the margin beside the last line of text and the title
+    # on a line below, so the title carries no number and the number no title:
+    # every chapter title stayed in the text, between the last word of a page
+    # and the first of the next ("Austra-" / "Die unbekannte Kindheit eines
+    # Herrschers" / "siens"). A title-like line is therefore read together with
+    # a bare number among its page's last lines. The test it then has to pass
+    # is the same exact count, and a line of the apparatus is not title-like.
     return [g[0] for g in groups
             if g[1] >= min_occurrences
             or (g[1] >= _FOOTER_MIN_COUNTED
                 and _runs({i for i, _line in g[2]})
-                and _folios_exact(sorted(g[2])))]
+                and (_folios_exact(sorted(g[2]))
+                     or _folios_exact(sorted(_beside_folio(g[2], bare_folios)))))]
 
 
 _FOOTER_MIN_COUNTED = 3
+
+# A footer title as ``_beside_folio`` takes one: no figure and none of the
+# punctuation a reference or a sentence of the apparatus carries.
+_NOT_IN_TITLE = re.compile(r"[\d,;:()\[\]]")
+_TITLE_MAX_CHARS = 60
+
+
+def _beside_folio(members: list[tuple[int, str]],
+                  bare_folios: dict[int, str]) -> list[tuple[int, str]]:
+    """The members, each title-like line joined to its page's bare folio."""
+    out = []
+    for i, line in members:
+        s = line.strip()
+        if (i in bare_folios and len(s) <= _TITLE_MAX_CHARS
+                and not _NOT_IN_TITLE.search(s)):
+            out.append((i, f"{s} {bare_folios[i]}"))
+        else:
+            out.append((i, line))
+    return out
 
 
 def _folios_exact(members: list[tuple[int, str]]) -> bool:

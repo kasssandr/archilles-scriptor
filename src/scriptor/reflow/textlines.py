@@ -29,6 +29,7 @@ from dataclasses import dataclass
 
 from scriptor.page import Line, SourcePage
 from scriptor.reflow.columns import Gutter, reading_order
+from scriptor.reflow.pagelabel import decode_label
 
 # Points. Fragments of one printed line scatter by ~0.4pt on the baseline. Two
 # points is already too generous: on the baseline it merges two real lines of Seeck
@@ -182,6 +183,93 @@ def _margin_line_numbers(lines: list[Line], tolerance: float) -> set[int]:
     return found
 
 
+def _split_margin_folio(clusters: list[list[Line]]) -> list[list[Line]]:
+    """Take a folio set in the margin beside the last line of text off that line.
+
+    Beck sets Fried's *Karl der Große* that way: the page number stands in the
+    outer margin on the baseline of the last line of text, the running title on
+    a line of its own below it. Clustered on the baseline, the number became the
+    line's last word on the recto and its first on the verso ("Austra- 35",
+    "Rom-" / "36 gründer" read as "Rom36 gründer"), the label detection never
+    saw it, and 87 % of the volume's pages went unattested. Where the text stops
+    short of the foot, the same number already stands alone and was read.
+
+    Taken off, it becomes a printed line of its own right after the line it
+    stood beside, which is the order a short page already gives: the label
+    detection decides what it is, and a number it refuses goes back into the
+    text as before. Narrow on purpose: a lone label, the outermost fragment of
+    the last line in the body's type size, that line on the block's leading,
+    the number wholly outside the area that size covers and the only one there
+    on the page. A table's last cell stands inside that area; a contents page
+    has a number out there on every line; a running footer stands off the
+    block; a marginal paragraph number beside any other line is not touched.
+    """
+    sized = [(ln, ln.size) for cluster in clusters for ln in cluster
+             if ln.size is not None and any(c.isalpha() for c in ln.text)]
+    if not sized:
+        return clusters
+    weights: dict[float, int] = {}
+    for ln, size in sized:
+        weights[size] = weights.get(size, 0) + len(ln.text)
+    body = max(weights.items(), key=lambda kv: (kv[1], kv[0]))[0]
+    in_body = [ln for ln, size in sized if abs(size - body) <= MARGIN_FOLIO_SIZE_SLACK]
+    left = min(ln.box.x0 for ln in in_body)
+    right = max(ln.box.x1 for ln in in_body)
+
+    body_ids = {id(ln) for ln in in_body}
+    last = max((i for i, cluster in enumerate(clusters)
+                if any(id(ln) in body_ids for ln in cluster)), default=None)
+    if last is None or len(clusters[last]) < 2:
+        return clusters
+
+    def outside(ln: Line) -> bool:
+        return ln.box.x1 < left or ln.box.x0 > right
+
+    # A contents page sets every entry's number past its short titles: there
+    # each line has one, and the last is no folio (Bauer, Carlomagno).
+    numbers = [ln for cluster in clusters for ln in cluster
+               if decode_label(ln.text) is not None and outside(ln)]
+    if len(numbers) != 1:
+        return clusters
+    cluster = clusters[last]
+    # The line beside it is a line of the text block: it keeps the block's
+    # leading. A running footer stands apart from the block, and its folio
+    # belongs to it -- Wolf's "# 16 Die Babenberger … 482", Ando's "idols and
+    # their critics 39" are read as one furniture line downstream.
+    # Measured above the line, or on a plate with two lines of caption the
+    # footer's own distance is half the sample.
+    above = clusters[:last]
+    grid = sorted(b[0].baseline - a[0].baseline
+                  for a, b in zip(above, above[1:])
+                  if any(id(ln) in body_ids for ln in a)
+                  and any(id(ln) in body_ids for ln in b)
+                  and b[0].baseline > a[0].baseline)
+    if len(grid) < MARGIN_FOLIO_MIN_GRID:
+        return clusters
+    leading = grid[len(grid) // 2]
+    if leading > MARGIN_FOLIO_MAX_LEADING * body:
+        # Not a block of text: the rows of Wolf's genealogical tables stand
+        # forty points apart, and the footer under them looks like one more.
+        return clusters
+    if cluster[0].baseline - clusters[last - 1][0].baseline > MARGIN_FOLIO_LEADING * leading:
+        return clusters
+    text = [ln for ln in cluster if ln is not numbers[0]]
+    if numbers[0] is cluster[0] or numbers[0] is cluster[-1]:
+        return clusters[:last] + [text] + clusters[last + 1:] + [[numbers[0]]]
+    return clusters
+
+
+# Points. Fragments of the body's type size vary by a tenth of a point where a
+# producer scales justified lines (Fried: 9.9 and 10.1 beside 10.0).
+MARGIN_FOLIO_SIZE_SLACK = 0.5
+# How far below the line before it the line beside the folio may stand, in
+# the page's leading: a line of the block keeps it (Fried: 13.85pt each).
+MARGIN_FOLIO_LEADING = 1.25
+MARGIN_FOLIO_MIN_GRID = 3
+# A text block's leading, in its type size: Fried sets 10 on 13.85.
+MARGIN_FOLIO_MAX_LEADING = 2.0
+
+
 def _has_wide_gap(cluster: list[Line], threshold: float) -> bool:
     return any(
         b.box.x0 - a.box.x1 > threshold for a, b in zip(cluster, cluster[1:])
@@ -242,6 +330,7 @@ def reconstruct(
     if sideways:
         blocks = [[ln] for ln in sideways] + blocks
     clusters = [cluster for block in blocks for cluster in _cluster(block, tolerance)]
+    clusters = _split_margin_folio(clusters)
 
     threshold = (page.width or 0.0) * WIDE_GAP_FRACTION
     inner = clusters[1:-1] if len(clusters) > 2 else []

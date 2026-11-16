@@ -755,6 +755,29 @@ def end_entries_with_region(pages: list[Page]) -> int:
     return ended
 
 
+def front_matter_notes_as_text(pages: list[Page], fn_blocks: list) -> int:
+    """Put the small type cut from a page of front matter back under its text.
+
+    Front matter is rendered line by line and its footnotes are not rendered
+    at all, so a block cut from it vanished -- and was still counted as a
+    footnote. Fried's imprint opens "1. Auflage. 2013" in 8pt: read as note 1,
+    it took the imprint out of the master and left the audit one note above
+    the definitions, which refused the bundle. On such a page the block is
+    text, and it goes back as printed; where no block was cut (the TXT path
+    reads notes off the text), the notes go back as the lines they were.
+    ``fn_blocks`` are parallel to the physical pages. Returns how many pages.
+    """
+    moved = 0
+    for p in pages:
+        if p.mode != "frontmatter" or not p.footnotes:
+            continue
+        block = fn_blocks[p.index - 1] if 1 <= p.index <= len(fn_blocks) else None
+        p.body_lines.extend(block or [f"{n} {t}" for n, t in sorted(p.footnotes.items())])
+        p.footnotes = {}
+        moved += 1
+    return moved
+
+
 def calibrate_threshold(pages: list[Page], peak_fraction: float = 0.25) -> tuple[int, Counter[int]]:
     """
     Collects the lengths of all body lines, determines the left edge of the
@@ -2325,6 +2348,8 @@ def main(
     assign_modes(pages)
     mode_counts = Counter(p.mode for p in pages)
     print(f"Mode distribution: {dict(mode_counts)}", file=sys.stderr)
+
+    front_matter_notes_as_text(pages, fn_blocks)
 
     from scriptor.reflow.regions import assign_regions
     assign_regions(pages, page_headers=page_headers)
