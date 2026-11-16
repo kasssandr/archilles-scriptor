@@ -330,7 +330,16 @@ def bind(pages, part: NotesPart, scope: list[int]) -> Bound:
         if len(glued) > len(found):
             form, found = "glued", glued
     if not found:
-        return Bound("none", unbound=total)
+        # Nothing to hang them on: the notes stay where they are printed.
+        # ``apply_skeleton`` has already emptied their pages, so leaving them
+        # alone would lose the whole notes part (Klawans, Josephus and the
+        # Theologies of Ancient Judaism: 832 notes, 80 pages).
+        bound = Bound("none", unbound=total)
+        for coll in collections:
+            bound.rows.append((coll.title, len(coll.notes), 0, 0))
+            for note in coll.notes:
+                _keep_in_part(pages, note)
+        return bound
 
     # Write the markers into the text as the footnote path reads them, right
     # to left within a line so that the offsets stay true: a glued one set off
