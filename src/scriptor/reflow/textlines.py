@@ -247,6 +247,10 @@ def _split_margin_folio(clusters: list[list[Line]]) -> list[list[Line]]:
     if len(grid) < MARGIN_FOLIO_MIN_GRID:
         return clusters
     leading = grid[len(grid) // 2]
+    if leading > MARGIN_FOLIO_MAX_LEADING * body:
+        # Not a block of text: the rows of Wolf's genealogical tables stand
+        # forty points apart, and the footer under them looks like one more.
+        return clusters
     if cluster[0].baseline - clusters[last - 1][0].baseline > MARGIN_FOLIO_LEADING * leading:
         return clusters
     text = [ln for ln in cluster if ln is not numbers[0]]
@@ -262,6 +266,8 @@ MARGIN_FOLIO_SIZE_SLACK = 0.5
 # the page's leading: a line of the block keeps it (Fried: 13.85pt each).
 MARGIN_FOLIO_LEADING = 1.25
 MARGIN_FOLIO_MIN_GRID = 3
+# A text block's leading, in its type size: Fried sets 10 on 13.85.
+MARGIN_FOLIO_MAX_LEADING = 2.0
 
 
 def _has_wide_gap(cluster: list[Line], threshold: float) -> bool:
