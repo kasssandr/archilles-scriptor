@@ -71,6 +71,15 @@ The deliverable is self-contained: a consumer that reads nothing but `book.md`
 MUST still get a valid, complete document. Sidecars add information; they never
 carry text that is missing from the deliverable.
 
+A document set kept together in one directory is called a **bundle**. The word
+names how a set is stored and handed over; it adds no element to the format
+and no requirement to this specification. Where a bundle lives and what its
+directory is called are a consumer's conventions. Archilles, for one, keeps a
+bundle per work at `<library>/.archilles/scriptor/<key>/` and reads its
+deliverable as the text of that work, in place of the file the work came from.
+A bundle may be corrected by hand (§9) and is then the text of record: a
+source to be preserved, not a cache to be regenerated.
+
 ## 4. The prepared Markdown
 
 ### 4.1 Base format

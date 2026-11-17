@@ -119,6 +119,10 @@ scriptor all book.pdf --out book.md
 | `book.md.structure.json`, `.txt` | The volume's division as scriptor read it: every heading with its true depth, the page it stands on and the witness that placed it, plus the contents entries it found nowhere. |
 | `book.md.notes.json` | The number printed behind every `[^N]`, the page its anchor stands on, and for an endnote the head it is collected under and the page it is printed on. |
 
+Kept together in one folder, these files are a *bundle*: the master and the
+sidecars that say what the master cannot. That folder is what a consumer takes
+over (see [The bundle](#the-bundle) below).
+
 ## Input formats
 
 Each input has its own subcommand. They all converge on the same output.
@@ -309,6 +313,56 @@ Everything else is highlighted in the document and listed in
 searchable snippet of the text, because Word will not show you a paragraph
 number. Running it twice changes nothing the second time.
 
+## The bundle
+
+A run's files, kept together in one folder, are a *bundle*
+([spec §3](docs/PREPARED_FORMAT_SPEC.md)). The bundle is how scriptor's text
+reaches the tools that use it. [Archilles](https://github.com/kasssandr/archilles)
+keeps one per book inside the library, at `<library>/.archilles/scriptor/<book id>/`,
+and where it finds one it indexes the master instead of reading the PDF. The
+book keeps its metadata and annotations; only the text source changes. The
+same text is what Archillator translates and what you read.
+
+Four things follow for scriptor.
+
+**The master is a source, not a build product.** Once you have corrected
+`book.md` by hand, the corrected file is the text of the book, and it must not
+be built again. That is why `scriptor headings` exists: it writes heading
+lines into a finished master and touches nothing else.
+
+**A bundle is a snapshot.** It names the `format_version` it was written
+under and carries the text of the scriptor that wrote it. A better scriptor
+does not improve the bundles already built. Rebuilding one produces new text,
+and whatever indexed the old text has to index the book again.
+
+**The reader ships with the writer.** `scriptor.document` is the format's
+reference reader, and consumers import it instead of keeping their own copy of
+the grammar:
+
+```python
+from scriptor.document import load_bundle
+
+bundle = load_bundle("book.md")            # master + pagination + structure sidecars
+locus = bundle.locate(
+    "at least eight consecutive words of the passage you are citing",
+    page="88",
+)
+```
+
+`locate` resolves a citation address: the printed page, the occurrence where a
+label repeats, and a wording of eight words or more. The wording is a
+checksum, not a pointer. If page 88 no longer carries it, the answer is
+`None`, and the same words elsewhere in the volume are never taken instead.
+
+**Admission is the consumer's decision.** Scriptor writes what it can read and
+records its doubts. Whether a volume is good enough to replace its PDF in an
+index is decided where the bundle is taken over. Archilles measures four
+conditions against the PDF (text coverage, footnote count against the audit,
+share of attested page labels, share of text under another page's number) and
+leaves a volume that fails on its old path. The check needs nothing but the
+bundle and the PDF: the note count comes from the audit, the two page shares
+from the pagination sidecar.
+
 ## Design rules
 
 **Structure is decided deterministically.** A model may turn pixels into text.
@@ -349,6 +403,9 @@ src/scriptor/
   clippings.py          # journal-clipping path
   pages_zip.py          # Internet Archive page ZIPs
   page.py               # the page model a backend delivers: lines, spans, boxes
+  document.py           # the format's reference reader: parse_prepared, load_bundle, Bundle.locate
+  structure.py          # the heading tree: depth, chapter level, the fields a consumer derives
+  headings.py           # heading lines for a master that must not be built again
   extract/
     pymupdf_backend.py  # text PDFs — reads the text layer, never OCRs
     ocr_backend.py      # stub
@@ -383,7 +440,9 @@ or translate a page.
 
 Scriptor prepares, Archilles retrieves, Archillator translates — three tools,
 one path: from the printed apparatus to a citable answer, in any language, on
-your own machine. Each tool stands alone; none requires the others. All three
+your own machine. Scriptor and Archillator stand alone. Archilles installs
+scriptor as a library, because it reads prepared documents through scriptor's
+own reader instead of keeping a copy of the format. All three
 are developed under one fixed charter: **local-first, source-true, the scholar
 as the acting subject**. Contributions are welcome within that charter; beyond
 it, the license invites forks.
@@ -394,7 +453,9 @@ currently version 0.6.0.
 
 - [archilles](https://github.com/kasssandr/archilles) — Informed RAG over a
   personal research library: retrieval grounded in page-level citations rather
-  than in whatever the chunker happened to keep. Scriptor feeds it.
+  than in whatever the chunker happened to keep. Scriptor feeds it: a book
+  with a [bundle](#the-bundle) is indexed from scriptor's text, not from its
+  PDF.
 - [archillator](https://github.com/kasssandr/archillator) — browser-based
   translation of books and academic texts. Scriptor feeds it too, which is what
   `translate-prep` is for.
