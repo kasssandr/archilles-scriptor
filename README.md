@@ -118,6 +118,7 @@ scriptor all book.pdf --out book.md
 | `book.md.pagination.json`, `.txt` | Where every page label came from: printed on the page, confirmed by the contents, or merely counted. |
 | `book.md.structure.json`, `.txt` | The volume's division as scriptor read it: every heading with its true depth, the page it stands on and the witness that placed it, plus the contents entries it found nowhere. |
 | `book.md.notes.json` | The number printed behind every `[^N]`, the page its anchor stands on, and for an endnote the head it is collected under and the page it is printed on. |
+| `book.md.run.txt` | Everything the run reported on the console, word for word, headed by the scriptor and format version. A record of the run, not part of the format. |
 
 Kept together in one folder, these files are a *bundle*: the master and the
 sidecars that say what the master cannot. That folder is what a consumer takes

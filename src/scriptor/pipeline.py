@@ -49,8 +49,13 @@ def run_all(
     out_path = Path(out_path)
     if pages_dir is None:
         pages_dir = out_path.parent / f"{out_path.stem}_pages"
-    extract(pdf_path, pages_dir)
-    reflow(pages_dir, out_path, fmt, decisions, ocr_profile, chunking_strategy)
+    from scriptor._runlog import run_log
+
+    # One log for both stages, so the backend's messages (white ink, pages
+    # without a text layer) stand in it beside the reflow's.
+    with run_log(out_path):
+        extract(pdf_path, pages_dir)
+        reflow(pages_dir, out_path, fmt, decisions, ocr_profile, chunking_strategy)
 
 
 def headings(master_path: str | Path, *, dry_run: bool = False):
