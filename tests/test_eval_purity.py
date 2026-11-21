@@ -12,7 +12,7 @@ import pytest
 METRIC_MODULES = [
     "adapters.py", "anchors.py", "citations.py", "flags.py",
     "ground_truth.py", "headings.py", "labels.py", "normalize.py", "report.py",
-    "runner.py",
+    "runner.py", "ab.py",
 ]
 
 
