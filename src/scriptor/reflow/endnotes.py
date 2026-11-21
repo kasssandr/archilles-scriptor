@@ -38,7 +38,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 
-from scriptor.reflow.footnotes import PLACED_MARKER_RE
+from scriptor.reflow.footnotes import PLACED_MARKER_RE, glued_marker
 from scriptor.reflow.headings import mark_placed, read_mark
 from scriptor.reflow.regions import region_of_heading
 
@@ -64,18 +64,13 @@ _HEAD_LATE = 4
 # How many markers in a row may be lost before the walk takes a number for
 # the text's own: a page's worth of them on a bad scan.
 _MAX_LOST = 6
-# A marker glued to its word: "question.1", "Bibel23". Not after a digit, a
-# colon or a dash: "12:9" is a verse, "29–30" a range. Nor after a digit's
-# period: "2.1 Social Robots" and "2.6.1" number sections (*Artificial
-# Humanities*). Nor after a digit's comma: "(14,1,1)" is Isidor's book,
-# chapter and section, and "(2Tim 2,1)" a verse -- read as two markers "1",
-# Fried's *Karl der Große* p. 85 started the count again and every chapter
-# after the third took the notes of the chapter after it. A colon after the
-# number bars it only where a figure follows, as in a verse: Fried p. 261
-# glues note 2 to "Seele2: Eine", and a collection whose 2 is lost never
-# opens -- the walk takes the next chapter's markers for its own.
-_GLUED = re.compile(
-    r"(?<=[^\s\d:\-–—/\[(])(?<!\d\.)(?<!\d,)(\d{1,3})(?=$|[^\w:\-–—/\]]|:(?!\d))")
+# A marker glued to its word, with every exclusion the volumes taught
+# (footnotes.glued_marker says which and why). On a notes part a lost marker
+# costs more than elsewhere: Fried's *Karl der Große* p. 85 read "(14,1,1)" as
+# two markers "1", started the count again, and every chapter after the third
+# took the notes of the chapter after it; a collection whose 2 is lost
+# ("Seele2: Eine", p. 261) never opens.
+_GLUED = glued_marker()
 # A raised marker the OCR set as a line of its own.
 _ALONE = re.compile(r"^(\d{1,3})$")
 
