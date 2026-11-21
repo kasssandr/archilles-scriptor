@@ -65,6 +65,10 @@ SUPERSCRIPT_DIGITS = str.maketrans({
 # * ``joiner`` -- not after a colon, a dash, a slash or an opening bracket,
 #   nor before a dash, a slash or a closing bracket: "12:9" is a verse,
 #   "29–30" a range, "[12]" a marker already placed (Van der Toorn).
+# * ``digit_joiner`` -- the narrow form of ``joiner``: not after a digit's
+#   colon, dash or slash. "12:9", "14–20", "1198/99" are a verse, a range, a
+#   double year; behind a word the same marks carry real markers
+#   ("following terms:7", Ando; "bezeugt:42", Wolf).
 # * ``colon_digit`` -- not before a colon that a digit follows, as in a
 #   verse; before any other colon it stands: Fried p. 261 glues note 2 to
 #   "Seele2: Eine".
@@ -72,11 +76,12 @@ SUPERSCRIPT_DIGITS = str.maketrans({
 # ``RAISED`` (page.py) sets a raised number apart from a digit of the text;
 # it is not a digit, so the number behind it reads as glued, and it is no
 # period or comma, so "1150<RAISED>46" is never "digit, then number".
-GLUED_EXCLUSIONS = frozenset({"digit_period", "digit_comma", "joiner", "colon_digit"})
+GLUED_EXCLUSIONS = frozenset(
+    {"digit_period", "digit_comma", "joiner", "digit_joiner", "colon_digit"})
 # Which of them hold on the footnote path. The endnotes take them all: a notes
 # part is read on bare text, where nothing but the marker's shape says what
 # it is.
-FOOTNOTE_EXCLUSIONS = GLUED_EXCLUSIONS
+FOOTNOTE_EXCLUSIONS = frozenset({"digit_joiner", "colon_digit"})
 
 
 def glued_marker(numbers=None, exclude: frozenset[str] = GLUED_EXCLUSIONS) -> re.Pattern:
@@ -94,7 +99,8 @@ def glued_marker(numbers=None, exclude: frozenset[str] = GLUED_EXCLUSIONS) -> re
         number = "|".join(str(n) for n in sorted(set(numbers), reverse=True))
     before = r"\s\d" + (r":\-–—/\[(" if "joiner" in exclude else "")
     behind = ((r"(?<!\d\.)" if "digit_period" in exclude else "")
-              + (r"(?<!\d,)" if "digit_comma" in exclude else ""))
+              + (r"(?<!\d,)" if "digit_comma" in exclude else "")
+              + (r"(?<!\d[:\-–—/])" if "digit_joiner" in exclude else ""))
     barred = r"\w" + (r"\-–—/\]" if "joiner" in exclude else "")
     if "colon_digit" in exclude:
         after = rf"(?=$|[^{barred}:]|:(?!\d))"

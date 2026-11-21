@@ -32,15 +32,41 @@ def test_default_is_the_endnotes_rule_as_it_was(line):
 # The four probes of the review: the wrong number on the left used to take
 # the note, the real marker on the right stayed bare.
 PROBES = [
-    ("(Joh 12:9) das Wort9 selbst.", 9, "(Joh 12:9) das Wort [9] selbst."),
-    ("Isidor (14,1,1) endet hier.1", 1, "Isidor (14,1,1) endet hier. [1]"),
-    ("S. 29-30 der Beleg30 dazu.", 30, "S. 29-30 der Beleg [30] dazu."),
-    ("Abschnitt 2.6 die Aussage.6", 6, "Abschnitt 2.6 die Aussage. [6]"),
+    ("(Joh 12:9) das Wort9 selbst.", 9, "Wort9"),
+    ("Isidor (14,1,1) endet hier.1", 1, "hier.1"),
+    ("S. 29-30 der Beleg30 dazu.", 30, "Beleg30"),
+    ("Abschnitt 2.6 die Aussage.6", 6, "Aussage.6"),
 ]
 
 
-@pytest.mark.parametrize("line,num,placed", PROBES)
-def test_footnote_path_places_the_real_marker(line, num, placed):
+@pytest.mark.parametrize("line,num,real", PROBES)
+def test_endnotes_find_the_real_marker_in_all_four(line, num, real):
+    (m,) = glued_marker([num]).finditer(line)
+    assert line[:m.end()].endswith(real)
+
+
+@pytest.mark.parametrize("line,num,placed", [
+    ("(Joh 12:9) das Wort9 selbst.", 9, "(Joh 12:9) das Wort [9] selbst."),
+    ("S. 29-30 der Beleg30 dazu.", 30, "S. 29-30 der Beleg [30] dazu."),
+    ("S. 29–30 der Beleg30 dazu.", 30, "S. 29–30 der Beleg [30] dazu."),
+    ("um 1198/99 gewählt99 hier", 99, "um 1198/99 gewählt [99] hier"),
+])
+def test_footnote_path_skips_a_digit_joined_number(line, num, placed):
+    assert substitute_markers([line], {num: "note"}) == [placed]
+
+
+# On the footnote path a period or comma behind a digit does not bar: in
+# born-digital volumes the real marker stands there more often than a section
+# number does ("in fall 312.186", Ando; "1147,380 Otto", Wolf). The cost is the
+# section number and the reference the review probed, which keep their old
+# reading here; the endnotes, on bare text, bar both.
+@pytest.mark.parametrize("line,num,placed", [
+    ("during his campaign in fall 312.6 Then", 6, "during his campaign in fall 312. [6] Then"),
+    ("Domvogt (Tafel 6) 1147,8 Otto", 8, "Domvogt (Tafel 6) 1147, [8] Otto"),
+    ("in the following terms:7 Our", 7, "in the following terms: [7] Our"),
+    ("the ius naturale)20—they", 20, "the ius naturale) [20]—they"),
+])
+def test_footnote_path_keeps_markers_behind_years_and_colons(line, num, placed):
     assert substitute_markers([line], {num: "note"}) == [placed]
 
 
