@@ -1764,6 +1764,21 @@ def main(
     profile_path: str | None = None,
     chunking_strategy: str = "basic",
 ) -> None:
+    """Reflow a page directory into ``out_path``; the run log goes beside it."""
+    from scriptor._runlog import run_log
+
+    with run_log(out_path):
+        _main(src_dir, out_path, fmt, decisions_path, profile_path, chunking_strategy)
+
+
+def _main(
+    src_dir: str,
+    out_path: str,
+    fmt: str | None = None,
+    decisions_path: str | None = None,
+    profile_path: str | None = None,
+    chunking_strategy: str = "basic",
+) -> None:
     from scriptor.reflow import decisions as decisions_mod
     from scriptor.reflow import profile as profile_mod
 
