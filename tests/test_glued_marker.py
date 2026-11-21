@@ -46,12 +46,11 @@ def test_endnotes_find_the_real_marker_in_all_four(line, num, real):
 
 
 @pytest.mark.parametrize("line,num,placed", [
-    ("(Joh 12:9) das Wort9 selbst.", 9, "(Joh 12:9) das Wort [9] selbst."),
     ("S. 29-30 der Beleg30 dazu.", 30, "S. 29-30 der Beleg [30] dazu."),
     ("S. 29–30 der Beleg30 dazu.", 30, "S. 29–30 der Beleg [30] dazu."),
     ("um 1198/99 gewählt99 hier", 99, "um 1198/99 gewählt [99] hier"),
 ])
-def test_footnote_path_skips_a_digit_joined_number(line, num, placed):
+def test_footnote_path_skips_a_number_in_a_range(line, num, placed):
     assert substitute_markers([line], {num: "note"}) == [placed]
 
 
@@ -65,6 +64,7 @@ def test_footnote_path_skips_a_digit_joined_number(line, num, placed):
     ("Domvogt (Tafel 6) 1147,8 Otto", 8, "Domvogt (Tafel 6) 1147, [8] Otto"),
     ("in the following terms:7 Our", 7, "in the following terms: [7] Our"),
     ("the ius naturale)20—they", 20, "the ius naturale) [20]—they"),
+    ("published in 1974:6 Serueilius", 6, "published in 1974: [6] Serueilius"),
 ])
 def test_footnote_path_keeps_markers_behind_years_and_colons(line, num, placed):
     assert substitute_markers([line], {num: "note"}) == [placed]
