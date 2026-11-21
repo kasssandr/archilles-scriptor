@@ -19,10 +19,33 @@ from scriptor.reflow.running_elements import (
     remove_running_footers_from_blocks,
     remove_running_headers,
     detect_running_headers,
+    head_region,
     _extract_edge_page_number,
     _strings_are_similar,
 )
 from scriptor.reflow.core import parse_page
+
+
+# --- head_region ---------------------------------------------------------------
+
+def test_head_region_is_three_lines_with_words_and_the_folios_among_them():
+    page = "\n".join(["17", "", "Eine Kopfzeile", "Zweite Zeile", "Dritte Zeile",
+                      "Vierte Zeile"])
+    assert head_region(page) == [(0, "17"), (2, "Eine Kopfzeile"),
+                                 (3, "Zweite Zeile"), (4, "Dritte Zeile")]
+
+
+def test_the_detector_reaches_a_head_below_a_folio_line():
+    # Folio on a line of its own, two lines of furniture, then the running
+    # head: the third line with words, the fourth line of the page.
+    pages = [
+        "\n".join([str(30 + i), "Ein Verlagsband zum Herunterladen",
+                   f"Heruntergeladen am {i + 1}. Mai von einer Bibliothek",
+                   "Die Ordnung der Dinge im Text",
+                   f"Ein eigener Satz des Textes auf Seite {i} mit Inhalt."])
+        for i in range(4)
+    ]
+    assert "Die Ordnung der Dinge im Text" in detect_running_headers(pages)
 
 
 # --- _extract_edge_page_number ------------------------------------------------

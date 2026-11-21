@@ -133,17 +133,42 @@ def _numbers_count_no_pages(members: list[tuple[int, str]]) -> bool:
     return _numbers_count_pages(members) is False
 
 
+# How many lines with words make a page's head region.
+_HEAD_WORD_LINES = 3
+
+
+def head_region(page_text: str) -> list[tuple[int, str]]:
+    """(index, line) of the page's head region: its first three lines with
+    words, together with any bare number standing among or next to them.
+    Indices count the lines of ``page_text.strip()``.
+
+    The one definition of the head region, for the detector, the stripper and
+    everything that asks what stands at the head of a page. A bare number is
+    in it but does not count towards the three: a page that opens with its
+    folio on a line of its own has its running head on the line below, and
+    three lines of words still follow.
+    """
+    out = []
+    words = 0
+    for k, line in enumerate(page_text.strip().split("\n")):
+        if not line.strip():
+            continue
+        if _normalize_header_line(line):
+            if words >= _HEAD_WORD_LINES:
+                break
+            words += 1
+        out.append((k, line))
+    return out
+
+
 def _below_head(pages_text: list[str]) -> list[tuple[int, str, str]]:
     """(page index, line, normalized line) of every line under a page's head
-    region, the head region counted as ``detect_running_headers`` counts it."""
+    region (``head_region``)."""
     out = []
     for index, page_text in enumerate(pages_text):
-        lines_checked = 0
-        for line in page_text.strip().split("\n"):
-            if not line.strip():
-                continue
-            if lines_checked < 3:
-                lines_checked += 1
+        head = {k for k, _line in head_region(page_text)}
+        for k, line in enumerate(page_text.strip().split("\n")):
+            if k in head or not line.strip():
                 continue
             normalized = _normalize_header_line(line)
             if normalized and len(normalized) > 5:
@@ -207,13 +232,7 @@ def detect_running_headers(
 
     first_lines: list[tuple[int, str, str]] = []
     for index, page_text in enumerate(pages_text):
-        lines_checked = 0
-        for line in page_text.strip().split("\n"):
-            if lines_checked >= 3:
-                break
-            if not line.strip():
-                continue
-            lines_checked += 1
+        for _k, line in head_region(page_text):
             normalized = _normalize_header_line(line)
             if normalized and len(normalized) > 5:
                 first_lines.append((index, line, normalized))
@@ -252,16 +271,10 @@ def header_of_page(
     (PREPARED_FORMAT_SPEC §4.4). Stripping used to be the only thing that
     happened to that knowledge.
     """
-    lines_checked = 0
-    for line in page_text.strip().split("\n"):
-        if not line.strip():
-            continue
-        if lines_checked >= 3:
-            break
+    for _k, line in head_region(page_text):
         normalized = _normalize_header_line(line)
         if not normalized:
             continue
-        lines_checked += 1
         for header in running_headers:
             if _strings_are_similar(normalized, header, similarity_threshold):
                 return header
@@ -282,22 +295,6 @@ _SENTENCE_END = re.compile(r"[.!?…][\"'»«“”‘’)\]]*$")
 _MANGLED_EDGE = re.compile(r"^(?=\S{0,4}\d)\S{1,5}\s|\s(?=\S{0,4}\d)\S{1,5}$")
 _MANGLED_ALONE = re.compile(r"^(?=\S{0,4}\d)\S{1,5}$")
 _ROMAN_EDGE = re.compile(r"^([IVXLCDM]{1,7}|[ivxlcdm]{1,7})\s|\s([IVXLCDM]{1,7}|[ivxlcdm]{1,7})$")
-
-
-def _head_lines(page_text: str) -> list[tuple[int, str]]:
-    """(index, line) of the first three lines with words, as the strippers
-    count, together with any bare number standing among or next to them."""
-    out = []
-    words = 0
-    for k, line in enumerate(page_text.strip().split("\n")):
-        if not line.strip():
-            continue
-        if _normalize_header_line(line):
-            if words >= 3:
-                break
-            words += 1
-        out.append((k, line))
-    return out
 
 
 def _foliated(head: list[tuple[int, str]], furniture: set[int]) -> bool:
@@ -338,7 +335,7 @@ def _in_body(page_text: str, header: str, similarity_threshold: float) -> bool:
     """Whether the page prints this wording below its head region: there a
     section opens in mid-page, and its running head starts a page later."""
     lines = page_text.strip().split("\n")
-    head = _head_lines(page_text)
+    head = head_region(page_text)
     start = head[-1][0] + 1 if head else 0
     return any(_strings_are_similar(n, header, similarity_threshold)
                for n in map(_normalize_header_line, lines[start:]) if n)
@@ -434,7 +431,7 @@ def opening_pages(
     seen: list[tuple[list[tuple[int, str]], set[int], list[tuple[list[int], str]]]] = []
     for index, page_text in enumerate(pages_text):
         here: set[str] = set()
-        head = _head_lines(page_text)
+        head = head_region(page_text)
         words = [at for at, (_k, line) in enumerate(head)
                  if _normalize_header_line(line)]
         if index in lists:
@@ -517,7 +514,7 @@ def opening_pages(
             continue
         if not _ends_a_text(pages_text[index - 1]):
             continue
-        head = _head_lines(pages_text[index])
+        head = head_region(pages_text[index])
         lines = pages_text[index].strip().split("\n")
         below = [_normalize_header_line(ln) for ln in lines[head[-1][0] + 1:]]
         for span, k in found:
@@ -615,7 +612,7 @@ def remove_running_headers(
         header for header in runless
         if _numbers_count_no_pages([
             (i, line) for i in at_pages[header]
-            for _k, line in _head_lines(pages_text[i])
+            for _k, line in head_region(pages_text[i])
             if any(canon.get(h) == header
                    and _strings_are_similar(_normalize_header_line(line), h,
                                             similarity_threshold)
@@ -625,7 +622,7 @@ def remove_running_headers(
         a_list = index in lists
         lines = page_text.strip().split("\n")
         cleaned_lines: list[str] = []
-        lines_checked = 0
+        head_words = {k for k, line in head_region(page_text) if _normalize_header_line(line)}
         opening = openings.get(index, {})
         joined: set[int] = set()
         # Where the head region carries a title the volume names, the
@@ -633,21 +630,19 @@ def remove_running_headers(
         # the title shifts what it reads as the head region: L'Empire chrétien
         # p. 53 lost "A CONSTANTINOPLE" as a heading under "CHAPITRE II".
         placed_here = (known is not None and heads is not None and any(
-            known.of(line) for _k, line in _head_lines(page_text)))
+            known.of(line) for _k, line in head_region(page_text)))
         for k, line in enumerate(lines):
             if not line.strip():
                 cleaned_lines.append(line)
                 continue
             normalized = _normalize_header_line(line)
-            in_head = lines_checked < 3 and bool(normalized)
+            in_head = k in head_words
             if k in joined:
                 # The second line of an opening title, written with the first.
-                lines_checked += in_head
                 continue
             is_header = False
             matched = None
             if in_head:
-                lines_checked += 1
                 for header in running_headers:
                     if _strings_are_similar(normalized, header, similarity_threshold):
                         is_header = True
@@ -700,7 +695,7 @@ def remove_running_headers(
                     and (canon.get(matched) in own_numbers
                          or (not _extract_edge_page_number(line)
                              and not _MANGLED_EDGE.search(line.strip())))
-                    and not _foliated(_head_lines(page_text), set())):
+                    and not _foliated(head_region(page_text), set())):
                 # Not furniture (see ``runless``), and no number on it or near
                 # it that the consensus would miss: left standing above a bare
                 # folio, the line would push it off the first line, where
