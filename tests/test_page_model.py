@@ -151,3 +151,24 @@ def test_note_one_raised_behind_a_year_is_a_marker():
         baseline=100.88,
     )
     assert line.text == f"in the summer of 1956{RAISED}1"
+
+
+@pytest.mark.parametrize("before", ["in the year 812.", "the list of 1147,", "printed in 1974:"])
+def test_a_raised_number_behind_a_numbers_punctuation_is_set_apart(before):
+    from scriptor.page import RAISED
+    line = Line(
+        spans=[Span(before, box=Box(10, 92.97, 120, 103.47), size=10.5),
+               Span("37", box=Box(120, 90.61, 128, 97.63), size=7.02),
+               Span(" Then", box=Box(128, 92.97, 160, 103.47), size=10.5)],
+        baseline=100.88,
+    )
+    assert line.text == f"{before}{RAISED}37 Then"
+
+
+def test_a_number_on_the_baseline_behind_punctuation_stays_bare():
+    line = Line(
+        spans=[Span("see chapter 2.", box=Box(10, 92.97, 80, 103.47), size=10.5),
+               Span("6", box=Box(80, 92.97, 86, 103.47), size=10.5)],
+        baseline=100.88,
+    )
+    assert line.text == "see chapter 2.6"
