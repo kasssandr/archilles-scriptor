@@ -51,6 +51,63 @@ SUPERSCRIPT_DIGITS = str.maketrans({
     "⁸": "8", "⁹": "9",
 })
 
+# A note marker glued to its word: "question.1", "Bibel23", 'said"64'. The one
+# rule, for the footnote path and the endnotes alike. Never after a digit or a
+# space: a printed marker glues to a letter or a mark, and the last digit of a
+# year is no note ("August 754" would give note 4, Zuckerman p. 39). Beyond
+# that, what the volumes taught, each an exclusion that can be named:
+#
+# * ``digit_period`` -- not after a digit's period: "2.1 Social Robots" and
+#   "2.6.1" number sections (*Artificial Humanities*).
+# * ``digit_comma`` -- not after a digit's comma: "(14,1,1)" is Isidor's
+#   book, chapter and section, "(2Tim 2,1)" a verse; read as markers "1",
+#   Fried's *Karl der Große* p. 85 started its count again.
+# * ``joiner`` -- not after a colon, a dash, a slash or an opening bracket,
+#   nor before a dash, a slash or a closing bracket: "12:9" is a verse,
+#   "29–30" a range, "[12]" a marker already placed (Van der Toorn).
+# * ``colon_digit`` -- not before a colon that a digit follows, as in a
+#   verse; before any other colon it stands: Fried p. 261 glues note 2 to
+#   "Seele2: Eine".
+#
+# ``RAISED`` (page.py) sets a raised number apart from a digit of the text;
+# it is not a digit, so the number behind it reads as glued, and it is no
+# period or comma, so "1150<RAISED>46" is never "digit, then number".
+GLUED_EXCLUSIONS = frozenset({"digit_period", "digit_comma", "joiner", "colon_digit"})
+# Which of them hold on the footnote path. The endnotes take them all: a notes
+# part is read on bare text, where nothing but the marker's shape says what
+# it is.
+FOOTNOTE_EXCLUSIONS = GLUED_EXCLUSIONS
+
+
+def glued_marker(numbers=None, exclude: frozenset[str] = GLUED_EXCLUSIONS) -> re.Pattern:
+    """The pattern of a glued marker; group 1 is its number.
+
+    ``numbers`` limits it to those numbers (any of up to three digits
+    otherwise); ``exclude`` names the exclusions above that apply.
+    """
+    unknown = set(exclude) - GLUED_EXCLUSIONS
+    if unknown:
+        raise ValueError(f"unknown exclusions: {sorted(unknown)}")
+    if numbers is None:
+        number = r"\d{1,3}"
+    else:
+        number = "|".join(str(n) for n in sorted(set(numbers), reverse=True))
+    before = r"\s\d" + (r":\-–—/\[(" if "joiner" in exclude else "")
+    behind = ((r"(?<!\d\.)" if "digit_period" in exclude else "")
+              + (r"(?<!\d,)" if "digit_comma" in exclude else ""))
+    barred = r"\w" + (r"\-–—/\]" if "joiner" in exclude else "")
+    if "colon_digit" in exclude:
+        after = rf"(?=$|[^{barred}:]|:(?!\d))"
+    else:
+        after = rf"(?=$|[^{barred}])"
+    return re.compile(rf"(?<=[^{before}]){behind}({number}){after}", re.MULTILINE)
+
+
+# An asterisk set as a note marker: glued to the word before it, standing
+# alone. "*kuningaz" opens a word and stays the author's. A rule of its own
+# beside the glued number: a star carries no count to check it by.
+ASTERISK_MARKER = re.compile(r"(?<=[^\s\d*\\])\*(?=\s|$)")
+
 
 def witnessed_block_start(lines: list[str], last_read: int | None = None) -> int | None:
     """Where a page's footnote block begins, on bare text: the first line
@@ -91,7 +148,7 @@ def witnessed_block_start(lines: list[str], last_read: int | None = None) -> int
             continue
         if last_read is not None and last_read < num <= last_read + 2:
             return i
-        marker = re.compile(rf"(?<=[^\s\d]){num}(?!\w)")
+        marker = glued_marker([num], FOOTNOTE_EXCLUSIONS)
         if any(marker.search(above) for above in lines[:i]):
             return i
     return None
@@ -624,8 +681,7 @@ def split_small_type_block(
                 and len(lines[i].strip()) > FURNITURE_MAX_CHARS)
 
     if not any(running(i) for i in range(start)):
-        marker = re.compile(
-            r"(?<=[^\s\d])(?:%s)(?!\d)" % "|".join(str(n) for n in opened))
+        marker = glued_marker(opened, FOOTNOTE_EXCLUSIONS)
         if not any(marker.search(ln.translate(SUPERSCRIPT_DIGITS)) for ln in lines[:start]):
             return None
     return SmallTypeSplit(
@@ -673,7 +729,7 @@ def substitute_markers(body_lines: list[str], footnotes: dict[int, str],
     for num in sorted(footnotes.keys()):
         if num in consumed:
             continue
-        pat = re.compile(rf"(?<=[^\s\d]){num}(?=$|[^\w])", re.MULTILINE)
+        pat = glued_marker([num], FOOTNOTE_EXCLUSIONS)
         new_body, n = pat.subn(f" [{num}]", body, count=1)
         if n > 0:
             body = new_body

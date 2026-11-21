@@ -19,6 +19,7 @@ from pathlib import Path
 
 from scriptor._text import plural
 from scriptor.reflow.footnotes import (
+    ASTERISK_MARKER,
     CONTINUES,
     FOOTNOTE_BARE_RE,
     FOOTNOTE_RE,
@@ -36,11 +37,9 @@ from scriptor.reflow.pagelabel import PAGE_MARKER_RE, decode_label, detect_page_
 
 # --- Configuration ---
 INDENT = "    "                # indent of footnotes at the end of the paragraph
-# An asterisk set as a note marker: glued to the word before it, standing
-# alone. "*kuningaz" opens a word and stays the author's.
-_ASTERISK_MARKER = re.compile(r"(?<=[^\s\d*\\])\*(?=\s|$)")
-# FOOTNOTE_RE, PLACED_MARKER_RE, SUPERSCRIPT_DIGITS and substitute_markers now
-# live in footnotes.py; page-label detection lives in pagelabel.py (both above).
+# FOOTNOTE_RE, PLACED_MARKER_RE, SUPERSCRIPT_DIGITS, substitute_markers and the
+# marker rules (glued_marker, ASTERISK_MARKER) live in footnotes.py; page-label
+# detection lives in pagelabel.py (both above).
 
 
 # A footnote's identity inside a paragraph: (which page it came from, number
@@ -282,7 +281,7 @@ def parse_page(
         star = next((k for k, ln in enumerate(leading) if ln.lstrip().startswith("*")),
                     None)
         if (star is not None and 0 not in footnotes
-                and any(_ASTERISK_MARKER.search(ln) for ln in body_lines)):
+                and any(ASTERISK_MARKER.search(ln) for ln in body_lines)):
             footnotes[0] = dehyphenate_join(leading[star:]).lstrip("* ").strip()
             leading = leading[:star]
             asterisk_note = True
