@@ -103,6 +103,11 @@ RAISED_MAX_RATIO = 0.8
 # the first collection of Artificial Humanities' endnotes). A note 2 to 9 set
 # behind a year stays as unplaced as it was.
 _EDITION_RE = re.compile(r"(?<!\d)(?:1[4-9]|20)\d\d$")
+# The same holds behind a number's period, comma or colon: "in fall 312.¹⁸⁶",
+# "1147,³⁸⁰ Otto", "in 1974:³⁸⁶". Flattened, each is a section, a reference
+# or a verse, which the marker search bars behind a digit's punctuation; the
+# mark keeps the raised one a marker there (Wolf, Verwandtschaft: 47).
+_BEHIND_NUMBER_RE = re.compile(r"\d[.,:]?$")
 
 
 @dataclass
@@ -122,7 +127,8 @@ class Line:
         starts the text with "1". A run of tiny spans that is nothing but
         digits and spaces is closed up; the space after it stays.
 
-        A number raised behind a digit of the text is set apart by ``RAISED``.
+        A number raised behind a digit of the text, or behind its period,
+        comma or colon, is set apart by ``RAISED``.
         """
         sizes = [s.size for s in self.spans if s.size is not None]
         if len(sizes) < 2:
@@ -145,7 +151,7 @@ class Line:
         for i, span in enumerate(self.spans):
             text = span.text
             before = self.spans[i - 1].text if i else ""
-            if (raised[i] and i and not raised[i - 1] and before[-1:].isdigit()
+            if (raised[i] and i and not raised[i - 1] and _BEHIND_NUMBER_RE.search(before)
                     and not (len(span.text) == 1 and span.text != "1"
                              and _EDITION_RE.search(before))):
                 text = RAISED + text

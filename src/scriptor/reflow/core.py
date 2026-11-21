@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from scriptor._text import plural
+from scriptor.page import RAISED
 from scriptor.reflow.footnotes import (
     ASTERISK_MARKER,
     CONTINUES,
@@ -838,8 +839,10 @@ _CLOSING_QUOTE = re.compile(r"[»«“”\"’']$")
 
 # Placed footnote markers at the end of a line ("… Occident.” [1]" or even
 # "… country. [4] [5]"). They stand *after* the full stop and would hide it
-# from SENT_END — the paragraph-end check looks at the line without them.
-_TRAILING_MARKERS = re.compile(r"(\s*\[\d{1,4}\])+$")
+# from SENT_END — the paragraph-end check looks at the line without them, and
+# without the RAISED mark that may stand between the stop and the first of
+# them ("… S. 327–351.<RAISED> [17]").
+_TRAILING_MARKERS = re.compile(rf"{RAISED}?(\s*\[\d{{1,4}}\])+$")
 
 # A note number nobody placed, flattened from its superscript onto the line:
 # "as “Belgian Rome.”2", "had disintegrated.4". An endnote volume leaves every
@@ -884,7 +887,6 @@ from scriptor.reflow.headings import MARK as HEADING_MARK  # noqa: E402
 from scriptor.reflow.headings import PLACED as PLACED_MARK  # noqa: E402
 from scriptor.reflow.headings import read_mark  # noqa: E402
 from scriptor.reflow.tables import BREAK as TABLE_BREAK  # noqa: E402
-from scriptor.page import RAISED  # noqa: E402
 from scriptor.structure import MAX_MARKDOWN_DEPTH  # noqa: E402
 
 

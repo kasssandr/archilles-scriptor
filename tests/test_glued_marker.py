@@ -54,19 +54,34 @@ def test_footnote_path_skips_a_number_in_a_range(line, num, placed):
     assert substitute_markers([line], {num: "note"}) == [placed]
 
 
-# On the footnote path a period or comma behind a digit does not bar: in
-# born-digital volumes the real marker stands there more often than a section
-# number does ("in fall 312.186", Ando; "1147,380 Otto", Wolf). The cost is the
-# section number and the reference the review probed, which keep their old
-# reading here; the endnotes, on bare text, bar both.
+# On the footnote path a digit's period, comma and colon bar a bare number --
+# a section, a reference, a verse -- and the real marker behind them is the
+# raised one the page set apart (page.RAISED).
 @pytest.mark.parametrize("line,num,placed", [
-    ("during his campaign in fall 312.6 Then", 6, "during his campaign in fall 312. [6] Then"),
-    ("Domvogt (Tafel 6) 1147,8 Otto", 8, "Domvogt (Tafel 6) 1147, [8] Otto"),
-    ("in the following terms:7 Our", 7, "in the following terms: [7] Our"),
-    ("the ius naturale)20—they", 20, "the ius naturale) [20]—they"),
-    ("published in 1974:6 Serueilius", 6, "published in 1974: [6] Serueilius"),
+    (f"in the year 812.{RAISED}6 Then", 6, f"in the year 812.{RAISED} [6] Then"),
+    (f"the list of 1147,{RAISED}8 Otto", 8, f"the list of 1147,{RAISED} [8] Otto"),
+    (f"printed in 1974:{RAISED}6 Later", 6, f"printed in 1974:{RAISED} [6] Later"),
 ])
-def test_footnote_path_keeps_markers_behind_years_and_colons(line, num, placed):
+def test_footnote_path_takes_a_raised_marker_behind_a_numbers_punctuation(line, num, placed):
+    assert substitute_markers([line], {num: "note"}) == [placed]
+
+
+@pytest.mark.parametrize("line,num,placed", [
+    ("die Stelle (Buch 3, 18,5) lehrt es5 genau", 5, "die Stelle (Buch 3, 18,5) lehrt es [5] genau"),
+    ("wie in Kapitel 1.2 gezeigt2 wurde", 2, "wie in Kapitel 1.2 gezeigt [2] wurde"),
+    ("im Vers (4:2) steht es2 so", 2, "im Vers (4:2) steht es [2] so"),
+])
+def test_footnote_path_skips_a_bare_number_behind_a_numbers_punctuation(line, num, placed):
+    assert substitute_markers([line], {num: "note"}) == [placed]
+
+
+# Behind a word a colon or a dash carries real markers; ``joiner`` holds only
+# for the endnotes.
+@pytest.mark.parametrize("line,num,placed", [
+    ("in the following words:7 Our", 7, "in the following words: [7] Our"),
+    ("the old law)20—they", 20, "the old law) [20]—they"),
+])
+def test_footnote_path_keeps_markers_behind_a_words_joiner(line, num, placed):
     assert substitute_markers([line], {num: "note"}) == [placed]
 
 

@@ -39,6 +39,20 @@ def test_two_trailing_markers_are_also_transparent():
     assert len(paras) == 2
 
 
+def test_a_raised_marker_behind_a_year_does_not_hide_the_paragraph_end():
+    # The page set the marker apart behind "1298." (page.RAISED); the mark
+    # stands between the stop and the placed marker.
+    from scriptor.page import RAISED
+    page = Page(num=12, body_lines=[
+        "the assembly was then moved to the court held in",
+        f"the autumn of 1298.{RAISED} [7]",
+        "A later date would exclude the poet, who was born",
+        "around the year 1200 and wrote nothing after it.",
+    ], footnotes={7: "eins"})
+    paras, _fns, _occs, _levels = reconstruct_body([page], threshold=40)
+    assert len(paras) == 2
+
+
 def _md(para, fns=None, occs=None, level=0):
     state = {"counter": 0, "defs": []}
     return format_paragraph_md(para, fns or {}, occs or {}, level, state), state
