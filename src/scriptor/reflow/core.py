@@ -1788,14 +1788,8 @@ def main(
         _main(src_dir, out_path, fmt, decisions_path, profile_path, chunking_strategy)
 
 
-def _main(
-    src_dir: str,
-    out_path: str,
-    fmt: str | None = None,
-    decisions_path: str | None = None,
-    profile_path: str | None = None,
-    chunking_strategy: str = "basic",
-) -> None:
+def _load_settings(decisions_path: str | None, profile_path: str | None):
+    """The decision file and the OCR profile, where given: (decisions, ocr_profile)."""
     from scriptor.reflow import decisions as decisions_mod
     from scriptor.reflow import profile as profile_mod
 
@@ -1810,7 +1804,31 @@ def _main(
             f"{plural(len(ocr_profile.digits()), 'digit')})",
             file=sys.stderr,
         )
+    return decisions, ocr_profile
 
+
+def _read_lines(src_dir: str, out_path: str, fmt: str | None):
+    """Stage 1: the page model loaded and its printed lines rebuilt.
+
+    Returns (src, source_pages, fmt, gutter, reconstructions): the source
+    directory, the backend's pages, the output format settled from the out
+    path where none was given, the first measured column gutter (None for a
+    single column) and one ``Reconstruction`` per source page.
+
+    Printed lines, where the backend measured them. A page whose lines carry
+    no baseline is passed through unchanged — that is the TXT path, and it is
+    exactly today's behaviour. Which of the two happened is reported, never
+    assumed: a line-length histogram built from fragments yields plausible,
+    wrong paragraphs and says nothing about it.
+
+    Two columns share one baseline grid, so the assembly has to know about the
+    lane before it clusters, not after: joining across it interleaves the two
+    columns word for word. The lane is measured on each page and summarised
+    over the volume, because a single page's full-width table would hide it —
+    and because a scan carries its type area a little differently on the verso
+    than on the recto, which swept together erases the lane altogether
+    (Sigilla Veri; see reflow/columns).
+    """
     from scriptor.page import load_pages
     from scriptor.reflow.textlines import reconstruct
 
@@ -1822,18 +1840,6 @@ def _main(
         fmt = "md" if out_path.lower().endswith(".md") else "txt"
     print(f"Output format: {fmt}", file=sys.stderr)
 
-    # Printed lines, where the backend measured them. A page whose lines carry no
-    # baseline is passed through unchanged — that is the TXT path, and it is exactly
-    # today's behaviour. Which of the two happened is reported, never assumed: a
-    # line-length histogram built from fragments yields plausible, wrong paragraphs
-    # and says nothing about it.
-    # Two columns share one baseline grid, so the assembly above has to know about
-    # the lane before it clusters, not after: joining across it interleaves the two
-    # columns word for word. The lane is measured on each page and summarised over
-    # the volume, because a single page's full-width table would hide it — and
-    # because a scan carries its type area a little differently on the verso than
-    # on the recto, which swept together erases the lane altogether (Sigilla Veri;
-    # see reflow/columns).
     from scriptor.reflow.columns import page_gutters
 
     gutters = page_gutters(source_pages)
@@ -1868,11 +1874,21 @@ def _main(
             f"if this book is set in two columns, the reassembled lines are unreliable",
             file=sys.stderr,
         )
-    # Cut the size-verified footnote block first, while lines and sizes are
-    # still parallel — the running-element stripper below edits lines and
-    # would silently desynchronise the two. The body size is calibrated over
-    # the whole document: a note-heavy page's own dominant size would flip to
-    # the footnote size and see nothing small.
+    return src, source_pages, fmt, gutter, reconstructions
+
+
+def _cut_note_blocks(reconstructions: list):
+    """Stage 2: the size-verified footnote block cut off every page.
+
+    Returns (doc_body_size, splits, fn_blocks, page_lines): the volume's body
+    type size, each page's split (None where nothing was cut), each page's
+    note block and each page's body lines.
+
+    First, while lines and sizes are still parallel — the running-element
+    stripper edits lines and would silently desynchronise the two. The body
+    size is calibrated over the whole document: a note-heavy page's own
+    dominant size would flip to the footnote size and see nothing small.
+    """
     from scriptor.reflow.footnotes import dominant_size
     doc_body_size = dominant_size(
         [ln for r in reconstructions for ln in r.lines],
@@ -1908,17 +1924,23 @@ def _main(
     if cut:
         print(f"Footnote blocks cut by type size: {cut} pages", file=sys.stderr)
     page_lines = [s.body if s else r.lines for s, r in zip(splits, reconstructions)]
+    return doc_body_size, splits, fn_blocks, page_lines
 
-    # Characters the reader never sees, resolved before anything reads the text:
-    # a soft hyphen says where a word was broken, a zero-width mark says nothing
-    # at all, and a control character is a font that lost its ToUnicode table.
-    # Left as they are, they split words for everyone downstream -- Artificial
-    # Humanities came out with 1140 words in halves ("unprece- dented") because
-    # the de-hyphenation only ever looked for U+002D.
-    #
-    # Body and apparatus are learnt together and rewritten with the same
-    # reading: they are set in the same font, and the apparatus alone is far too
-    # little text to learn from.
+
+def _resolve_characters(page_lines: list, fn_blocks: list):
+    """Stage 3: characters the reader never sees, resolved before anything
+    reads the text. Returns (page_lines, fn_blocks), rewritten.
+
+    A soft hyphen says where a word was broken, a zero-width mark says nothing
+    at all, and a control character is a font that lost its ToUnicode table.
+    Left as they are, they split words for everyone downstream -- Artificial
+    Humanities came out with 1140 words in halves ("unprece- dented") because
+    the de-hyphenation only ever looked for U+002D.
+
+    Body and apparatus are learnt together and rewritten with the same
+    reading: they are set in the same font, and the apparatus alone is far
+    too little text to learn from.
+    """
     from scriptor.reflow.characters import (
         describe as describe_characters,
         learn_broken_glyphs,
@@ -1941,7 +1963,15 @@ def _main(
     said = describe_characters(char_report)
     if said:
         print(f"Invisible characters: {said}", file=sys.stderr)
+    return page_lines, fn_blocks
 
+
+def _line_structure(page_lines: list, splits: list, reconstructions: list,
+                    doc_body_size, gutter):
+    """Stage 4: the structure read off the printed line, while lines, sizes,
+    edges and emphasis are still parallel — run-in headings cut off their
+    paragraph, reference entries joined. Returns (page_lines, page_indents).
+    """
     # Left edges, kept parallel to page_lines: the peeled label tail behind a
     # footnote cut carries none.
     page_indents = [
@@ -2017,11 +2047,24 @@ def _main(
         )
     page_lines = [lines for lines, _s, _i in joined]
     page_indents = [indents for _l, _s, indents in joined]
+    return page_lines, page_indents
 
-    # The catalogue's outline, believed entry by entry where the page confirms
-    # the title: the confirmed chapter starts become headings, and the chapter
-    # titles inform running-head removal — the generic stripper below would
-    # preserve the title's own year ("… in 759") as a phantom folio.
+
+def _confirm_outline(page_lines: list, page_indents: list, src: Path,
+                     source_pages: list):
+    """Stage 5: the catalogue's outline, believed entry by entry where the
+    page confirms the title, then the first-line indents marked.
+
+    Returns (page_lines, headings_by_pos, chapter_starts, chapter_titles,
+    outline_positional). The confirmed chapter starts become headings, cut off
+    the body, and the chapter titles inform running-head removal — the generic
+    stripper would preserve the title's own year ("… in 759") as a phantom
+    folio.
+
+    ``mark_indent_breaks`` closes the stage: it is the last consumer of the
+    indent column, so it runs after the outline has cut its headings off and
+    before anything else edits lines out from under it.
+    """
     from scriptor.reflow import outline as outline_mod
     entries = outline_mod.load_outline(src)
     pos_by_phys = {sp.index: pos for pos, sp in enumerate(source_pages)}
@@ -2083,10 +2126,18 @@ def _main(
         mark_indent_breaks(lines, indents)
         for lines, indents in zip(page_lines, page_indents)
     ]
+    return (page_lines, headings_by_pos, chapter_starts, chapter_titles,
+            outline_positional)
 
-    # Chapter running heads, removed with knowledge of the full title — the
-    # generic stripper below would take the title's own year ("… in 759") for a
-    # phantom folio.
+
+def _known_titles(page_lines: list, headings_by_pos: dict, outline_positional: list):
+    """Stage 5b: what the strippers must know before they take a line.
+
+    Returns (rescued, lists, known, heads): the channel for every number a
+    stripper lifts out of a line, the positions of the volume's own contents,
+    the titles the volume names, and the head-region lines held back for the
+    placement.
+    """
     # One channel for every number a stripper lifts out of a line it removes.
     # Four stages add to it; nothing between them has to be kept in step, and
     # the consensus reads it once at the end (reflow/rescued.py).
@@ -2126,7 +2177,24 @@ def _main(
               f"({plural(len(early), 'contents page')}, "
               f"{plural(len(outline_positional), 'outline entry', 'outline entries')})",
               file=sys.stderr)
+    return rescued, lists, known, heads
 
+
+def _strip_running_elements(page_lines: list, chapter_titles: list, fn_blocks: list,
+                            rescued, heads, lists: set, known):
+    """Stage 6: running heads and footers removed document-wide, before
+    parse_page runs.
+
+    Returns (raw_texts, search_texts, cleaned, fn_blocks, headers,
+    rescued_by_ordinal). ``raw_texts`` is the snapshot after the chapter
+    running heads went and before the generic stripper ran; the chapter
+    search and the placement read it (see ``_chapters_and_links``).
+    """
+    from scriptor.reflow import outline as outline_mod
+
+    # Chapter running heads, removed with knowledge of the full title — the
+    # generic stripper below would take the title's own year ("… in 759") for a
+    # phantom folio.
     if chapter_titles:
         page_lines, contested = outline_mod.strip_running_titles(
             page_lines, chapter_titles, rescued, heads, lists)
@@ -2186,7 +2254,17 @@ def _main(
               f"{len(opening_titles)}", file=sys.stderr)
     if footers:
         print(f"Running footers removed ({len(footers)}): {footers[:3]}", file=sys.stderr)
+    return raw_texts, search_texts, cleaned, fn_blocks, headers, rescued_by_ordinal
 
+
+def _parse_pages(cleaned: list, raw_texts: list, fn_blocks: list, source_pages: list,
+                 reconstructions: list, heads, rescued_by_ordinal: dict, headers: list,
+                 headings_by_pos: dict):
+    """Stage 7: every page parsed into a ``Page``, continuations reattached.
+
+    Returns (pages, page_headers): the pages that carry anything, and the
+    running head each of them carried, parallel to them.
+    """
     # The running head each page carried, read off the text *before* it was
     # stripped and kept parallel to ``pages`` (parse_page drops empty pages,
     # so the raw list would drift out of step). A head like "Selected
@@ -2233,6 +2311,19 @@ def _main(
             f"Footnote continuations reattached across page breaks: {reattached}",
             file=sys.stderr,
         )
+    return pages, page_headers
+
+
+def _chapters_and_links(pages: list, chapter_starts: list, raw_texts: list,
+                        search_texts: list, source_pages: list):
+    """Stage 8: chapter openings from the contents, the outermost printed line
+    of every page, and the contents' links.
+
+    Returns (chapter_starts, contents_entries, toc_pages, raw_by_pos, edges,
+    links).
+    """
+    from scriptor.reflow.chapters import contents_pages
+    from scriptor.reflow.toc import parse_toc
 
     # The contents, as a second source of chapter openings — and the only one
     # that knows what those pages are *called* in print. Nine of the eighteen
@@ -2296,7 +2387,6 @@ def _main(
     # not take -- and it has to come from the source page rather than from the
     # body, because by now the running head has been stripped, and with it the
     # versal folio that shared its line.
-    from scriptor.reflow.pagination.verdict import run_verdict
     from scriptor.reflow.textlines import edge_lines
 
     edges = {
@@ -2321,6 +2411,18 @@ def _main(
             f"{plural(len(links), 'contents page')}",
             file=sys.stderr,
         )
+    return chapter_starts, contents_entries, toc_pages, raw_by_pos, edges, links
+
+
+def _verdict(pages: list, chapter_starts: list, edges: dict, rescued_by_ordinal: dict,
+             links: dict):
+    """Stage 9: the pagination verdict, the rejected folios returned to the
+    text and the confirmed ones taken out of it. Returns the verdict.
+
+    Restoring comes before cutting: a rejected candidate goes back into the
+    text, and only then is the text what the reader will see.
+    """
+    from scriptor.reflow.pagination.verdict import run_verdict
 
     verdict = run_verdict(pages, chapters=chapter_starts, edges=edges,
                           rescued=rescued_by_ordinal, links=links)
@@ -2344,17 +2446,26 @@ def _main(
             f"{restored}",
             file=sys.stderr,
         )
+    return verdict
 
-    # Where the headings stand (Gliederungsmodell §5.2). After the verdict,
-    # because rules 2 and 3 read the labels it decided on, and after the
-    # folios have been restored and cut, because only then is the body what
-    # the reader will see. Before assign_modes, because what a page is headed
-    # is part of what a page is.
+
+def _place_headings(pages: list, contents_entries: list, outline_positional: list,
+                    raw_by_pos: dict, toc_pages: list, heads):
+    """Stage 10: where the headings stand (Gliederungsmodell §5.2).
+
+    Returns (sources, placement): the wants of contents and outline merged,
+    and where they were placed (None where neither names a heading).
+
+    After the verdict, because rules 2 and 3 read the labels it decided on,
+    and after the folios have been restored and cut, because only then is the
+    body what the reader will see. Before assign_modes, because what a page
+    is headed is part of what a page is.
+    """
     from scriptor.reflow import placement as placement_mod
     from scriptor.reflow.regions import region_of_heading
-    from scriptor.structure import Entry, is_roman_volume, learn_schemes
+    from scriptor.structure import Entry, learn_schemes
 
-    placement = numbering = None
+    placement = None
     contents_wants: list = []
     if contents_entries:
         learnt = learn_schemes([
@@ -2410,7 +2521,25 @@ def _main(
                 f"{applied.heads_removed} removed as running heads",
                 file=sys.stderr,
             )
+    return sources, placement
 
+
+def _regions_and_notes(pages: list, fn_blocks: list, page_headers: list, cleaned: list,
+                       sources, placement):
+    """Stage 11: modes, the front matter's small type, regions, the list
+    treatment behind them (``assign_treatment``), endnotes, and the
+    numbering judged. Returns the numbering verdict (None where no list or
+    outline names a heading).
+
+    The treatment comes after the regions, because it is the region's; the
+    numbering after the regions, so that a contents page or a bibliography
+    is not asked, and before the calibration, because a line that has become
+    a heading is no longer a line of running text.
+    """
+    from scriptor.reflow import placement as placement_mod
+    from scriptor.structure import is_roman_volume
+
+    numbering = None
     assign_modes(pages)
     mode_counts = Counter(p.mode for p in pages)
     print(f"Mode distribution: {dict(mode_counts)}", file=sys.stderr)
@@ -2489,7 +2618,12 @@ def _main(
                 f"taken as the level below it",
                 file=sys.stderr,
             )
+    return numbering
 
+
+def _calibrate(pages: list, ocr_profile):
+    """Stage 12: the paragraph threshold over the main pages, and the glyph
+    evidence for the footnote digits. Returns (threshold, evidence)."""
     threshold, hist = calibrate_threshold(pages)
     print(f"Calibration (main pages only): threshold <= {threshold} chars", file=sys.stderr)
     print(f"  Most common line lengths: {hist.most_common(5)}", file=sys.stderr)
@@ -2511,6 +2645,16 @@ def _main(
         )
         source = " (profile)" if evidence.from_profile(digit) else ""
         print(f"Glyph evidence for footnote {digit}{source}: {shown}", file=sys.stderr)
+    return threshold, evidence
+
+
+def _render_and_write(pages: list, threshold: int, evidence, out_path: str, fmt: str,
+                      decisions, chunking_strategy: str, verdict, sources, placement,
+                      numbering):
+    """Stage 13: the master and its annotated twin rendered, and every sidecar
+    written beside them — notes, audit, pagination, structure, decisions."""
+    from scriptor.reflow import decisions as decisions_mod
+    from scriptor.reflow.regions import region_of_heading
 
     from scriptor.reflow.pagination.report import (
         profile_line,
@@ -2661,6 +2805,45 @@ def _main(
         f"Decisions open: {plural(open_count, 'candidate')} -> {decisions_out}",
         file=sys.stderr,
     )
+
+
+def _main(
+    src_dir: str,
+    out_path: str,
+    fmt: str | None = None,
+    decisions_path: str | None = None,
+    profile_path: str | None = None,
+    chunking_strategy: str = "basic",
+) -> None:
+    """The stages of a reflow, in the order they must run. Each stage's
+    docstring says what it needs from the ones before it."""
+    decisions, ocr_profile = _load_settings(decisions_path, profile_path)
+    src, source_pages, fmt, gutter, reconstructions = _read_lines(src_dir, out_path, fmt)
+    doc_body_size, splits, fn_blocks, page_lines = _cut_note_blocks(reconstructions)
+    page_lines, fn_blocks = _resolve_characters(page_lines, fn_blocks)
+    page_lines, page_indents = _line_structure(
+        page_lines, splits, reconstructions, doc_body_size, gutter)
+    (page_lines, headings_by_pos, chapter_starts, chapter_titles,
+     outline_positional) = _confirm_outline(page_lines, page_indents, src, source_pages)
+    rescued, lists, known, heads = _known_titles(
+        page_lines, headings_by_pos, outline_positional)
+    (raw_texts, search_texts, cleaned, fn_blocks, headers,
+     rescued_by_ordinal) = _strip_running_elements(
+        page_lines, chapter_titles, fn_blocks, rescued, heads, lists, known)
+    pages, page_headers = _parse_pages(
+        cleaned, raw_texts, fn_blocks, source_pages, reconstructions, heads,
+        rescued_by_ordinal, headers, headings_by_pos)
+    (chapter_starts, contents_entries, toc_pages, raw_by_pos, edges,
+     links) = _chapters_and_links(pages, chapter_starts, raw_texts, search_texts,
+                                  source_pages)
+    verdict = _verdict(pages, chapter_starts, edges, rescued_by_ordinal, links)
+    sources, placement = _place_headings(
+        pages, contents_entries, outline_positional, raw_by_pos, toc_pages, heads)
+    numbering = _regions_and_notes(
+        pages, fn_blocks, page_headers, cleaned, sources, placement)
+    threshold, evidence = _calibrate(pages, ocr_profile)
+    _render_and_write(pages, threshold, evidence, out_path, fmt, decisions,
+                      chunking_strategy, verdict, sources, placement, numbering)
 
 
 if __name__ == "__main__":
