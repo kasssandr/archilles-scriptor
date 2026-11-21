@@ -610,24 +610,38 @@ CALIB_FALLBACK_MIN = 40
 # Region/mode detection
 # ----------------------------------------------------------------------
 
-# Heading patterns that trigger a mode change.
-# The first 10 non-empty body lines of a page are checked.
+# How a list region is set, read off the heading that opens it
+# (``assign_treatment``). A bibliography headed "N. Literatur" is set as
+# entries, capitalised surnames at the start of a line being clear markers; an
+# index or a list of abbreviations under its numbered German heading line by
+# line, its OCR column scan being too often broken to reflow. Only these forms,
+# and only inside the region they open.
 #
-# The table of contents is deliberately NOT among them any more. Its words
-# lived here as a second vocabulary beside ``regions._VOCABULARY["contents"]``,
-# and only the other one was maintained: this list never learned Dutch,
-# Russian or Portuguese, so De eerste minister's "Inhoud" — a title its own
-# outline confirms — matched nothing, and the volume lost its contents
-# entirely. One question, one vocabulary; ``assign_modes`` asks the region
-# module now.
-HEADING_TRIGGERS = [
-    # Bibliography: capitalized surnames at the start of a line are clear markers
-    (re.compile(r"^\d+\.\s+Literatur\s*$"), "entries-versal"),
-    # Abbreviations / sources / indexes: OCR column scan often broken -> leave as raw
-    (re.compile(
-        r"^\d+\.\s+(Abkürzungsverzeichnis|Quellen|Personenregister|Sachregister|Ortsregister)\s*$"
-    ), "raw"),
-]
+# They were triggers of ``assign_modes`` once, firing on a page and persisting
+# until the next one whatever the regions said. Klinghardt binds both parts of
+# *Das älteste Evangelium* into one PDF with the common bibliography between
+# them, and from its heading on all of part II -- 831 pages -- was set as list
+# entries, whose renderer emits no footnotes: 211 of 941 notes went that way.
+# Bound to the region, a treatment ends where the region does, by
+# construction rather than by a repair afterwards.
+#
+# "N. Quellen" was among the triggers and is not here: the region vocabulary
+# names no bare "Quellen", and no volume of the test stock prints the form.
+TREATMENT_TRIGGERS: dict[str, tuple[re.Pattern[str], str]] = {
+    "bibliography": (re.compile(r"^\d+\.\s+Literatur\s*$"), "entries-versal"),
+    "index": (re.compile(
+        r"^\d+\.\s+(?:Personenregister|Sachregister|Ortsregister)\s*$"), "raw"),
+    "abbreviations": (re.compile(r"^\d+\.\s+Abkürzungsverzeichnis\s*$"), "raw"),
+}
+
+
+def _opening_lines(p: Page) -> list[str]:
+    """What a page opens with: the heading the outline cut off its body, then
+    its first ten lines with text. A confirmed heading must still be seen —
+    "Contents" cut away would let the contents page reflow as prose."""
+    return ([p.heading.strip()] if p.heading else []) + [
+        ln.strip() for ln in p.body_lines if ln.strip()
+    ][:10]
 
 
 # Prose classifier: a page counts as running text if at least PROSE_MIN_LINES
@@ -676,13 +690,21 @@ def is_prose_page(
 
 
 def assign_modes(pages: list[Page]) -> None:
-    """Sets p.mode for every page based on detected region transitions.
+    """Sets p.mode for every page to frontmatter, toc or main.
 
-    Starting mode is 'frontmatter'. Heading triggers switch to toc/entries/raw.
-    The frontmatter->main transition is hybrid: it fires on the first page
-    that either looks like running text (is_prose_page) OR carries book page 1
-    — this correctly detects volumes without an arabic-1 trigger (Snell),
+    Starting mode is 'frontmatter'. A contents heading switches to toc. The
+    frontmatter->main transition is hybrid: it fires on the first page that
+    either looks like running text (is_prose_page) OR carries book page 1 —
+    this correctly detects volumes without an arabic-1 trigger (Snell),
     without losing the previous behaviour (safe fallback).
+
+    The list treatments (entries, raw) are not decided here but behind the
+    regions, by ``assign_treatment``. The words of the contents heading are
+    the region module's: they lived here once as a second vocabulary beside
+    ``regions._VOCABULARY["contents"]``, only the other one was maintained,
+    and this list never learned Dutch, Russian or Portuguese — De eerste
+    minister's "Inhoud", a title its own outline confirms, matched nothing,
+    and the volume lost its contents entirely.
     """
     from scriptor.reflow.regions import region_of_heading
     from scriptor.reflow.toc import is_toc_page
@@ -690,69 +712,61 @@ def assign_modes(pages: list[Page]) -> None:
     front_limit = max(1, int(len(pages) * FRONT_MATTER_FRACTION))
     mode = "frontmatter"
     for position, p in enumerate(pages):
-        # A confirmed outline heading was cut off the page's body — the mode
-        # triggers must still see it ("Contents" cut away would let the
-        # contents page reflow as prose).
-        candidates = ([p.heading.strip()] if p.heading else []) + [
-            ln.strip() for ln in p.body_lines if ln.strip()
-        ][:10]
-        triggered = False
-        for line in candidates:
-            if region_of_heading(line) == "contents":
-                mode = "toc"
-                triggered = True
-                break
-            for pat, new_mode in HEADING_TRIGGERS:
-                if pat.match(line):
-                    mode = new_mode
-                    triggered = True
-                    break
-            if triggered:
-                break
-        if not triggered:
-            # Read structurally — nearly every line ending in a page number —
-            # and asked by position, not by the mode we happen to be in. The
-            # mode was the wrong gate: an imprint page whose picture credits
-            # are set as running text ends the front matter before the
-            # contents is reached, and the contents behind it was then never
-            # examined at all (De eerste minister). The bound is what keeps
-            # this safe, because an index reads the same way and is told apart
-            # by nothing but where it stands.
-            if is_toc_page(p) and (mode == "frontmatter" or position < front_limit):
-                mode = "toc"
-            # The printed "1" says the body starts here. A computed one says
-            # only that the volume counts its title page, which every volume
-            # counted from 1 does — reading it as the body would hand the whole
-            # front matter to the main text.
-            elif mode in ("frontmatter", "toc") and (
-                is_prose_page(p, width)
-                or (p.label == "1" and p.label_source == "printed")
-            ):
-                mode = "main"
+        if any(region_of_heading(line) == "contents" for line in _opening_lines(p)):
+            mode = "toc"
+        # Read structurally — nearly every line ending in a page number — and
+        # asked by position, not by the mode we happen to be in. The mode was
+        # the wrong gate: an imprint page whose picture credits are set as
+        # running text ends the front matter before the contents is reached,
+        # and the contents behind it was then never examined at all (De
+        # eerste minister). The bound is what keeps this safe, because an
+        # index reads the same way and is told apart by nothing but where it
+        # stands.
+        elif is_toc_page(p) and (mode == "frontmatter" or position < front_limit):
+            mode = "toc"
+        # The printed "1" says the body starts here. A computed one says only
+        # that the volume counts its title page, which every volume counted
+        # from 1 does — reading it as the body would hand the whole front
+        # matter to the main text.
+        elif mode in ("frontmatter", "toc") and (
+            is_prose_page(p, width)
+            or (p.label == "1" and p.label_source == "printed")
+        ):
+            mode = "main"
         p.mode = mode
 
 
-def end_entries_with_region(pages: list[Page]) -> int:
-    """Return to running text the bibliography-mode pages the regions read as
-    running text; the number of pages changed.
+def assign_treatment(pages: list[Page]) -> Counter[str]:
+    """Set the list treatment on each run of a region that calls for one; the
+    number of pages set, by treatment.
 
-    The mode is set by a trigger that fires once and then persists until the
-    next trigger. A bibliography closing the volume needs no end, but one in
-    the middle does: Klinghardt binds both parts of *Das älteste Evangelium*
-    into one PDF, the common bibliography at the end of part I, and from its
-    heading on, all of part II -- 831 pages -- was set as list entries,
-    whose renderer emits no footnotes. 211 of 941 notes went that way. The
-    regions close an apparatus on evidence the mode never consults (a chapter
-    the outline confirms, a run of prose pages), and they had closed this one
-    after its 59 pages. Only `main` takes a page back: an index or a list of
-    abbreviations behind the bibliography stays a list.
+    Runs after ``assign_regions``. A run is a stretch of consecutive pages of
+    one region; its opening page decides by the form in TREATMENT_TRIGGERS,
+    and the treatment covers that run and nothing beyond it. The regions close
+    an apparatus on evidence a trigger never consulted — the next region
+    heading, a chapter the outline confirms, a run of prose pages — so an
+    index behind the bibliography is not set as entries because the
+    bibliography was, and part II behind it is running text again.
+
+    Only a page read as running text takes a treatment. Front matter and the
+    contents are measured on the page (``assign_modes``) and stay what they
+    were measured as.
     """
-    ended = 0
-    for p in pages:
-        if p.mode == "entries-versal" and p.region == "main":
-            p.mode = "main"
-            ended += 1
-    return ended
+    treated: Counter[str] = Counter()
+    start = 0
+    while start < len(pages):
+        region = pages[start].region
+        end = start + 1
+        while end < len(pages) and pages[end].region == region:
+            end += 1
+        trigger = TREATMENT_TRIGGERS.get(region) if region else None
+        if trigger and any(trigger[0].match(line) for line in _opening_lines(pages[start])):
+            for p in pages[start:end]:
+                if p.mode == "main":
+                    p.mode = trigger[1]
+                    treated[trigger[1]] += 1
+        start = end
+    return treated
 
 
 def front_matter_notes_as_text(pages: list[Page], fn_blocks: list) -> int:
@@ -2403,11 +2417,11 @@ def _main(
 
     from scriptor.reflow.regions import assign_regions
     assign_regions(pages, page_headers=page_headers)
-    ended = end_entries_with_region(pages)
-    if ended:
+    treated = assign_treatment(pages)
+    if treated:
         print(
-            f"Bibliography mode ended where the region did: {plural(ended, 'page')} "
-            f"back to running text",
+            "List treatment, bounded by its region: "
+            + ", ".join(f"{plural(n, 'page')} {mode}" for mode, n in sorted(treated.items())),
             file=sys.stderr,
         )
     named = Counter(p.region for p in pages if p.region and p.region != "main")
