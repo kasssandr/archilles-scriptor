@@ -188,6 +188,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     evc = evsub.add_parser("check", help="accept an authored band against its selection")
     evc.add_argument("--band", type=Path, required=True)
+
+    evab = evsub.add_parser(
+        "ab", help="reflow a test stock with two frozen trees and compare, with set values")
+    evab.add_argument("--a", type=Path, required=True, help="work tree of side A")
+    evab.add_argument("--b", type=Path, required=True, help="work tree of side B")
+    evab.add_argument("--manifest", type=Path, default=None,
+                      help="default: eval/golden-local/ab.toml in this repository")
+    evab.add_argument("--out", type=Path, default=None,
+                      help="default: eval/outputs/ab/<a>-<b> in this repository")
+    evab.add_argument("--only", default=None, help="comma-separated band names")
+    evab.add_argument("--random", type=int, default=0,
+                      help="add N page models drawn from the manifest's pool")
+    evab.add_argument("--seed", type=int, default=0)
+    evab.add_argument("--force", action="store_true", help="recompute existing outputs")
+    evab.add_argument("--jobs", type=int, default=1, help="reflow N bands at once")
     return p
 
 
@@ -322,6 +337,8 @@ def _dispatch(args, parser) -> int:
             f"{plural(len(report.orphan_refs), 'reference without a definition', 'references without a definition')}",
             file=sys.stderr,
         )
+    elif args.cmd == "eval" and args.eval_cmd == "ab":
+        return _dispatch_ab(args)
     elif args.cmd == "eval":
         from scriptor.eval.report import render_json, render_markdown
         from scriptor.eval.runner import evaluate_file, evaluate_suite
@@ -339,6 +356,22 @@ def _dispatch(args, parser) -> int:
     else:  # pragma: no cover
         parser.error(f"unknown command {args.cmd!r}")
     return 0
+
+
+def _dispatch_ab(args) -> int:
+    from scriptor.eval import ab
+
+    root = ab.repo_root(Path.cwd())
+    manifest = args.manifest or root / "eval" / "golden-local" / "ab.toml"
+    try:
+        commits = [ab.tree_commit(t)[:7] for t in (args.a, args.b)]
+        out = args.out or root / "eval" / "outputs" / "ab" / f"{commits[0]}-{commits[1]}"
+        only = [n.strip() for n in args.only.split(",")] if args.only else None
+        return ab.run_ab(args.a, args.b, manifest, out, only, args.random, args.seed,
+                         args.force, jobs=args.jobs)
+    except (ab.TreeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
 
 def _dispatch_authoring(args) -> int:
