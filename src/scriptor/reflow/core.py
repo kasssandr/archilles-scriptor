@@ -619,11 +619,13 @@ CALIB_FALLBACK_MIN = 40
 #
 # They were triggers of ``assign_modes`` once, firing on a page and persisting
 # until the next one whatever the regions said. Klinghardt binds both parts of
-# *Das älteste Evangelium* into one PDF with the common bibliography between
-# them, and from its heading on all of part II -- 831 pages -- was set as list
-# entries, whose renderer emits no footnotes: 211 of 941 notes went that way.
-# Bound to the region, a treatment ends where the region does, by
-# construction rather than by a repair afterwards.
+# *Das älteste Evangelium* into one PDF, and the introduction to part II has a
+# section "3. Literatur" on the reconstructions it draws on. From that line on
+# all of part II -- 831 pages -- was set as list entries, whose renderer emits
+# no footnotes: 211 of 941 notes went that way. The regions never read that
+# section as a bibliography, so bound to the region the treatment does not
+# start there at all, and wherever it does start it ends where the region
+# does -- by construction rather than by a repair afterwards.
 #
 # "N. Quellen" was among the triggers and is not here: the region vocabulary
 # names no bare "Quellen", and no volume of the test stock prints the form.

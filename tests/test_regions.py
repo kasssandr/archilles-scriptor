@@ -124,10 +124,10 @@ def _list_page(n=20):
 
 
 def test_bibliography_treatment_ends_where_its_region_does():
-    # Klinghardt: two parts bound into one PDF, the bibliography between them.
     # As a mode trigger, "6. Literatur" fired once and persisted to the end of
-    # the volume, so part II was set as list entries and its footnotes were
-    # never emitted. Behind the regions the treatment is the region's.
+    # the volume, so everything behind the bibliography was set as list
+    # entries and its footnotes were never emitted. Behind the regions the
+    # treatment is the region's.
     from scriptor.reflow.core import assign_treatment
     from scriptor.reflow.regions import assign_regions
 
@@ -186,6 +186,18 @@ def test_a_list_treatment_leaves_measured_front_matter_alone():
     pages[0].mode, pages[1].mode = "frontmatter", "toc"
     assert assign_treatment(pages) == {"raw": 1}
     assert [p.mode for p in pages] == ["frontmatter", "toc", "raw"]
+
+
+def test_a_literature_section_in_running_text_takes_no_treatment():
+    # Klinghardt: two parts in one PDF, and the introduction to part II has a
+    # numbered section "3. Literatur" on the works it draws on. As a mode
+    # trigger it set all 831 pages behind it as list entries; the regions read
+    # it as running text, and so does the treatment now.
+    from scriptor.reflow.core import assign_treatment
+
+    pages = _run("main", "3. Literatur", n=4)
+    assert assign_treatment(pages) == {}
+    assert all(p.mode == "main" for p in pages)
 
 
 def test_a_bare_sources_heading_takes_no_treatment():
