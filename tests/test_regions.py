@@ -123,11 +123,12 @@ def _list_page(n=20):
     return Page(-1, [f"AUTOR, A., Titel {k}, Ort 19{k:02d}" for k in range(n)], {})
 
 
-def test_bibliography_mode_ends_where_its_region_does():
-    # Klinghardt: two parts bound into one PDF, the bibliography between them.
-    # The mode's trigger fires once and persisted to the end of the volume, so
-    # part II was set as list entries and its footnotes were never emitted.
-    from scriptor.reflow.core import end_entries_with_region
+def test_bibliography_treatment_ends_where_its_region_does():
+    # As a mode trigger, "6. Literatur" fired once and persisted to the end of
+    # the volume, so everything behind the bibliography was set as list
+    # entries and its footnotes were never emitted. Behind the regions the
+    # treatment is the region's.
+    from scriptor.reflow.core import assign_treatment
     from scriptor.reflow.regions import assign_regions
 
     literatur = _list_page()
@@ -137,23 +138,76 @@ def test_bibliography_mode_ends_where_its_region_does():
     for k, p in enumerate(pages):
         p.label, p.label_source = str(k + 1), "printed"
     assign_modes(pages)
-    assert [p.mode for p in pages[4:]] == ["entries-versal"] * 10
+    assert all(p.mode == "main" for p in pages)
     assign_regions(pages)
     assert [p.region for p in pages[4:6]] == ["bibliography"] * 2
 
-    assert end_entries_with_region(pages) == 8
+    assert assign_treatment(pages) == {"entries-versal": 2}
     assert [p.mode for p in pages[4:6]] == ["entries-versal"] * 2
     assert all(p.mode == "main" for p in pages[6:])
 
 
-def test_list_behind_the_bibliography_stays_a_list():
-    from scriptor.reflow.core import end_entries_with_region
+def _run(region: str, heading: str | None = None, n: int = 2) -> list[Page]:
+    pages = [_list_page() for _ in range(n)]
+    if heading:
+        pages[0].body_lines.insert(0, heading)
+    for p in pages:
+        p.mode, p.region = "main", region
+    return pages
 
-    pages = [_list_page() for _ in range(3)]
-    for p, region in zip(pages, ["bibliography", "index", "abbreviations"]):
-        p.mode, p.region = "entries-versal", region
-    assert end_entries_with_region(pages) == 0
-    assert all(p.mode == "entries-versal" for p in pages)
+
+def test_each_list_region_is_set_by_its_own_heading():
+    # An index behind the bibliography is not set as entries because the
+    # bibliography was: its own heading decides, and without the form it keeps
+    # the running-text treatment like any other region.
+    from scriptor.reflow.core import assign_treatment
+
+    pages = (_run("bibliography", "6. Literatur") + _run("index")
+             + _run("abbreviations", "7. Abkürzungsverzeichnis")
+             + _run("index", "8. Personenregister"))
+    assert assign_treatment(pages) == {"entries-versal": 2, "raw": 4}
+    assert [p.mode for p in pages] == (["entries-versal"] * 2 + ["main"] * 2
+                                       + ["raw"] * 4)
+
+
+def test_the_form_on_a_later_page_of_the_run_sets_nothing():
+    from scriptor.reflow.core import assign_treatment
+
+    pages = _run("bibliography", n=3)
+    pages[1].body_lines.insert(0, "6. Literatur")
+    assert assign_treatment(pages) == {}
+    assert all(p.mode == "main" for p in pages)
+
+
+def test_a_list_treatment_leaves_measured_front_matter_alone():
+    from scriptor.reflow.core import assign_treatment
+
+    pages = _run("abbreviations", "1. Abkürzungsverzeichnis", n=3)
+    pages[0].mode, pages[1].mode = "frontmatter", "toc"
+    assert assign_treatment(pages) == {"raw": 1}
+    assert [p.mode for p in pages] == ["frontmatter", "toc", "raw"]
+
+
+def test_a_literature_section_in_running_text_takes_no_treatment():
+    # Klinghardt: two parts in one PDF, and the introduction to part II has a
+    # numbered section "3. Literatur" on the works it draws on. As a mode
+    # trigger it set all 831 pages behind it as list entries; the regions read
+    # it as running text, and so does the treatment now.
+    from scriptor.reflow.core import assign_treatment
+
+    pages = _run("main", "3. Literatur", n=4)
+    assert assign_treatment(pages) == {}
+    assert all(p.mode == "main" for p in pages)
+
+
+def test_a_bare_sources_heading_takes_no_treatment():
+    # "N. Quellen" was a raw trigger; the region vocabulary names no bare
+    # "Quellen", so such a page has no region and no treatment.
+    from scriptor.reflow.core import assign_treatment
+
+    pages = _run("main", "5. Quellen")
+    assert assign_treatment(pages) == {}
+    assert all(p.mode == "main" for p in pages)
 
 
 def test_calibrate_fallback_on_empty_histogram():
