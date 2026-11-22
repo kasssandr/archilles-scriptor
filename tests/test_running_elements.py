@@ -627,6 +627,49 @@ def test_a_chapter_line_above_the_head_joins_the_title():
     assert kept == [(1, f"Kap. III {_HEAD}")]
 
 
+def _excursus(opening, verso, recto, n=4):
+    """A page before the section, its opening page (``opening`` over two lines
+    of text), then pages headed alternately by ``verso`` and ``recto``."""
+    pages = ["\n".join([*_DISTINCT[4:11], "Damit endet der Abschnitt."])]
+    pages.append("\n".join([*opening, _DISTINCT[1], _DISTINCT[2]]))
+    for i in range(n):
+        pages.append(f"{20 + i}\n{(verso, recto)[i % 2]}\n{_DISTINCT[3 + i]}")
+    return pages
+
+
+def test_a_reference_above_a_title_the_head_spells_is_no_part_of_it():
+    # Pückert p. 259: "Zweiter Excurs." / "(Zu S. 34.)" / "Die Unthaten des
+    # Abts Fridugis zu Sithin." Joined to the title, the reference read as the
+    # recto head, its "34.)" as a folio at the head's edge, and both titles
+    # were stripped as furniture.
+    verso, recto = "Zweiter Excurs.", "Die Unthaten des Abts Fridugis zu Sithin."
+    pages = _excursus([verso, "(Zu S. 34.)", recto, "(Faelschungen.)"], verso, recto)
+    kept: list = []
+    cleaned = remove_running_headers(
+        pages, [verso, recto], RescuedFolios(len(pages)), kept=kept)
+    assert kept == [(1, verso), (1, recto)]
+    assert cleaned[1].split("\n")[:4] == [MARK + verso, "(Zu S. 34.)", MARK + recto,
+                                          "(Faelschungen.)"]
+
+
+def test_a_title_may_reach_below_the_head_region():
+    # Pückert p. 248: "(Zu S. 15 Anm. 11.)" takes one of the head region's
+    # three lines, and the title's second line is the fourth.
+    from scriptor.reflow.headings import mark_placed
+
+    verso, recto = "Erster Excurs.", "Die Kloester des Westens und Ostens"
+    title = "Die Kloester des Westens und Ostens?"
+    pages = _excursus([verso, "(Zu S. 15 Anm. 11.)", "Die Kloester des Westens",
+                       "und Ostens?"], verso, recto)
+    kept: list = []
+    cleaned = remove_running_headers(
+        pages, [verso, recto], RescuedFolios(len(pages)), kept=kept)
+    assert kept == [(1, verso), (1, title)]
+    assert cleaned[1].split("\n")[:3] == [MARK + verso, "(Zu S. 15 Anm. 11.)",
+                                          mark_placed(title, 1)]
+    assert "und Ostens?" not in "\n".join(cleaned[1].split("\n")[3:])
+
+
 def test_a_head_that_never_runs_is_left_standing():
     # L'Empire chrétien: "CHAPITRE III" over a chapter's first page only.
     label = "CHAPITRE DEUX"
