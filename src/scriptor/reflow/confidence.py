@@ -13,7 +13,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from scriptor._text import plural
-from scriptor.reflow.footnotes import PLACED_MARKER_RE
+from scriptor.reflow.footnotes import PLACED_MARKER_RE, placed_number
 from scriptor.reflow.pagelabel import PAGE_MARKER_RE, decode_label
 
 # Confidence-class threshold for a single candidate (named, tunable).
@@ -266,7 +266,7 @@ def classify(
 
 def _present_markers(para: str) -> dict[int, int]:
     """Present footnote number -> its start offset in the paragraph."""
-    return {int(m.group(1)): m.start() for m in PLACED_MARKER_RE.finditer(para)}
+    return {placed_number(m): m.start() for m in PLACED_MARKER_RE.finditer(para)}
 
 
 def _page_of(para: str, offset: int) -> str:

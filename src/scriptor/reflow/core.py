@@ -34,6 +34,7 @@ from scriptor.reflow.footnotes import (
     leaves_bracket_open,
     note_no,
     note_starts,
+    placed_number,
     split_small_type_block,
     substitute_markers,
     witnessed_block_start,
@@ -1182,7 +1183,7 @@ def reconstruct_body(
             # defines that number, so the index stays aligned with the [N] matches
             # the renderer will walk over the finished paragraph text.
             for m in PLACED_MARKER_RE.finditer(content):
-                num = int(m.group(1))
+                num = placed_number(m)
                 if num in p.footnotes:
                     key = (page_pos, num)
                     cur_fn[key] = p.footnotes[num]

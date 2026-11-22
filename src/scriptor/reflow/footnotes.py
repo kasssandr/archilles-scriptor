@@ -120,7 +120,15 @@ FOOTNOTE_SPACE_RE = re.compile(r"^(\d{1,4})\s+(\S.*)$")
 # behind its marker, which the count (91 -> 92) would have taken for a note.
 FOOTNOTE_BARE_RE = re.compile(r"^(\d{1,3})(?:\s+(?![a-z]\))|$)(.*)$")
 # Marker in the finished body: already replaced with [NN] — recognised during reflow.
-PLACED_MARKER_RE = re.compile(r"\[(\d{1,4})\]")
+# An added note's marker carries its letter, "[12f]" (``placed_number``).
+PLACED_MARKER_RE = re.compile(r"\[(\d{1,4})([a-z]?)\]")
+
+
+def placed_number(m: re.Match) -> int:
+    """The note a ``PLACED_MARKER_RE`` match names: its number, or the added
+    note ("12f", ``NoteNo``) where it carries a letter."""
+    num = int(m.group(1))
+    return NoteNo(num, m.group(2)) if m.group(2) else num
 
 # OCR often delivers footnote markers as Unicode superscripts. Before marker
 # detection we normalise these to ASCII digits.
@@ -851,19 +859,25 @@ def substitute_markers(body_lines: list[str], footnotes: dict[int, str],
     note whose marker is none of these is placed at the end of its page
     instead.
 
-    An added note ("12f", ``NoteNo``) is anchored that way too: its marker
-    prints as "12f)" after a space, a form no pass reads yet, and a "[12f]"
-    in the text is nothing the renderer resolves.
+    An added note ("12f", ``NoteNo``) is read in that last form alone, glued
+    or loose or not, and placed as "[12f]": "12f." behind a word is as often
+    a page and the one after it ("II,12f."), and only the bracket nothing
+    opened says it is a marker. The OCR sometimes parts number and letter
+    ("36 a)").
     """
     if not footnotes or not body_lines:
         return body_lines
-    footnotes = {k: v for k, v in footnotes.items() if not isinstance(k, NoteNo)}
 
     # Process the body as one string with separators — newlines are \S-free,
     # so word boundaries are preserved. Split again after substitution.
     SEP = "\n"
     body = SEP.join(body_lines)
     consumed: set[int] = set()
+    for num in sorted(k for k in footnotes if isinstance(k, NoteNo)):
+        body, n = _spaced_bracket_marker(body, num)
+        if n:
+            consumed.add(num)
+    footnotes = {k: v for k, v in footnotes.items() if not isinstance(k, NoteNo)}
 
     # Pass 1: glued on. The character before the marker must not be a digit —
     # a printed marker glues to a letter or punctuation ('fall.4', 'word64'),
@@ -900,6 +914,14 @@ def substitute_markers(body_lines: list[str], footnotes: dict[int, str],
 _SPACED_BRACKET = r"(?<=\S)(?<!\d[.,]) {num}\)(?=$|[^\w])"
 
 
+def _printed_pattern(num: int) -> str:
+    """The number as the text prints it: "12", or "12f" / "12 f" for an added
+    note (``NoteNo``)."""
+    if isinstance(num, NoteNo):
+        return rf"{int(num)} ?{re.escape(num.letter)}"
+    return str(int(num))
+
+
 def _spaced_bracket_marker(body: str, num: int) -> tuple[str, int]:
     """``body`` with the first "word 12)" for note ``num`` placed as
     "word [12]", and how many were placed (0 or 1).
@@ -911,12 +933,13 @@ def _spaced_bracket_marker(body: str, num: int) -> tuple[str, int]:
     digit's period or comma closes a list of them ("No. 262. 296. 310)").
     Pückert: 399 of its numbered notes find their marker so, which hung at
     the end of their page before."""
-    for m in re.finditer(_SPACED_BRACKET.format(num=num), body, re.MULTILINE):
+    pattern = _SPACED_BRACKET.format(num=_printed_pattern(num))
+    for m in re.finditer(pattern, body, re.MULTILINE):
         line_start = body.rfind("\n", 0, m.start()) + 1
         before = body[body.rfind("\n", 0, max(line_start - 1, 0)) + 1:m.start()]
         if _bracket_open(before):
             continue
-        return body[:m.start()] + f" [{num}]" + body[m.end():], 1
+        return body[:m.start()] + f" [{num!s}]" + body[m.end():], 1
     return body, 0
 
 
