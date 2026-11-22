@@ -26,9 +26,12 @@ from scriptor.reflow.footnotes import (
     FOOTNOTE_RE,
     PLACED_MARKER_RE,
     SUPERSCRIPT_DIGITS,
+    NoteNo,
+    added_after,
     continues,
     definition_numbers,
     definition_start,
+    note_no,
     note_starts,
     split_small_type_block,
     substitute_markers,
@@ -236,10 +239,11 @@ def parse_page(
     if not geometry_verified:
         for i, ln in enumerate(lines):
             m = FOOTNOTE_RE.match(ln)
+            num = note_no(m.group(1)) if m else None
             # "28)" under "(Röm. 11," closes the parenthesis the line above
             # opened; read as note 28 it took the rest of the page into the
             # apparatus (Taubes pp. 87, 345).
-            if (m and continues(int(m.group(1)), last_note)
+            if (m and (continues(num, last_note) or added_after(num, last_read))
                     and not (i and lines[i - 1].count("(") > lines[i - 1].count(")"))):
                 fn_start = i
                 break
@@ -258,7 +262,7 @@ def parse_page(
         fn_lines = lines[fn_start:]
 
     # Assemble footnotes (join multi-line notes, dehyphenate)
-    footnotes, _ = _assemble_footnotes(fn_lines, shape, last_note)
+    footnotes, _ = _assemble_footnotes(fn_lines, shape, last_note, last_read)
 
     # The size-verified block from the page geometry. Lines above its first
     # definition are the tail of a note that began on the previous page.
@@ -266,7 +270,8 @@ def parse_page(
     asterisk_note = False
     if fn_block:
         block = [ln.translate(SUPERSCRIPT_DIGITS).rstrip() for ln in fn_block]
-        block_notes, leading = _assemble_footnotes(block, definition_start, last_note)
+        block_notes, leading = _assemble_footnotes(block, definition_start, last_note,
+                                                   last_read)
         footnotes.update(block_notes)
 
         # An asterisk note: a line of the leading run opens with "*", and the
@@ -315,7 +320,8 @@ def parse_page(
 
 
 def _assemble_footnotes(
-    fn_lines: list[str], matcher, last: int | None = None
+    fn_lines: list[str], matcher, last: int | None = None,
+    last_read: int | None = None,
 ) -> tuple[dict[int, str], list[str]]:
     """Join multi-line definitions, dehyphenated. Returns (notes, leading) —
     ``leading`` being the lines before the first definition start.
@@ -338,7 +344,7 @@ def _assemble_footnotes(
     footnotes: dict[int, str] = {}
     leading: list[str] = []
     entries: list[tuple[int, list[str]]] = []
-    starts = dict(note_starts(fn_lines, last, matcher))
+    starts = dict(note_starts(fn_lines, last, matcher, last_read))
 
     for i, ln in enumerate(fn_lines):
         # A line the block's geometry said continues a note (CONTINUES) was
@@ -391,7 +397,9 @@ def notes_sidecar(records: list, pages: list[Page]) -> dict:
     A page is given as the volume prints it -- label, and the occurrence of
     that label counted from the start, where a volume prints one twice -- and
     by its physical position. An endnote carries the head of its collection
-    and the page its text is printed on as well.
+    and the page its text is printed on as well. An added note ("12f",
+    ``NoteNo``) carries its printed number beside the one it counts as: the
+    letter is how the volume and every work citing it address the note.
     """
     occurrence: dict[int, int] = {}
     seen: Counter[str] = Counter()
@@ -405,8 +413,10 @@ def notes_sidecar(records: list, pages: list[Page]) -> dict:
 
     out = []
     for nid, page, number, synthetic in records:
-        rec = {"id": nid, "number": number, "anchor": where(page.label, page.index),
+        rec = {"id": nid, "number": int(number), "anchor": where(page.label, page.index),
                "synthetic": synthetic}
+        if isinstance(number, NoteNo):
+            rec["printed"] = str(number)
         if number in page.endnotes:
             title, label, index = page.endnotes[number]
             rec["collection"] = title

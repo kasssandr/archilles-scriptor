@@ -20,8 +20,87 @@ from dataclasses import dataclass
 # year looks like, though, so it opens a definition only where it continues the
 # volume's own numbering -- see ``continues``.
 #
-# Footnote definition at the start of a line: "NN) Text…".
-FOOTNOTE_RE = re.compile(r"^(\d{1,4})\)\s?(.*)$")
+# Footnote definition at the start of a line: "NN) Text…", or "NNx)" / "NN x)"
+# for a note added after note NN (``NoteNo``). Group 1 is read by ``note_no``.
+FOOTNOTE_RE = re.compile(r"^(\d{1,4}(?: ?[a-z])?)\)\s?(.*)$")
+
+
+class NoteNo(int):
+    """The number of an added note, "12f": a note a volume set in after its
+    note 12 without renumbering the ones behind it (Pückert's *Aniane und
+    Gellone*, Kern's *Gottesgnadentum*, both around 1900).
+
+    It counts as its number -- 12f carries the count no further than 12 did,
+    so the arithmetic on the volume's highest note reads it as 12 -- and it is
+    a note of its own: it compares, hashes and prints with its letter, after
+    12 and before 13. Only an added note is a NoteNo; every other note stays a
+    plain int, so a volume without added notes runs the code it always ran.
+
+    The trap: ``NoteNo(12, "f") == 12`` is False although ``int()`` of it is
+    12. Code that asks for the count says ``int(n)``.
+    """
+
+    letter: str
+
+    def __new__(cls, number: int, letter: str) -> "NoteNo":
+        self = super().__new__(cls, number)
+        self.letter = letter
+        return self
+
+    def _key(self) -> tuple[int, str]:
+        return int(self), self.letter
+
+    @staticmethod
+    def _key_of(other: int) -> tuple[int, str]:
+        return int(other), getattr(other, "letter", "")
+
+    def __eq__(self, other):
+        return self._key() == self._key_of(other) if isinstance(other, int) else NotImplemented
+
+    def __ne__(self, other):
+        return self._key() != self._key_of(other) if isinstance(other, int) else NotImplemented
+
+    def __lt__(self, other):
+        return self._key() < self._key_of(other) if isinstance(other, int) else NotImplemented
+
+    def __le__(self, other):
+        return self._key() <= self._key_of(other) if isinstance(other, int) else NotImplemented
+
+    def __gt__(self, other):
+        return self._key() > self._key_of(other) if isinstance(other, int) else NotImplemented
+
+    def __ge__(self, other):
+        return self._key() >= self._key_of(other) if isinstance(other, int) else NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self._key())
+
+    def __str__(self) -> str:
+        return f"{int(self)}{self.letter}"
+
+    def __repr__(self) -> str:
+        return f"NoteNo({int(self)}, {self.letter!r})"
+
+    def __format__(self, spec: str) -> str:
+        return format(str(self), spec)
+
+
+_NOTE_NO = re.compile(r"(\d+) ?([a-z])?")
+
+
+def note_no(text: str) -> int:
+    """The note a definition start names: "12" -> 12, "12f" or "12 f" ->
+    NoteNo(12, "f")."""
+    m = _NOTE_NO.fullmatch(text)
+    return NoteNo(int(m.group(1)), m.group(2)) if m.group(2) else int(m.group(1))
+
+
+def added_after(num: int, prev: int | None) -> bool:
+    """May the added note ``num`` open behind note ``prev``? Only behind its own
+    note or an earlier addition to it: 12 -> 12a, 12e -> 12f. A letter behind
+    any other number is a reference broken over the line ("Bl. 197a)", "78b)"
+    of a Stephanus page, "V. 43b)") or a folio ("90 v)")."""
+    return prev is not None and int(prev) == int(num) and prev < num
 # "NN. Text…" — the other common print convention (Zuckerman). Far too frequent
 # in running prose (enumerations, years) to trust on bare text: it is only
 # applied inside a block the page geometry has already verified as small type.
@@ -188,7 +267,12 @@ def continues(num: int, last: int | None) -> bool:
     bibliography line is a year (L'Empire chrétien: 53 false notes, A/B of
     19.9.). The highest note, not the last one: a single misreading must not
     set the course for every page after it.
+
+    An added note ("12f") never opens a page on this question: the highest
+    note says nothing about which note was read last (``added_after``).
     """
+    if isinstance(num, NoteNo):
+        return False
     return num < 1000 or (last is not None and last < num <= last + MAX_NOTE_STEP)
 
 
@@ -201,7 +285,7 @@ def misread(num: int, prev: int) -> bool:
     on: a single digit is a fragment of too many numbers to say anything.
     """
     s = str(num)
-    if num == prev or len(s) < 2:
+    if num == prev or len(s) < 2 or isinstance(num, NoteNo):
         return False
     for nxt in (prev + 1, prev + 2):
         t = str(nxt)
@@ -228,12 +312,19 @@ def follows(num: int, prev: int) -> bool:
     the moment one number was misread -- a caption, an OCR slip -- and every
     page after lost its apparatus: A comemoração kept 24 of 117 note blocks,
     Bauer 248 of 1320 notes (A/B of 19.9.).
+
+    An added note follows only its own note (``added_after``), and starts no
+    count.
     """
+    if isinstance(num, NoteNo):
+        return added_after(num, prev)
     return counts_on(num, prev) or num <= RESTART_MAX
 
 
 def counts_on(num: int, prev: int) -> bool:
     """Is ``num`` the count carried on from ``prev``, not a fresh start?"""
+    if isinstance(num, NoteNo):
+        return added_after(num, prev)
     return prev < num <= prev + MAX_NOTE_STEP or misread(num, prev)
 
 
@@ -252,13 +343,16 @@ def _shape_kind(line: str) -> int:
 
 
 def note_starts(lines: list[str], last: int | None = None,
-                shape=definition_start) -> list[tuple[int, int]]:
+                shape=definition_start, last_read: int | None = None,
+                ) -> list[tuple[int, int]]:
     """(line index, number) of the lines of a block that open a note.
 
     Every line shaped like a definition start is a candidate. The block's
     notes are its longest run of candidates in which each ``follows`` the one
     before and the first may open the page (``continues`` after the volume's
-    highest note ``last``); every other candidate is the next line of a note.
+    highest note ``last``; an added note "12e" only behind ``last_read``, the
+    last note of the pages before, when that is 12 or 12a–12d); every other
+    candidate is the next line of a note.
     The run, not the first candidate, decides: Bauer's block that opened with
     the tail of a note ("2. Aufl. 2018, S. 12.") took it for note 2, and 249,
     250, 251 followed nothing. Among runs of one length, the one that
@@ -270,7 +364,7 @@ def note_starts(lines: list[str], last: int | None = None,
     for i, line in enumerate(lines):
         m = shape(line)
         if m:
-            cands.append((i, int(m.group(1))))
+            cands.append((i, note_no(m.group(1))))
             kinds.append(_shape_kind(line) if shape is definition_start else 0)
     if not cands:
         return []
@@ -305,7 +399,7 @@ def note_starts(lines: list[str], last: int | None = None,
     for j, (_idx, num) in enumerate(cands):
         if carrying and kinds[j] not in carrying and not carries_volume(num):
             continue
-        if continues(num, last):
+        if continues(num, last) or (isinstance(num, NoteNo) and added_after(num, last_read)):
             best[j] = (1, opens_volume(num), -j)
         for k in range(j):
             if best[k] is None or not follows(num, cands[k][1]):
@@ -345,7 +439,7 @@ def match_definition(line: str, last: int | None = None) -> re.Match | None:
     four-digit number has to continue it (``continues``).
     """
     m = definition_start(line)
-    return m if m and continues(int(m.group(1)), last) else None
+    return m if m and continues(note_no(m.group(1)), last) else None
 
 
 def definition_numbers(lines: list[str], last: int | None = None) -> list[int]:
@@ -439,7 +533,7 @@ def hung_continuations(lines: list[str], indents: list[float | None],
     # first -- opens its note wherever the scan put it (L'Empire chrétien
     # p. 229: "6. Elu par le Sénat …" / "7. Sur la reconnaissance …", set on
     # the continuation edge, its marker in the text).
-    nums = {i: int(definition_start(lines[i]).group(1)) for i in starts}
+    nums = {i: note_no(definition_start(lines[i]).group(1)) for i in starts}
     order = sorted(starts)
     vouched = set()
     for k, i in enumerate(order):
@@ -725,9 +819,14 @@ def substitute_markers(body_lines: list[str], footnotes: dict[int, str],
     their 5 to notes 5 (Taubes, Aniane). Alone on its line it is the raised
     marker the OCR set apart ("…zu vollbringen.'" / "7"). A note whose
     marker is neither is placed at the end of its page instead.
+
+    An added note ("12f", ``NoteNo``) is anchored that way too: its marker
+    prints as "12f)" after a space, a form no pass reads yet, and a "[12f]"
+    in the text is nothing the renderer resolves.
     """
     if not footnotes or not body_lines:
         return body_lines
+    footnotes = {k: v for k, v in footnotes.items() if not isinstance(k, NoteNo)}
 
     # Process the body as one string with separators — newlines are \S-free,
     # so word boundaries are preserved. Split again after substitution.
