@@ -138,3 +138,49 @@ def test_a_misreading_on_one_page_does_not_close_the_next():
     after = parse_page("Weiter im Text.250", last_note=max(249, *caption.footnotes),
                        fn_block=["250 BVerfG NJW 1989, S. 2877."])
     assert set(after.footnotes) == {250}
+
+
+def test_the_rest_of_a_broken_reference_opens_no_note():
+    """"(Chron. II," / "29), danach": the number closes the bracket the line
+    above opened. Read as note 29 it took a number, and the real note 29
+    below had nothing left to open."""
+    pg = parse_page(
+        "Ein Satz.\nNoch ein Satz.\n"
+        "11) Die Quelle nennt den Ort (Chron. II,\n"
+        "29), danach wird er nicht mehr genannt.\n"
+        "12) Die naechste Note.",
+        last_note=10)
+    assert set(pg.footnotes) == {11, 12}
+    assert pg.footnotes[11] == ("Die Quelle nennt den Ort (Chron. II, 29), danach wird er "
+                                "nicht mehr genannt.")
+
+
+def test_a_note_behind_a_closed_bracket_still_opens():
+    pg = parse_page(
+        "Ein Satz.\nNoch ein Satz.\n"
+        "11) Die Quelle (Chron. II, 29) nennt den Ort.\n"
+        "12) c. 4 der Satzung, klein begonnen.",
+        last_note=10)
+    assert set(pg.footnotes) == {11, 12}
+
+
+def test_a_bracket_left_open_lines_before_keeps_no_note_from_opening():
+    # Only the line before is the witness: a note that left its own bracket
+    # open further up does not swallow the next one.
+    pg = parse_page(
+        "Ein Satz.\nNoch ein Satz.\n"
+        "11) Die Quelle (Chron. II, 29 nennt den Ort,\n"
+        "und mehr dazu.\n"
+        "12) Die naechste Note.",
+        last_note=10)
+    assert set(pg.footnotes) == {11, 12}
+
+
+def test_in_a_measured_block_the_broken_reference_stays_in_its_note():
+    pg = parse_page("Ein Satz.11 Noch einer.12", last_note=10, fn_block=[
+        "11 Die Urkunde (Reg. Imp. I,",
+        "487) castellum ecclesiae.",
+        "12 Die naechste Note.",
+    ])
+    assert set(pg.footnotes) == {11, 12}
+    assert pg.footnotes[11] == "Die Urkunde (Reg. Imp. I, 487) castellum ecclesiae."

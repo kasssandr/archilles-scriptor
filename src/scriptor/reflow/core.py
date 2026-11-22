@@ -31,6 +31,7 @@ from scriptor.reflow.footnotes import (
     continues,
     definition_numbers,
     definition_start,
+    leaves_bracket_open,
     note_no,
     note_starts,
     split_small_type_block,
@@ -244,7 +245,7 @@ def parse_page(
             # opened; read as note 28 it took the rest of the page into the
             # apparatus (Taubes pp. 87, 345).
             if (m and (continues(num, last_note) or added_after(num, last_read))
-                    and not (i and lines[i - 1].count("(") > lines[i - 1].count(")"))):
+                    and not (i and leaves_bracket_open(lines[i - 1]))):
                 fn_start = i
                 break
         if fn_start is None:
