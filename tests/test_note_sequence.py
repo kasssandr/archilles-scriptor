@@ -176,6 +176,35 @@ def test_a_bracket_left_open_lines_before_keeps_no_note_from_opening():
     assert set(pg.footnotes) == {11, 12}
 
 
+def test_lines_before_the_first_note_of_a_bare_block_stay_text():
+    # "1)" starts the block, the count takes only "84)": the enumeration above
+    # it is no note, and it is not lost either.
+    pg = parse_page(
+        "Ein Satz.\nNoch ein Satz.\n"
+        "1) Wahl und Weihe gelten beide. 2) Die Fürsten\n"
+        "handeln mit, auch bei der Weihe.\n"
+        "84) Vgl. die Darstellung der Zeremonien.",
+        last_note=83)
+    assert set(pg.footnotes) == {84}
+    assert "1) Wahl und Weihe gelten beide. 2) Die Fürsten" in pg.body_lines
+    assert "handeln mit, auch bei der Weihe." in pg.body_lines
+
+
+def test_a_number_that_closes_no_bracket_opens_behind_an_open_one():
+    # A note that left its bracket open, then "46 Text" and "3. Text": neither
+    # number carries the ")" that would close it.
+    pg = parse_page("Ein Satz.45 Noch einer.46", last_note=44, fn_block=[
+        "45 Lampert, ad 1070 (MGH SS S. 114 f.",
+        "46 Thietmar V 11, S. 234.",
+    ])
+    assert set(pg.footnotes) == {45, 46}
+    pg = parse_page("Ein Satz.2 Noch einer.3", last_note=1, fn_block=[
+        "2. Voir Isocrate (Or. 1, 3 et passim;",
+        "3. Voir Athenagore, Leg. 34.",
+    ])
+    assert set(pg.footnotes) == {2, 3}
+
+
 def test_in_a_measured_block_the_broken_reference_stays_in_its_note():
     pg = parse_page("Ein Satz.11 Noch einer.12", last_note=10, fn_block=[
         "11 Die Urkunde (Reg. Imp. I,",

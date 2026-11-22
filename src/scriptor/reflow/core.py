@@ -262,8 +262,13 @@ def parse_page(
         body_lines = lines[:fn_start]
         fn_lines = lines[fn_start:]
 
-    # Assemble footnotes (join multi-line notes, dehyphenate)
-    footnotes, _ = _assemble_footnotes(fn_lines, shape, last_note, last_read)
+    # Assemble footnotes (join multi-line notes, dehyphenate). The lines between
+    # the block start and the block's first note are no note: the start was a
+    # number the count did not take ("1) Wahl und Krönung …", an enumeration
+    # inside the note continued from the page before). They go back behind the
+    # text they were cut from -- dropped, Kern's p. 141 lost seventeen lines.
+    footnotes, stray = _assemble_footnotes(fn_lines, shape, last_note, last_read)
+    body_lines = body_lines + stray
 
     # The size-verified block from the page geometry. Lines above its first
     # definition are the tail of a note that began on the previous page.
