@@ -328,6 +328,31 @@ def counts_on(num: int, prev: int) -> bool:
     return prev < num <= prev + MAX_NOTE_STEP or misread(num, prev)
 
 
+def leaves_bracket_open(line: str) -> bool:
+    """Does ``line`` open a round bracket it does not close? Then a "28)"
+    opening the line below closes it: the rest of a reference broken over the
+    line, not a note -- "(Röm. 11," / "28)" (Taubes), "(SS. XIII," / "608):"
+    and "(Weihn. 818/819: vgl. Anm." / "19), durch" (Pückert). The line before
+    only: asked of everything since the note before, a note that left its own
+    bracket open would keep the next one from opening (Pückert pp. 50, 170).
+    A note's own number "11)" closes nothing, and is not counted. And the
+    bracket left open has to open something: a reference carries words or
+    numbers behind it, a bare "(=" on a line of its own is the OCR's noise,
+    and the "47)" below it a note (Pückert p. 224)."""
+    line = _OWN_NUMBER.sub("", line, count=1)
+    opened: list[int] = []
+    for k, ch in enumerate(line):
+        if ch == "(":
+            opened.append(k)
+        elif ch == ")" and opened:
+            opened.pop()
+    return any(re.search(r"\w", line[k + 1:]) for k in opened)
+
+
+# The number a note opens with, "11)" or "12f)".
+_OWN_NUMBER = re.compile(r"^\s*\d{1,4}(?: ?[a-z])?\)")
+
+
 def definition_start(line: str) -> re.Match | None:
     """The shape of a definition start, before the numbering is asked."""
     return (FOOTNOTE_RE.match(line)
@@ -352,7 +377,8 @@ def note_starts(lines: list[str], last: int | None = None,
     before and the first may open the page (``continues`` after the volume's
     highest note ``last``; an added note "12e" only behind ``last_read``, the
     last note of the pages before, when that is 12 or 12a–12d); every other
-    candidate is the next line of a note.
+    candidate is the next line of a note. A line below one that leaves a
+    bracket open is no candidate (``leaves_bracket_open``).
     The run, not the first candidate, decides: Bauer's block that opened with
     the tail of a note ("2. Aufl. 2018, S. 12.") took it for note 2, and 249,
     250, 251 followed nothing. Among runs of one length, the one that
@@ -363,7 +389,10 @@ def note_starts(lines: list[str], last: int | None = None,
     kinds: list[int] = []
     for i, line in enumerate(lines):
         m = shape(line)
-        if m:
+        # Only a number set "N)" can close a bracket: "46 Thietmar" and "3.
+        # ISOCRATE" open their notes behind a note that left its own bracket
+        # open (Wolf p. 406, Pouderon p. 29).
+        if m and not (i and FOOTNOTE_RE.match(line) and leaves_bracket_open(lines[i - 1])):
             cands.append((i, note_no(m.group(1))))
             kinds.append(_shape_kind(line) if shape is definition_start else 0)
     if not cands:
