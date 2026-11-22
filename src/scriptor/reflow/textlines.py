@@ -65,6 +65,48 @@ class Reconstruction:
             self.emphases = [0] * len(self.lines)
 
 
+@dataclass(frozen=True)
+class PageLines:
+    """A page's body lines with what was measured on each, the four columns
+    kept parallel: from the note cut to the indent marks, the reflow edits
+    lines while sizes, left edges and emphasis still have to name the line
+    they were measured on. Each operation changes all four together.
+
+    A line the measurement does not reach (the peeled label tail behind a
+    note cut, a joined reference entry) carries None, and no emphasis.
+    """
+    lines: list[str]
+    sizes: list[float | None]
+    indents: list[float | None]
+    emphases: list[int]
+
+    @classmethod
+    def body(cls, rec: Reconstruction, split, lines: list[str]) -> "PageLines":
+        """The page's body ``lines`` with the measurements of ``rec``: those
+        of the lines a note cut (``split``, None where nothing was cut) left
+        at their source index, none for the rest."""
+        if not split:
+            return cls(lines, list(rec.sizes), list(rec.indents), list(rec.emphases))
+        tail = len(split.body) - split.split_at
+        return cls(
+            lines,
+            rec.sizes[: split.split_at] + [None] * tail,
+            rec.indents[: split.split_at] + [None] * tail,
+            rec.emphases[: split.split_at] + [0] * tail,
+        )
+
+    def replaced(self, lines: list[str], sizes: list[float | None],
+                 indents: list[float | None]) -> "PageLines":
+        """New lines with their sizes and edges. The emphasis is read only
+        while the lines are the printed ones, so the new lines carry none."""
+        return PageLines(lines, sizes, indents, [0] * len(lines))
+
+    def drop_front(self, k: int) -> "PageLines":
+        """Without the first ``k`` lines (a heading cut off the body)."""
+        return PageLines(self.lines[k:], self.sizes[k:], self.indents[k:],
+                         self.emphases[k:])
+
+
 def _passthrough(page: SourcePage) -> Reconstruction:
     return Reconstruction(
         lines=[line.text for line in page.lines],

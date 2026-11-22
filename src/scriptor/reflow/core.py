@@ -1970,22 +1970,12 @@ def _line_structure(page_lines: list, splits: list, reconstructions: list,
                     doc_body_size, gutter):
     """Stage 4: the structure read off the printed line, while lines, sizes,
     edges and emphasis are still parallel — run-in headings cut off their
-    paragraph, reference entries joined. Returns (page_lines, page_indents).
+    paragraph, reference entries joined. Returns one ``PageLines`` per page.
     """
-    # Left edges, kept parallel to page_lines: the peeled label tail behind a
-    # footnote cut carries none.
-    page_indents = [
-        (r.indents[: s.split_at] + [None] * (len(s.body) - s.split_at))
-        if s
-        else list(r.indents)
-        for s, r in zip(splits, reconstructions)
-    ]
-    page_sizes = [
-        (r.sizes[: s.split_at] + [None] * (len(s.body) - s.split_at))
-        if s
-        else list(r.sizes)
-        for s, r in zip(splits, reconstructions)
-    ]
+    from scriptor.reflow.textlines import PageLines
+
+    columns = [PageLines.body(r, s, lines)
+               for lines, s, r in zip(page_lines, splits, reconstructions)]
 
     # Run-in headings, cut off the paragraph they open. The emphasis is measured
     # on the printed line, so this has to happen while lines, sizes and edges are
@@ -1993,31 +1983,21 @@ def _line_structure(page_lines: list, splits: list, reconstructions: list,
     # ``heading_level`` reads it like any other.
     from scriptor.reflow.headings import split_emphasised_headings
 
-    page_emphases = [
-        (r.emphases[: s.split_at] + [0] * (len(s.body) - s.split_at))
-        if s
-        else list(r.emphases)
-        for s, r in zip(splits, reconstructions)
-    ]
     cut_headings = 0
-    new_lines, new_sizes, new_indents = [], [], []
-    for lines, emph, sizes, indents in zip(
-        page_lines, page_emphases, page_sizes, page_indents
-    ):
+    new_columns = []
+    for page in columns:
         result = split_emphasised_headings(
             # The type size only opens a heading where the document is set in
             # columns. It is calibrated on articles, where "Abstract" is bold at
             # 10.91pt over a 9.06pt body; an OCR layer reports size and weight
             # too loosely for it — Zuckerman's front matter turns "Jan" into a
             # chapter. Numbered headings are unaffected and keep working there.
-            lines, emph, sizes, indents,
+            page.lines, page.emphases, page.sizes, page.indents,
             body_size=doc_body_size if gutter is not None else None,
         )
-        cut_headings += len(result[0]) - len(lines)
-        new_lines.append(result[0])
-        new_sizes.append(result[1])
-        new_indents.append(result[2])
-    page_lines, page_sizes, page_indents = new_lines, new_sizes, new_indents
+        cut_headings += len(result[0]) - len(page.lines)
+        new_columns.append(page.replaced(*result))
+    columns = new_columns
     if cut_headings:
         print(
             f"Run-in headings separated from their paragraph: {cut_headings}",
@@ -2031,27 +2011,23 @@ def _line_structure(page_lines: list, splits: list, reconstructions: list,
     from scriptor.reflow.references import merge_reference_entries
 
     joined = merge_reference_entries(
-        list(zip(page_lines, page_sizes, page_indents)), body_size=doc_body_size
+        [(page.lines, page.sizes, page.indents) for page in columns],
+        body_size=doc_body_size,
     )
     entries = sum(
         1
-        for (before, _s, _i), (after, _s2, _i2) in zip(
-            zip(page_lines, page_sizes, page_indents), joined
-        )
-        for _ in range(len(before) - len(after))
+        for page, (after, _s, _i) in zip(columns, joined)
+        for _ in range(len(page.lines) - len(after))
     )
     if entries:
         print(
             f"Reference list: {plural(entries, 'line')} joined into their entries",
             file=sys.stderr,
         )
-    page_lines = [lines for lines, _s, _i in joined]
-    page_indents = [indents for _l, _s, indents in joined]
-    return page_lines, page_indents
+    return [page.replaced(*cols) for page, cols in zip(columns, joined)]
 
 
-def _confirm_outline(page_lines: list, page_indents: list, src: Path,
-                     source_pages: list):
+def _confirm_outline(columns: list, src: Path, source_pages: list):
     """Stage 5: the catalogue's outline, believed entry by entry where the
     page confirms the title, then the first-line indents marked.
 
@@ -2063,9 +2039,11 @@ def _confirm_outline(page_lines: list, page_indents: list, src: Path,
 
     ``mark_indent_breaks`` closes the stage: it is the last consumer of the
     indent column, so it runs after the outline has cut its headings off and
-    before anything else edits lines out from under it.
+    before anything else edits lines out from under it. From there on the
+    lines carry their own structure, and the columns end.
     """
     from scriptor.reflow import outline as outline_mod
+    page_lines = [page.lines for page in columns]
     entries = outline_mod.load_outline(src)
     pos_by_phys = {sp.index: pos for pos, sp in enumerate(source_pages)}
     headings_by_pos: dict[int, str] = {}
@@ -2103,8 +2081,7 @@ def _confirm_outline(page_lines: list, page_indents: list, src: Path,
         ]
         confirmed = outline_mod.chapter_headings(positional, page_lines)
         for page_no, (title, k) in confirmed.items():
-            page_lines[page_no - 1] = page_lines[page_no - 1][k:]
-            page_indents[page_no - 1] = page_indents[page_no - 1][k:]
+            columns[page_no - 1] = columns[page_no - 1].drop_front(k)
             headings_by_pos[page_no - 1] = title
         chapter_titles = [t for t, _k in confirmed.values()]
         print(
@@ -2122,10 +2099,7 @@ def _confirm_outline(page_lines: list, page_indents: list, src: Path,
     # runs before anything edits lines out from under it; from here on the
     # lines carry their own structure.
     from scriptor.reflow.textlines import mark_indent_breaks
-    page_lines = [
-        mark_indent_breaks(lines, indents)
-        for lines, indents in zip(page_lines, page_indents)
-    ]
+    page_lines = [mark_indent_breaks(page.lines, page.indents) for page in columns]
     return (page_lines, headings_by_pos, chapter_starts, chapter_titles,
             outline_positional)
 
@@ -2821,10 +2795,9 @@ def _main(
     src, source_pages, fmt, gutter, reconstructions = _read_lines(src_dir, out_path, fmt)
     doc_body_size, splits, fn_blocks, page_lines = _cut_note_blocks(reconstructions)
     page_lines, fn_blocks = _resolve_characters(page_lines, fn_blocks)
-    page_lines, page_indents = _line_structure(
-        page_lines, splits, reconstructions, doc_body_size, gutter)
+    columns = _line_structure(page_lines, splits, reconstructions, doc_body_size, gutter)
     (page_lines, headings_by_pos, chapter_starts, chapter_titles,
-     outline_positional) = _confirm_outline(page_lines, page_indents, src, source_pages)
+     outline_positional) = _confirm_outline(columns, src, source_pages)
     rescued, lists, known, heads = _known_titles(
         page_lines, headings_by_pos, outline_positional)
     (raw_texts, search_texts, cleaned, fn_blocks, headers,
