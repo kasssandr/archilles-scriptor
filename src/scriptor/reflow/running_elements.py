@@ -353,6 +353,12 @@ def _ends_a_text(page_text: str) -> bool:
 
 _WORD = re.compile(r"\w+")
 
+# A roman numeral alone on its line above a title is the title's number, and
+# joins it whatever the head says: Kern, *Gottesgnadentum* (1914), opens part
+# two "II." / "Die rechtliche Gebundenheit des Herrschers.", and its running
+# head leaves the numeral out.
+_SECTION_NUMERAL = re.compile(r"^[IVXLC]+\.?$")
+
 
 def _spells(line: str, header: str | None) -> bool:
     """Whether ``line`` reads as ``header`` and leaves none of its words out:
@@ -434,7 +440,8 @@ def opening_pages(
     paragraph below as text.
 
     Not where the lower line spells the whole head (``_spells``): then it is
-    the title by itself, and the line above it is not part of it. Where the
+    the title by itself, and the line above it is not part of it -- unless
+    that line is the title's numeral (``_SECTION_NUMERAL``). Where the
     head prints more -- La masonería's "III. Más allá …" over "CAPÍTULO III" /
     "MÁS ALLÁ …" -- the line above supplies it. Pückert opens his second
     excursus "Zweiter Excurs." / "(Zu S. 34.)" / "Die Unthaten des Abts
@@ -486,8 +493,9 @@ def opening_pages(
             header = head_of(_normalize_header_line(head[at][1]))
             span = [at]
             if (header is None and at + 1 in joinable
-                    and not _spells(ext[at + 1][1],
-                                    head_of(_normalize_header_line(ext[at + 1][1])))):
+                    and (_SECTION_NUMERAL.match(head[at][1].strip())
+                         or not _spells(ext[at + 1][1],
+                                        head_of(_normalize_header_line(ext[at + 1][1]))))):
                 header = head_of(_normalize_header_line(
                     f"{head[at][1].strip()} {ext[at + 1][1].strip()}"))
                 span = [at, at + 1]

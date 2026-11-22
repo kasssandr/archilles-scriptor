@@ -652,6 +652,16 @@ def test_a_reference_above_a_title_the_head_spells_is_no_part_of_it():
                                           "(Faelschungen.)"]
 
 
+def test_a_numeral_above_a_title_the_head_spells_still_joins_it():
+    # Kern, Gottesgnadentum (1914): "II." / "Die rechtliche Gebundenheit des
+    # Herrschers.", the running head without the numeral.
+    head = "Die rechtliche Gebundenheit des Herrschers."
+    pages = _excursus(["II.", head], head, head)
+    kept: list = []
+    remove_running_headers(pages, [head], RescuedFolios(len(pages)), kept=kept)
+    assert kept == [(1, f"II. {head}")]
+
+
 def test_a_title_may_reach_below_the_head_region():
     # Pückert p. 248: "(Zu S. 15 Anm. 11.)" takes one of the head region's
     # three lines, and the title's second line is the fourth.
