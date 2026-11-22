@@ -52,6 +52,29 @@ def test_substitute_leaves_a_bare_year_alone():
     assert substitute_markers([line], {5: "note"}) == [line]
 
 
+def test_bare_text_reads_a_marker_set_with_space_and_bracket():
+    # Pückert, Aniane und Gellone: "forderte 12);", "Mönche 13)."
+    lines = ["wie es die Regel forderte 12); dann", "lebten die Mönche 13)."]
+    assert substitute_markers(lines, {12: "a", 13: "b"}, loose=False) == [
+        "wie es die Regel forderte [12]; dann", "lebten die Mönche [13]."]
+
+
+def test_a_bracket_a_reference_opened_is_no_marker():
+    # "(SS. II, 294)" closes its own bracket, on the line or the one above;
+    # the marker after it is the note's.
+    lines = ["so (vgl. M. G. SS. II, 12) und", "so lange (M.", "G. Scr. XV, 13), dann",
+             "erst hier 12) und 13)."]
+    assert substitute_markers(lines, {12: "a", 13: "b"}, loose=False) == [
+        "so (vgl. M. G. SS. II, 12) und", "so lange (M.", "G. Scr. XV, 13), dann",
+        "erst hier [12] und [13]."]
+
+
+def test_a_list_of_numbers_closing_a_bracket_gives_no_marker():
+    # The bracket opened more than a line above: "Mühlb. No. 262. 296. 310)".
+    line = "Mühlb. No. 262. 296. 12) Aber"
+    assert substitute_markers([line], {12: "a"}, loose=False) == [line]
+
+
 def test_substitute_ignores_numbers_not_in_footnotes():
     # Empty footnote set: untouched. A non-footnote digit: untouched.
     assert substitute_markers(["im Jahr 1798 geschah es"], {}) == [

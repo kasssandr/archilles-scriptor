@@ -846,8 +846,10 @@ def substitute_markers(body_lines: list[str], footnotes: dict[int, str],
     type size, a free-standing number inside a line is too often the text's
     own: "(Barth, S. 5)" and "also etwas 5 Jahre nach Fridugis Tod" lost
     their 5 to notes 5 (Taubes, Aniane). Alone on its line it is the raised
-    marker the OCR set apart ("…zu vollbringen.'" / "7"). A note whose
-    marker is neither is placed at the end of its page instead.
+    marker the OCR set apart ("…zu vollbringen.'" / "7"). Or it closes a
+    bracket nothing opened, "Mönche 12)." (``_spaced_bracket_marker``). A
+    note whose marker is none of these is placed at the end of its page
+    instead.
 
     An added note ("12f", ``NoteNo``) is anchored that way too: its marker
     prints as "12f)" after a space, a form no pass reads yet, and a "[12f]"
@@ -884,8 +886,46 @@ def substitute_markers(body_lines: list[str], footnotes: dict[int, str],
         pat = re.compile(rf"(?<=\s){num}(?=$|[^\w])" if loose else rf"^{num}$",
                          re.MULTILINE)
         new_body, n = pat.subn(f"[{num}]", body, count=1)
+        if n == 0 and not loose:
+            new_body, n = _spaced_bracket_marker(body, num)
         if n > 0:
             body = new_body
             consumed.add(num)
 
     return body.split(SEP)
+
+
+# "Mönche 12)." -- the marker as a volume prints it that sets every one with a
+# space and a closing bracket (Pückert, *Aniane und Gellone*).
+_SPACED_BRACKET = r"(?<=\S)(?<!\d[.,]) {num}\)(?=$|[^\w])"
+
+
+def _spaced_bracket_marker(body: str, num: int) -> tuple[str, int]:
+    """``body`` with the first "word 12)" for note ``num`` placed as
+    "word [12]", and how many were placed (0 or 1).
+
+    On bare text this is the one free-standing number pass 2 trusts inside a
+    line: a closing bracket nothing opened. A reference closes one ("(SS. II,
+    294)", "(M." / "G. Scr. XV, 199)"), asked over the line before as well,
+    the way a note's start is (``leaves_bracket_open``). A number behind a
+    digit's period or comma closes a list of them ("No. 262. 296. 310)").
+    Pückert: 399 of its numbered notes find their marker so, which hung at
+    the end of their page before."""
+    for m in re.finditer(_SPACED_BRACKET.format(num=num), body, re.MULTILINE):
+        line_start = body.rfind("\n", 0, m.start()) + 1
+        before = body[body.rfind("\n", 0, max(line_start - 1, 0)) + 1:m.start()]
+        if _bracket_open(before):
+            continue
+        return body[:m.start()] + f" [{num}]" + body[m.end():], 1
+    return body, 0
+
+
+def _bracket_open(text: str) -> bool:
+    """Does ``text`` leave a round bracket open?"""
+    depth = 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+        elif ch == ")" and depth:
+            depth -= 1
+    return depth > 0
