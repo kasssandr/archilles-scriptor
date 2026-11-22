@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from difflib import SequenceMatcher
 
-from scriptor.reflow.headings import MARK
+from scriptor.reflow.headings import MARK, mark_placed
 from scriptor.reflow.heads import HeadCandidates, without_edge_number
 from scriptor.reflow.outline import KnownTitles
 from scriptor.reflow.rescued import RescuedFolios
@@ -544,7 +544,58 @@ def opening_pages(
             del openings[index][first]
             if not openings[index]:
                 del openings[index]
+    _close_open_titles(openings, pages_text)
     return openings
+
+
+# How many lines past the ones its running head spells an opening title may
+# run on to the line that closes it.
+_TITLE_RUN_ON = 3
+
+
+class _RunOnSpan(list):
+    """The lines of an opening title that ran on past its running head
+    (``_close_open_titles``). Joined, such a title is longer than any printed
+    line, and a heading is otherwise held to the length of one
+    (``core.HEADING_MAX_LEN``); the opening page and the volume's habit vouch
+    for it, so it is written with its depth instead."""
+
+
+def _close_open_titles(openings: dict[int, dict[int, list[int]]],
+                       pages_text: list[str]) -> None:
+    """Carry an opening title that does not close onto the lines below it, to
+    the one that closes, where the volume closes its titles.
+
+    The running head that names a title may shorten it: Pückert heads chapter
+    IV "Die drei kaiserlichen Diplome Ludwigs des Frommen u. s. w.", the first
+    line of the title, "… des Frommen samt", already reads as that head, and
+    the two lines after it ran into the text. How far a title reaches the
+    volume says itself: Pückert closes each with a period. Where most of a
+    volume's opening titles close (two at least), one left open runs on; in a
+    volume whose titles end on nothing, nothing runs on. And no further than
+    ``_TITLE_RUN_ON`` lines, and across no blank line: a title that closes
+    nowhere near stays as it was.
+    """
+    titles = []
+    for index, spans in openings.items():
+        lines = pages_text[index].strip().split("\n")
+        for first, span in spans.items():
+            text = " ".join(lines[j].strip() for j in span)
+            titles.append((index, first, lines, span, bool(_SENTENCE_END.search(text))))
+    closed = sum(1 for *_rest, closes in titles if closes)
+    if closed < 2 or closed * 2 <= len(titles):
+        return
+    for index, first, lines, span, closes in titles:
+        if closes:
+            continue
+        run_on = []
+        for j in range(span[-1] + 1, min(len(lines), span[-1] + 1 + _TITLE_RUN_ON)):
+            if not lines[j].strip():
+                break
+            run_on.append(j)
+            if _SENTENCE_END.search(lines[j].strip()):
+                openings[index][first] = _RunOnSpan(span + run_on)
+                break
 
 
 def remove_running_headers(
@@ -684,7 +735,13 @@ def remove_running_headers(
                     # nothing is rescued.
                     if kept is not None:
                         kept.append((index, text))
-                    cleaned_lines.append(MARK + text)
+                    # A title that ran on is written with its depth, the one a
+                    # set-apart title without a number takes (``_RunOnSpan``);
+                    # a numbered one stays for the text test to read its number.
+                    if isinstance(span, _RunOnSpan) and not text[:1].isdigit():
+                        cleaned_lines.append(mark_placed(text, 1))
+                    else:
+                        cleaned_lines.append(MARK + text)
                     joined.update(span[1:])
                     continue
             if not is_header:

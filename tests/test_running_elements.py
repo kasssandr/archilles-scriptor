@@ -448,6 +448,70 @@ def test_a_title_set_over_two_lines_is_one_heading():
     assert kept == [(1, "Die Kloester des Westens")]
 
 
+def _openings(*titles):
+    """Pages that each open with ``title`` (lines) over two lines of text, and
+    the openings table naming the first line of each as the head's span."""
+    pages = ["\n".join([*t, _DISTINCT[1], _DISTINCT[2]]) for t in titles]
+    return pages, {i: {0: [0]} for i in range(len(pages))}
+
+
+def test_an_open_title_runs_on_to_the_line_that_closes_it():
+    # The running head shortens the title ("… u. s. w."), so only its first
+    # line reads as the head; the volume closes every other title.
+    from scriptor.reflow.running_elements import _close_open_titles
+
+    pages, openings = _openings(
+        ["Erster Abschnitt."], ["Zweiter Abschnitt."],
+        ["Die drei Diplome samt", "ihrer Erneuerung durch den", "Kaiser."])
+    _close_open_titles(openings, pages)
+    assert openings[2] == {0: [0, 1, 2]}
+    assert openings[0] == {0: [0]}
+
+
+def test_in_a_volume_whose_titles_do_not_close_nothing_runs_on():
+    from scriptor.reflow.running_elements import _close_open_titles
+
+    pages, openings = _openings(
+        ["Erster Abschnitt"], ["Zweiter Abschnitt"],
+        ["Die drei Diplome samt", "ihrer Erneuerung durch den", "Kaiser."])
+    _close_open_titles(openings, pages)
+    assert openings[2] == {0: [0]}
+
+
+def test_an_open_title_that_closes_nowhere_near_stays_as_it_was():
+    from scriptor.reflow.running_elements import _close_open_titles
+
+    pages, openings = _openings(
+        ["Erster Abschnitt."], ["Zweiter Abschnitt."],
+        ["Die drei Diplome samt", "ihrer Erneuerung durch", "den Kaiser und", "seinen",
+         "Sohn."])
+    _close_open_titles(openings, pages)
+    assert openings[2] == {0: [0]}
+
+
+def test_a_title_written_over_three_lines_is_one_heading(monkeypatch):
+    import scriptor.reflow.running_elements as running
+
+    real = running.opening_pages
+
+    def widened(*args, **kwargs):
+        found = real(*args, **kwargs)
+        # as _close_open_titles leaves it
+        found[1][0] = running._RunOnSpan(found[1][0] + [1, 2])
+        return found
+
+    monkeypatch.setattr(running, "opening_pages", widened)
+    pages = _run(["Die Kloester des Westens samt", "ihrer Erneuerung", "durch den Kaiser."])
+    cleaned, kept = _strip(pages)
+    title = "Die Kloester des Westens samt ihrer Erneuerung durch den Kaiser."
+    # Written with its depth: joined, a title may outrun the length one
+    # printed line is held to.
+    from scriptor.reflow.headings import mark_placed
+    assert cleaned[1].split("\n")[0] == mark_placed(title, 1)
+    assert kept == [(1, title)]
+    assert "ihrer Erneuerung" not in "\n".join(cleaned[1].split("\n")[1:])
+
+
 def test_a_run_that_begins_in_mid_sentence_opens_nothing():
     # The volume prints no running head on the chapter's first page; the run
     # begins on the second, and the text before it has not ended.
