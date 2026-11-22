@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from difflib import SequenceMatcher
 
-from scriptor.reflow.headings import MARK
+from scriptor.reflow.headings import MARK, mark_placed
 from scriptor.reflow.heads import HeadCandidates, without_edge_number
 from scriptor.reflow.outline import KnownTitles
 from scriptor.reflow.rescued import RescuedFolios
@@ -553,6 +553,14 @@ def opening_pages(
 _TITLE_RUN_ON = 3
 
 
+class _RunOnSpan(list):
+    """The lines of an opening title that ran on past its running head
+    (``_close_open_titles``). Joined, such a title is longer than any printed
+    line, and a heading is otherwise held to the length of one
+    (``core.HEADING_MAX_LEN``); the opening page and the volume's habit vouch
+    for it, so it is written with its depth instead."""
+
+
 def _close_open_titles(openings: dict[int, dict[int, list[int]]],
                        pages_text: list[str]) -> None:
     """Carry an opening title that does not close onto the lines below it, to
@@ -573,11 +581,11 @@ def _close_open_titles(openings: dict[int, dict[int, list[int]]],
         lines = pages_text[index].strip().split("\n")
         for first, span in spans.items():
             text = " ".join(lines[j].strip() for j in span)
-            titles.append((lines, span, bool(_SENTENCE_END.search(text))))
-    closed = sum(1 for _l, _s, closes in titles if closes)
+            titles.append((index, first, lines, span, bool(_SENTENCE_END.search(text))))
+    closed = sum(1 for *_rest, closes in titles if closes)
     if closed < 2 or closed * 2 <= len(titles):
         return
-    for lines, span, closes in titles:
+    for index, first, lines, span, closes in titles:
         if closes:
             continue
         run_on = []
@@ -586,7 +594,7 @@ def _close_open_titles(openings: dict[int, dict[int, list[int]]],
                 break
             run_on.append(j)
             if _SENTENCE_END.search(lines[j].strip()):
-                span.extend(run_on)
+                openings[index][first] = _RunOnSpan(span + run_on)
                 break
 
 
@@ -727,7 +735,13 @@ def remove_running_headers(
                     # nothing is rescued.
                     if kept is not None:
                         kept.append((index, text))
-                    cleaned_lines.append(MARK + text)
+                    # A title that ran on is written with its depth, the one a
+                    # set-apart title without a number takes (``_RunOnSpan``);
+                    # a numbered one stays for the text test to read its number.
+                    if isinstance(span, _RunOnSpan) and not text[:1].isdigit():
+                        cleaned_lines.append(mark_placed(text, 1))
+                    else:
+                        cleaned_lines.append(MARK + text)
                     joined.update(span[1:])
                     continue
             if not is_header:

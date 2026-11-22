@@ -496,14 +496,18 @@ def test_a_title_written_over_three_lines_is_one_heading(monkeypatch):
 
     def widened(*args, **kwargs):
         found = real(*args, **kwargs)
-        found[1][0].extend([1, 2])          # as _close_open_titles leaves it
+        # as _close_open_titles leaves it
+        found[1][0] = running._RunOnSpan(found[1][0] + [1, 2])
         return found
 
     monkeypatch.setattr(running, "opening_pages", widened)
     pages = _run(["Die Kloester des Westens samt", "ihrer Erneuerung", "durch den Kaiser."])
     cleaned, kept = _strip(pages)
     title = "Die Kloester des Westens samt ihrer Erneuerung durch den Kaiser."
-    assert cleaned[1].split("\n")[0] == MARK + title
+    # Written with its depth: joined, a title may outrun the length one
+    # printed line is held to.
+    from scriptor.reflow.headings import mark_placed
+    assert cleaned[1].split("\n")[0] == mark_placed(title, 1)
     assert kept == [(1, title)]
     assert "ihrer Erneuerung" not in "\n".join(cleaned[1].split("\n")[1:])
 
