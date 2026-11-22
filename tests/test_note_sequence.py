@@ -190,6 +190,17 @@ def test_lines_before_the_first_note_of_a_bare_block_stay_text():
     assert "handeln mit, auch bei der Weihe." in pg.body_lines
 
 
+def test_a_bracket_with_nothing_behind_it_opens_no_reference():
+    # "(=" alone is noise; the "47)" below it opens its note.
+    pg = parse_page(
+        "Ein Satz.\nNoch ein Satz.\n"
+        "46) Die erste Note, die hier endet.\n"
+        "(=\n"
+        "47) Die zweite Note.",
+        last_note=45)
+    assert set(pg.footnotes) == {46, 47}
+
+
 def test_a_number_that_closes_no_bracket_opens_behind_an_open_one():
     # A note that left its bracket open, then "46 Text" and "3. Text": neither
     # number carries the ")" that would close it.

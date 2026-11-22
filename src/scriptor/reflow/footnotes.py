@@ -335,9 +335,18 @@ def leaves_bracket_open(line: str) -> bool:
     and "(Weihn. 818/819: vgl. Anm." / "19), durch" (Pückert). The line before
     only: asked of everything since the note before, a note that left its own
     bracket open would keep the next one from opening (Pückert pp. 50, 170).
-    A note's own number "11)" closes nothing, and is not counted."""
+    A note's own number "11)" closes nothing, and is not counted. And the
+    bracket left open has to open something: a reference carries words or
+    numbers behind it, a bare "(=" on a line of its own is the OCR's noise,
+    and the "47)" below it a note (Pückert p. 224)."""
     line = _OWN_NUMBER.sub("", line, count=1)
-    return line.count("(") > line.count(")")
+    opened: list[int] = []
+    for k, ch in enumerate(line):
+        if ch == "(":
+            opened.append(k)
+        elif ch == ")" and opened:
+            opened.pop()
+    return any(re.search(r"\w", line[k + 1:]) for k in opened)
 
 
 # The number a note opens with, "11)" or "12f)".
