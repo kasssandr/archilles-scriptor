@@ -362,3 +362,62 @@ def test_a_marginal_number_beside_another_line_is_not_taken():
     ])
     result = reconstruct(page)
     assert result.lines[0] == "Erste Zeile des Absatzes mit seiner Randnummer daneben 12"
+
+
+# --- PageLines: the columns change together ---------------------------------
+
+def _rec(n):
+    from scriptor.reflow.textlines import Reconstruction
+    return Reconstruction(
+        lines=[f"line {k}" for k in range(n)], measured=True, wide_gap_lines=0,
+        sizes=[10.0 + k for k in range(n)], indents=[50.0 + k for k in range(n)],
+        emphases=[k for k in range(n)],
+    )
+
+
+def test_page_lines_of_an_uncut_page_keep_every_measurement():
+    from scriptor.reflow.textlines import PageLines
+
+    rec = _rec(3)
+    page = PageLines.body(rec, None, rec.lines)
+    assert page.sizes == [10.0, 11.0, 12.0]
+    assert page.indents == [50.0, 51.0, 52.0]
+    assert page.emphases == [0, 1, 2]
+
+
+def test_a_label_tail_behind_a_note_cut_carries_no_measurement():
+    # Two lines kept their source index, a peeled page label behind the cut
+    # did not.
+    from scriptor.reflow.footnotes import SmallTypeSplit
+    from scriptor.reflow.textlines import PageLines
+
+    rec = _rec(5)
+    split = SmallTypeSplit(body=["line 0", "line 1", "17"], notes=["1 A note."], split_at=2)
+    page = PageLines.body(rec, split, split.body)
+    assert page.lines == ["line 0", "line 1", "17"]
+    assert page.sizes == [10.0, 11.0, None]
+    assert page.indents == [50.0, 51.0, None]
+    assert page.emphases == [0, 1, 0]
+
+
+def test_dropping_the_front_drops_it_from_every_column():
+    from scriptor.reflow.textlines import PageLines
+
+    rec = _rec(4)
+    page = PageLines.body(rec, None, rec.lines).drop_front(2)
+    assert page.lines == ["line 2", "line 3"]
+    assert page.sizes == [12.0, 13.0]
+    assert page.indents == [52.0, 53.0]
+    assert page.emphases == [2, 3]
+
+
+def test_replaced_lines_carry_their_own_sizes_and_no_emphasis():
+    from scriptor.reflow.textlines import PageLines
+
+    rec = _rec(2)
+    page = PageLines.body(rec, None, rec.lines).replaced(["a", "b", "c"], [9.0, None, 9.0],
+                                                        [40.0, None, None])
+    assert page.lines == ["a", "b", "c"]
+    assert page.sizes == [9.0, None, 9.0]
+    assert page.indents == [40.0, None, None]
+    assert page.emphases == [0, 0, 0]
