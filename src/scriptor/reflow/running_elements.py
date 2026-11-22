@@ -544,7 +544,50 @@ def opening_pages(
             del openings[index][first]
             if not openings[index]:
                 del openings[index]
+    _close_open_titles(openings, pages_text)
     return openings
+
+
+# How many lines past the ones its running head spells an opening title may
+# run on to the line that closes it.
+_TITLE_RUN_ON = 3
+
+
+def _close_open_titles(openings: dict[int, dict[int, list[int]]],
+                       pages_text: list[str]) -> None:
+    """Carry an opening title that does not close onto the lines below it, to
+    the one that closes, where the volume closes its titles.
+
+    The running head that names a title may shorten it: Pückert heads chapter
+    IV "Die drei kaiserlichen Diplome Ludwigs des Frommen u. s. w.", the first
+    line of the title, "… des Frommen samt", already reads as that head, and
+    the two lines after it ran into the text. How far a title reaches the
+    volume says itself: Pückert closes each with a period. Where most of a
+    volume's opening titles close (two at least), one left open runs on; in a
+    volume whose titles end on nothing, nothing runs on. And no further than
+    ``_TITLE_RUN_ON`` lines, and across no blank line: a title that closes
+    nowhere near stays as it was.
+    """
+    titles = []
+    for index, spans in openings.items():
+        lines = pages_text[index].strip().split("\n")
+        for first, span in spans.items():
+            text = " ".join(lines[j].strip() for j in span)
+            titles.append((lines, span, bool(_SENTENCE_END.search(text))))
+    closed = sum(1 for _l, _s, closes in titles if closes)
+    if closed < 2 or closed * 2 <= len(titles):
+        return
+    for lines, span, closes in titles:
+        if closes:
+            continue
+        run_on = []
+        for j in range(span[-1] + 1, min(len(lines), span[-1] + 1 + _TITLE_RUN_ON)):
+            if not lines[j].strip():
+                break
+            run_on.append(j)
+            if _SENTENCE_END.search(lines[j].strip()):
+                span.extend(run_on)
+                break
 
 
 def remove_running_headers(
