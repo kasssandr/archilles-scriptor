@@ -380,7 +380,10 @@ def note_starts(lines: list[str], last: int | None = None,
     kinds: list[int] = []
     for i, line in enumerate(lines):
         m = shape(line)
-        if m and not (i and leaves_bracket_open(lines[i - 1])):
+        # Only a number set "N)" can close a bracket: "46 Thietmar" and "3.
+        # ISOCRATE" open their notes behind a note that left its own bracket
+        # open (Wolf p. 406, Pouderon p. 29).
+        if m and not (i and FOOTNOTE_RE.match(line) and leaves_bracket_open(lines[i - 1])):
             cands.append((i, note_no(m.group(1))))
             kinds.append(_shape_kind(line) if shape is definition_start else 0)
     if not cands:
