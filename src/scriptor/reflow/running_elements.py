@@ -351,6 +351,25 @@ def _ends_a_text(page_text: str) -> bool:
     return len(lines) <= _SHORT_PAGE or bool(_SENTENCE_END.search(lines[-1]))
 
 
+_WORD = re.compile(r"\w+")
+
+# A roman numeral alone on its line above a title is the title's number, and
+# joins it whatever the head says: Kern, *Gottesgnadentum* (1914), opens part
+# two "II." / "Die rechtliche Gebundenheit des Herrschers.", and its running
+# head leaves the numeral out.
+_SECTION_NUMERAL = re.compile(r"^[IVXLC]+\.?$")
+
+
+def _spells(line: str, header: str | None) -> bool:
+    """Whether ``line`` reads as ``header`` and leaves none of its words out:
+    the head then names the line alone, and nothing above it belongs to the
+    title (``opening_pages``)."""
+    if header is None:
+        return False
+    words = set(_WORD.findall(line.casefold()))
+    return set(_WORD.findall(header.casefold())) <= words
+
+
 def _canonical(running_headers: list[str], similarity_threshold: float) -> dict[str, str]:
     """{detected head: the first detected head it reads as}.
 
@@ -419,6 +438,24 @@ def opening_pages(
     under "Nachman Krochmal und der moderne Historismus"). The stripper never
     deleted those -- neither line alone is the head -- but they ran into the
     paragraph below as text.
+
+    Not where the lower line spells the whole head (``_spells``): then it is
+    the title by itself, and the line above it is not part of it -- unless
+    that line is the title's numeral (``_SECTION_NUMERAL``). Where the
+    head prints more -- La masonería's "III. Más allá …" over "CAPÍTULO III" /
+    "MÁS ALLÁ …" -- the line above supplies it. Pückert opens his second
+    excursus "Zweiter Excurs." / "(Zu S. 34.)" / "Die Unthaten des Abts
+    Fridugis zu Sithin.", the last line being the head of the pages after it.
+    Joined to it, the reference read as the head as well, and its "34.)" as a
+    folio at the head's edge: the page counted as a running page, and both
+    titles were stripped as furniture.
+
+    The second line may stand just below the head region. Such a line above
+    the title takes one of its three lines -- "(Zu S. 15 Anm. 11.)" over "War
+    Alkuin Mönch und herrschte unter ihm zu St. Martin" / "in Tours noch die
+    Benedictinerregel?" -- and the title's second half is then the region's
+    fourth line. A title reaching there is written with its depth
+    (``_RunOnSpan``), as one that ran on.
     """
     canon = _canonical(running_headers, similarity_threshold)
 
@@ -429,6 +466,7 @@ def opening_pages(
 
     carried: list[set[str]] = []
     seen: list[tuple[list[tuple[int, str]], set[int], list[tuple[list[int], str]]]] = []
+    reach: list[list[tuple[int, str]]] = []
     for index, page_text in enumerate(pages_text):
         here: set[str] = set()
         head = head_region(page_text)
@@ -436,6 +474,17 @@ def opening_pages(
                  if _normalize_header_line(line)]
         if index in lists:
             words = []
+        # The head region and the line right below it, where a title's second
+        # line may stand (see above).
+        ext = list(head)
+        joinable = set(words)
+        lines = page_text.strip().split("\n")
+        if head and head[-1][0] + 1 < len(lines):
+            below = lines[head[-1][0] + 1]
+            if _normalize_header_line(below):
+                ext.append((head[-1][0] + 1, below))
+                joinable.add(len(head))
+        reach.append(ext)
         taken: set[int] = set()
         spans: list[tuple[list[int], str]] = []
         for at in words:
@@ -443,9 +492,12 @@ def opening_pages(
                 continue
             header = head_of(_normalize_header_line(head[at][1]))
             span = [at]
-            if header is None and at + 1 in words:
+            if (header is None and at + 1 in joinable
+                    and (_SECTION_NUMERAL.match(head[at][1].strip())
+                         or not _spells(ext[at + 1][1],
+                                        head_of(_normalize_header_line(ext[at + 1][1]))))):
                 header = head_of(_normalize_header_line(
-                    f"{head[at][1].strip()} {head[at + 1][1].strip()}"))
+                    f"{head[at][1].strip()} {ext[at + 1][1].strip()}"))
                 span = [at, at + 1]
             if header is None:
                 continue
@@ -497,13 +549,13 @@ def opening_pages(
         {key(head, span, header) for span, header in spans}
         for head, _taken, spans in seen]
     heads_at: list[list[tuple[list[int], tuple[str, str]]]] = []
-    for head, taken, spans in seen:
+    for (head, taken, spans), ext in zip(seen, reach):
         roman_folio = any(header in paged and len(span) == 1
                           and _ROMAN_EDGE.search(head[span[0]][1].strip())
                           for span, header in spans)
         heads_at.append(
             [] if roman_folio or _foliated(head, taken)
-            else [([head[a][0] for a in span], key(head, span, header))
+            else [([ext[a][0] for a in span], key(head, span, header))
                   for span, header in spans])
 
     openings: dict[int, dict[int, list[int]]] = {}
@@ -531,7 +583,8 @@ def opening_pages(
             if any(_strings_are_similar(b, header, similarity_threshold)
                    for b in below if b):
                 continue
-            openings.setdefault(index, {})[span[0]] = span
+            openings.setdefault(index, {})[span[0]] = (
+                _RunOnSpan(span) if span[-1] > head[-1][0] else span)
             opened[k] = opened.get(k, 0) + 1
             spoken[(index, span[0])] = k
 
@@ -555,7 +608,8 @@ _TITLE_RUN_ON = 3
 
 class _RunOnSpan(list):
     """The lines of an opening title that ran on past its running head
-    (``_close_open_titles``). Joined, such a title is longer than any printed
+    (``_close_open_titles``) or past the page's head region (``opening_pages``).
+    Joined, such a title is longer than any printed
     line, and a heading is otherwise held to the length of one
     (``core.HEADING_MAX_LEN``); the opening page and the volume's habit vouch
     for it, so it is written with its depth instead."""
