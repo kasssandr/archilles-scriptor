@@ -86,3 +86,44 @@ def test_the_notes_sidecar_keeps_the_printed_number():
     plain, added = out["notes"]
     assert plain["number"] == 12 and "printed" not in plain
     assert added["number"] == 12 and added["printed"] == "12f"
+
+
+def test_an_added_notes_marker_set_with_space_and_bracket_is_placed():
+    # Pückert: "Mönche 12f).", and the OCR parting number and letter,
+    # "den Wirt finden lassen 36 d) und".
+    pg = parse_page(
+        "Die Regel forderte 12) mehr.\nBesser als Mönche 12f). Und der\n"
+        "Wirt 12 g) dann.\n"
+        "12) Erste Note.\n"
+        "12f) Nachgetragene Note.\n"
+        "12g) Noch eine.",
+        last_note=11)
+    body = " ".join(pg.body_lines)
+    assert "forderte [12] mehr" in body
+    assert "Mönche [12f]. Und" in body
+    assert "Wirt [12g] dann" in body
+
+
+def test_a_page_and_the_one_after_it_is_no_added_notes_marker():
+    # "II,12f." cites a page and the next: only the bracket says marker.
+    pg = parse_page(
+        "Vgl. Ann. II,12f. und weiter\nder Satz endet hier.\n"
+        "12) Erste Note.\n"
+        "12f) Nachgetragene Note.",
+        last_note=11)
+    assert "II,12f." in " ".join(pg.body_lines)
+
+
+def test_a_placed_added_note_resolves_to_its_note():
+    from scriptor.reflow.core import format_paragraph_md, reconstruct_body
+
+    page = Page(num=-1, index=1, mode="main", label="1",
+                body_lines=["Ein langer Satz des Brottextes zieht sich ueber die Zeile [12]",
+                            "und laeuft weiter, besser als Moenche [12f]."],
+                footnotes={12: "Erste Note.", NoteNo(12, "f"): "Nachgetragene Note."})
+    paras, fns, occs, _lvl = reconstruct_body([page], threshold=40)
+    state = {"counter": 0, "defs": []}
+    out = " ".join(format_paragraph_md(p, f, o, 0, state)
+                   for p, f, o in zip(paras, fns, occs))
+    assert "Zeile [^1]" in out and "Moenche [^2]." in out
+    assert state["defs"] == ["[^1]: Erste Note.", "[^2]: Nachgetragene Note."]
