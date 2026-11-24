@@ -246,14 +246,15 @@ def place(
     the pagination verdict decided, ``(label, source)`` per position.
     ``skip`` are the contents' own pages, where every title stands.
 
-    ``headed`` are the headings pages already carry, by position: the
-    chapter openings the outline confirmed, their title lines lifted off the
-    page. Such a title is no longer in the raw channel where its page is,
+    ``headed`` are the headings the chapter search lifted off their pages,
+    by position: the chapter openings the outline confirmed. Such a title is no longer in the raw channel where its page is,
     only at the head of the pages after it, and rule 4 took the first of those
     -- every chapter of Zuckerman, *A Jewish Princedom*, came out with its
     running head as a second heading on its second page, cutting a paragraph
-    in mid-sentence. An entry whose named page carries it as its heading is
-    in place already; it goes to ``standing``, and the search goes on past it.
+    in mid-sentence. An entry whose named page had it lifted off, and still
+    spells it nowhere, is in place already; it goes to ``standing``, and the
+    search goes on past it. Where the page still prints the title, rules 2 and
+    3 place it as before.
     """
     headed = headed or {}
     skipped = set(skip)
@@ -282,13 +283,13 @@ def place(
             expected = set(by_label.get(str(want.page).strip(), ()))
         else:
             expected = set()                # the list names no page at all
+        on_page = [f for f in found if f.pos in expected]
         standing = [p for p in sorted(expected)
                     if p in headed and similar(fold(headed[p]), fold(want.title))]
-        if standing:
+        if standing and not on_page:
             result.standing.append(want)
             cursor = max(cursor, (standing[0], -1))
             continue
-        on_page = [f for f in found if f.pos in expected]
         below = [f for f in on_page if not f.in_head]
         after = [f for f in found if (f.pos, f.line) > cursor]
         outside = [f for f in after if not f.in_head]

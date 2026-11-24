@@ -2441,7 +2441,7 @@ def _verdict(pages: list, chapter_starts: list, edges: dict, rescued_by_ordinal:
 
 
 def _place_headings(pages: list, contents_entries: list, outline_positional: list,
-                    raw_by_pos: dict, toc_pages: list, heads):
+                    raw_by_pos: dict, toc_pages: list, heads, lifted: dict):
     """Stage 10: where the headings stand (Gliederungsmodell §5.2).
 
     Returns (sources, placement): the wants of contents and outline merged,
@@ -2483,7 +2483,9 @@ def _place_headings(pages: list, contents_entries: list, outline_positional: lis
             sources.wants, raw_by_pos,
             {p.index: (p.label, p.label_source) for p in pages},
             skip={p.index for p in toc_pages},
-            headed={p.index: p.heading for p in pages if p.heading},
+            # The openings whose title the outline lifted off the page, by
+            # physical position (``headings_by_pos`` counts from 0).
+            headed={k + 1: title for k, title in lifted.items()},
         )
         applied = placement_mod.apply(pages, placement, heads,
                                       skip={p.index for p in toc_pages})
@@ -2832,7 +2834,8 @@ def _main(
                                   source_pages)
     verdict = _verdict(pages, chapter_starts, edges, rescued_by_ordinal, links)
     sources, placement = _place_headings(
-        pages, contents_entries, outline_positional, raw_by_pos, toc_pages, heads)
+        pages, contents_entries, outline_positional, raw_by_pos, toc_pages, heads,
+        headings_by_pos)
     numbering = _regions_and_notes(
         pages, fn_blocks, page_headers, cleaned, sources, placement)
     threshold, evidence = _calibrate(pages, ocr_profile)
