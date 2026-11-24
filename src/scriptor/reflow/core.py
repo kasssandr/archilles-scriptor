@@ -17,7 +17,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from scriptor._text import plural
+from scriptor._text import plural, space_note_refs
 from scriptor.page import RAISED
 from scriptor.reflow.footnotes import (
     ASTERISK_MARKER,
@@ -1759,6 +1759,12 @@ def render_book(
         result = re.sub(
             rf"[ \t]*{TABLE_BREAK}[ \t]*", "\n", result
         )
+    if fmt == "md":
+        # One spacing for every reference, however it was reached: placed,
+        # synthetic, or a run of them. The depths are spaced alike, since the
+        # structure joins them to the '#' lines on the wording.
+        result = space_note_refs(result)
+        depths = [(d, space_note_refs(t)) for d, t in depths]
     # The metadata block of §4.1, last, so it stays the first thing in the
     # file: it declares which conventions the document follows, and a document
     # outlives the release notes that would otherwise say so. Callers that

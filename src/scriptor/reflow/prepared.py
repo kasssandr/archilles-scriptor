@@ -26,6 +26,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from scriptor._text import space_note_refs
+
 # Page break and footnote-separator lines
 PAGE_BREAK_SPLIT = re.compile(r"\n---[ \t]*\n")
 FN_SEP_SPLIT = re.compile(r"\n--[ \t]*\n")
@@ -189,7 +191,7 @@ def convert(text: str) -> tuple[str, dict[int, list[str]]]:
                     target_para = len(rewritten) - 1
                 rewritten[target_para] = rewritten[target_para].rstrip() + f" [^{global_num}]"
 
-    md_body = "\n\n".join(rewritten).rstrip()
+    md_body = space_note_refs("\n\n".join(rewritten).rstrip())
     if global_defs:
         md_body += "\n\n" + "\n\n".join(f"[^{n}]: {t}" for n, t in global_defs)
     return md_body + "\n", audit

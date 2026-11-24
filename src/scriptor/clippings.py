@@ -47,6 +47,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from scriptor._text import space_note_refs
+
 # ── Frontmatter (YAML between leading --- markers) ────────────────────
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
@@ -215,7 +217,7 @@ def convert(text: str) -> ConversionResult:
     formatted_fns = _format_pandoc_fns(fn_defs)
     new_fm = _update_frontmatter(fm_block)
 
-    parts = [new_fm, new_body.rstrip(), "\n\n", formatted_fns, "\n"]
+    parts = [new_fm, space_note_refs(new_body.rstrip()),"\n\n", formatted_fns, "\n"]
     return ConversionResult(
         text="".join(parts),
         total_fn_defs=len(fn_defs),

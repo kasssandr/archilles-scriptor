@@ -183,6 +183,16 @@ the definition. Two rules extend Pandoc:
 - **Definitions at the document end.** All `[^N]:` definitions are collected
   at the end of the document, in anchor order.
 
+**Spacing.** An anchor stands as a word of its own, with one space before it
+and one after: `… the period. [^6] The next …`, a run as `[^16] [^17]`. It
+sits close only where a space would stand wrong: after an opening bracket,
+before punctuation or a closing bracket (`(see p. 4 [^5])`), and at the end of
+a line. Next to a quotation mark that opens in one language and closes in
+another (`"` `'` `“` `‘` `«` `»`) the spacing is left as the text has it. One
+form throughout lets a reader proofing the document, or its translation, see
+every anchor the same way; consumers MUST NOT rely on it, since a hand-edited
+master may depart from it.
+
 **Hanging references.** A footnote definition whose marker could not be located
 in the body is not dropped and not attached to a guess. It is preserved as a
 regular footnote with a **synthetic anchor** (a plain definition without an

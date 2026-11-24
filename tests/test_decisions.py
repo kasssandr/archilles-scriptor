@@ -81,13 +81,13 @@ def test_without_decisions_the_footnote_stays_a_hanging_reference():
     out = _render()
     assert "Werkz" in out                    # glyph untouched
     assert "eins-2" in out                   # text never lost
-    assert "weiter [^2][^3]" in out          # synthetic anchor before [3] (spec §4.3)
+    assert "weiter [^2] [^3]" in out          # synthetic anchor before [3] (spec §4.3)
     assert _defs(out)[1] == "eins-2"         # defs stay in printed order
 
 
 def test_accepted_candidate_replaces_the_glyph_with_a_marker():
     out = _render(dec.Decisions(accepted={("1", 2): 1}))
-    assert "das Werk[^2] weiter" in out
+    assert "das Werk [^2] weiter" in out
     assert "Werkz" not in out                # the misread glyph is gone
 
 
@@ -160,7 +160,7 @@ def test_cli_writes_a_decision_template_and_applies_it(tmp_path, capsys):
     assert cli(["reflow", str(pages), "--out", str(out), "--decisions", str(template)]) == 0
 
     corrected = out.read_text(encoding="utf-8")
-    assert "Werk[^2]" in corrected and "Werk&" not in corrected
+    assert "Werk [^2]" in corrected and "Werk&" not in corrected
     # Nothing is left to decide, so the regenerated template lists no candidate.
     assert "[ ] p." not in template.read_text(encoding="utf-8")
 
