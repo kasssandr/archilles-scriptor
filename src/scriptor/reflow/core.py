@@ -2483,6 +2483,7 @@ def _place_headings(pages: list, contents_entries: list, outline_positional: lis
             sources.wants, raw_by_pos,
             {p.index: (p.label, p.label_source) for p in pages},
             skip={p.index for p in toc_pages},
+            headed={p.index: p.heading for p in pages if p.heading},
         )
         applied = placement_mod.apply(pages, placement, heads,
                                       skip={p.index for p in toc_pages})
@@ -2491,7 +2492,10 @@ def _place_headings(pages: list, contents_entries: list, outline_positional: lis
             f"Headings placed: {len(placement.placed)} of "
             f"{plural(len(sources.wants), 'entry', 'entries')} "
             f"(on the page named {by_rule[2] + by_rule[3]}, by reading order "
-            f"{by_rule[4]}); {len(placement.unplaced)} found on no page, "
+            f"{by_rule[4]}); "
+            + (f"{len(placement.standing)} already their page's heading, "
+               if placement.standing else "")
+            + f"{len(placement.unplaced)} found on no page, "
             f"{len(placement.rejected)} declined, {len(applied.lost)} gone "
             f"from the body",
             file=sys.stderr,

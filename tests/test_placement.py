@@ -118,6 +118,41 @@ def test_one_further_occurrence_at_a_head_is_enough_to_be_furniture():
     assert after.body_lines[0].startswith("Zeile 0")
 
 
+def test_a_title_already_its_pages_heading_is_not_placed_again_at_the_next_head():
+    """Zuckerman, *A Jewish Princedom*. The outline confirmed the chapter
+    opening and lifted its title off the page into its heading; the raw
+    channel then held the title only at the head of the pages after it, and
+    rule 4 placed it there -- a second heading on every chapter's second page,
+    in mid-sentence."""
+    opening = _page(20, "1", *_prose(3), "the troubled close of the")
+    opening.heading = "1 The Jews of Septimania"
+    after = _page(21, "2", "The Jews of Septimania",
+                  "fifth century however led to a suspension.", *_prose(3))
+    heads = HeadCandidates(22)
+    # The candidate carries the known title as the list states it.
+    heads.add(20, 0, "The Jews of Septimania", "1 The Jews of Septimania",
+              from_stripper=False)
+    wants = [_want("1 The Jews of Septimania", 1, pos=20)]
+    placement = pl.place(wants, _raw([opening, after]), _labels([opening, after]),
+                         headed={20: opening.heading})
+    applied = pl.apply([opening, after], placement, heads)
+
+    assert placement.placed == [] and placement.standing == wants
+    assert applied.heads_removed == 1
+    assert after.body_lines[0].startswith("fifth century")
+
+
+def test_without_the_heading_the_fallback_still_finds_the_next_occurrence():
+    """The old rule 4 stands where the named page carries no heading: a label
+    from another edition still falls through to the first occurrence."""
+    named = _page(20, "1", *_prose(3))
+    later = _page(21, "2", *_prose(2), "The Jews of Septimania", *_prose(2))
+    placement = pl.place([_want("The Jews of Septimania", 1, pos=20)],
+                         _raw([named, later]), _labels([named, later]), headed={})
+
+    assert [p.pos for p in placement.placed] == [21] and placement.standing == []
+
+
 def test_a_head_line_whose_title_was_never_placed_stays():
     """Rule 6 is about every *further* occurrence. Where nothing was placed
     there is no first one, and taking the line out would remove words the
