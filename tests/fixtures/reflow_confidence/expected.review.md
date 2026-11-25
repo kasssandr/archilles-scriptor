@@ -1,6 +1,6 @@
 ---
 format_version: 0.6.0
-chunking_strategy: basic
+chunking_strategy: scientific
 pagination: bottom edge, 100% of pages attested
 ---
 

@@ -24,7 +24,7 @@ def reflow(
     fmt: str | None = None,
     decisions: str | Path | None = None,
     ocr_profile: str | Path | None = None,
-    chunking_strategy: str = "basic",
+    chunking_strategy: str = "scientific",
 ) -> None:
     reflow_main(
         str(src_dir),
@@ -43,7 +43,7 @@ def run_all(
     pages_dir: str | Path | None = None,
     decisions: str | Path | None = None,
     ocr_profile: str | Path | None = None,
-    chunking_strategy: str = "basic",
+    chunking_strategy: str = "scientific",
 ) -> None:
     pdf_path = Path(pdf_path)
     out_path = Path(out_path)

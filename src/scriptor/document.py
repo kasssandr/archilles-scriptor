@@ -437,8 +437,8 @@ class Bundle:
 
     @property
     def chunking_strategy(self) -> str:
-        """Spec §4.1: every field is optional, and the absent strategy is basic."""
-        return self.metadata.get("chunking_strategy", "basic")
+        """Spec §4.1: every field is optional, and the absent strategy is scientific."""
+        return self.metadata.get("chunking_strategy", "scientific")
 
     @property
     def pagination(self) -> str | None:

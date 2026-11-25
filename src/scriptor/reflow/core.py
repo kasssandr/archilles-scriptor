@@ -1809,7 +1809,7 @@ def main(
     fmt: str | None = None,
     decisions_path: str | None = None,
     profile_path: str | None = None,
-    chunking_strategy: str = "basic",
+    chunking_strategy: str = "scientific",
 ) -> None:
     """Reflow a page directory into ``out_path``; the run log goes beside it."""
     from scriptor._runlog import run_log
@@ -2817,7 +2817,7 @@ def _main(
     fmt: str | None = None,
     decisions_path: str | None = None,
     profile_path: str | None = None,
-    chunking_strategy: str = "basic",
+    chunking_strategy: str = "scientific",
 ) -> None:
     """The stages of a reflow, in the order they must run. Each stage's
     docstring says what it needs from the ones before it."""
