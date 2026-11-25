@@ -9,6 +9,7 @@ from scriptor.reflow.translation import (
     strip_flags,
     strip_dnt,
     protect_urls,
+    document_language,
     protect_quoted,
     prepare_translation,
     BRIEFING,
@@ -94,6 +95,42 @@ def test_protect_quoted_two_phrases():
 def test_protect_quoted_idempotent():
     once = protect_quoted('„Titel“')
     assert protect_quoted(once) == once
+
+
+def test_a_quotation_in_the_document_language_is_left_to_translate():
+    # Lévi, REJ 1904, note 8: Schneegans quoted — a sentence the reader needs.
+    src = ("[^8]: Schneegans, p. 27-28, dit à ce propos : « Dans l’histoire des luttes entre "
+           "les Sarrasins et les chrétiens, ces scènes se répètent souvent ; tantôt ce sont "
+           "les Juifs, tantôt les Goths qui livrent les villes. » « Souvent » est exagéré.")
+    out = protect_quoted(src, "fr")
+    assert "<dnt>« Dans l’histoire" not in out
+    assert "<dnt>« Souvent »</dnt>" in out  # one word: may be a title, stays
+
+
+def test_a_title_stays_protected_though_it_is_long():
+    src = ("[^5]: Ph. BOBICHON, « Persécutions, calomnies, birkhat ha-minim et émissaires "
+           "juifs de propagande antichrétienne dans les écrits de Justin martyr », REJ 162, "
+           "2003, p. 403-419.")
+    assert "<dnt>« Persécutions" in protect_quoted(src, "fr")
+    src = "[^7]: Vgl. „Freiheit und Unfreiheit: Zur Entwicklung der Unterschichten in Deutschland und Frankreich während des Mittelalters“, in: Frühformen 180-203."
+    assert "<dnt>„Freiheit" in protect_quoted(src, "de")
+
+
+def test_latin_in_a_french_note_stays_protected():
+    src = ("[^20]: la phrase « permitterent eos legem suam habere, quod autem ad regem "
+           "pertinet, nec ullus ex eis contradicere ausus est » du Chronicon.")
+    assert "<dnt>« permitterent" in protect_quoted(src, "fr")
+
+
+def test_without_a_language_everything_quoted_stays_protected():
+    src = "[^1]: « Dans l’histoire des luttes, ces scènes se répètent souvent ; tantôt ce sont les Juifs. »"
+    assert protect_quoted(src) == "[^1]: <dnt>« Dans l’histoire des luttes, ces scènes se répètent souvent ; tantôt ce sont les Juifs. »</dnt>"
+
+
+def test_document_language_from_front_matter_or_text():
+    assert document_language('---\nlanguage: fra\n---\n\nText.') == "fr"
+    assert document_language("Die Frage ist, ob der Text und die Noten nicht verloren sind.") == "de"
+    assert document_language("12 34") is None
 
 
 # --- prepare_translation (orchestration) -------------------------------------
