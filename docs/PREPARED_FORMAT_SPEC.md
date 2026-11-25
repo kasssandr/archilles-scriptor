@@ -95,8 +95,8 @@ text:
 
 ```yaml
 ---
-format_version: 0.5.0
-chunking_strategy: basic
+format_version: 0.6.0
+chunking_strategy: scientific
 pagination: bottom edge, 95% of pages attested
 structure: 3 levels, chapters on level 1, 48 headings (45 contents, 3 numbering)
 ---
@@ -118,8 +118,10 @@ thing from a volume whose numbers are witnessed.
 
 The block is optional, and every field in it is optional. Consumers MUST
 tolerate its absence, MUST ignore fields they do not know, and MUST NOT
-require it — a document without the block is conforming, and defaults to
-`basic`.
+require it — a document without the block is conforming. Where
+`chunking_strategy` is absent, it is `scientific`: a consumer that reads a
+document without the field keeps its notes, and one that wants them dropped
+must be told so.
 
 Two properties make this block safe to add to a format whose contract is
 plain text. It is *declaration only*: nothing in it may contradict the text,
@@ -825,7 +827,13 @@ appendices.
 0.6.0 states how endnotes are rendered (§4.3) — as footnotes, which is what
 any consumer already reads — and defines the notes sidecar (§6.6) that 0.4.0
 reserved. Additive: the sidecar is a separate file, and a consumer that knows
-neither reads the document exactly as before.
+neither reads the document exactly as before. While 0.6.0 was still a draft,
+the default of an absent `chunking_strategy` (§4.1) changed from `basic` to
+`scientific`. It redefines the reading of one case only — a document that does
+not declare the field — and errs on the side of keeping text: under `basic` a
+consumer may drop a note's definition from what it indexes, under `scientific`
+it keeps it with its anchor. The reference producer declares the field in
+every document it writes.
 
 Producers SHOULD state the spec version they target, in the document's
 `format_version` field (§4.1) and in tool `--version` output. Until version

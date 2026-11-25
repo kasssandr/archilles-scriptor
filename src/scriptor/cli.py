@@ -45,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument(
         "--chunking",
         choices=["basic", "scientific"],
-        default="basic",
+        default="scientific",
         help="declared for retrieval consumers (spec §4.1): 'scientific' keeps a "
              "footnote and its anchor in one chunk, 'basic' cuts semantically",
     )
@@ -75,7 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument(
         "--chunking",
         choices=["basic", "scientific"],
-        default="basic",
+        default="scientific",
         help="declared for retrieval consumers (spec §4.1): 'scientific' keeps a "
              "footnote and its anchor in one chunk, 'basic' cuts semantically",
     )

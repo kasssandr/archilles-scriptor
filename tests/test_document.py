@@ -143,11 +143,12 @@ def test_a_block_without_format_version_is_not_a_bundle(tmp_path):
     assert load_bundle(master) is None
 
 
-def test_chunking_strategy_defaults_to_basic(tmp_path):
-    # Spec §4.1: every field is optional, and the absent strategy is basic.
+def test_chunking_strategy_defaults_to_scientific(tmp_path):
+    # Spec §4.1: every field is optional, and the absent strategy is scientific:
+    # a consumer that cuts basic drops the notes' text from the index.
     master = tmp_path / "book.md"
     master.write_text(f"---\nformat_version: {FORMAT_VERSION}\n---\n\n" + BODY, encoding="utf-8")
-    assert load_bundle(master).chunking_strategy == "basic"
+    assert load_bundle(master).chunking_strategy == "scientific"
 
 
 def test_a_sidecar_of_an_unknown_version_is_refused(tmp_path):
