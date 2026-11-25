@@ -61,6 +61,25 @@ def test_extract_omits_the_label_where_the_pdf_has_none(tmp_path):
     assert "label" not in payload
 
 
+def test_pages_in_front_of_the_catalogues_first_rule_carry_no_label(tmp_path):
+    """A catalogue may start counting after the first page; PyMuPDF raises on
+    the pages in front of its first rule instead of answering empty."""
+    pdf = tmp_path / "buch.pdf"
+    doc = pymupdf.open()
+    for i in range(3):
+        doc.new_page(width=300, height=400).insert_text((20, 60), f"Seite {i}.", fontsize=9)
+    doc.set_page_labels([{"startpage": 1, "prefix": "", "firstpagenum": 191, "style": "D"}])
+    doc.save(pdf)
+    out = tmp_path / "pages"
+    pymupdf_backend.extract(pdf, out)
+
+    labels = [
+        json.loads((out / f"{i:08d}.json").read_text(encoding="utf-8")).get("label")
+        for i in (1, 2, 3)
+    ]
+    assert labels == [None, "191", "192"]
+
+
 def test_the_label_survives_the_json_round_trip():
     page = SourcePage(index=7, label="xiv")
     from scriptor.page import dumps

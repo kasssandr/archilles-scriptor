@@ -222,6 +222,20 @@ def _glyphs(raw_spans: list[dict]) -> list[Glyph]:
     ]
 
 
+def _catalogue_label(page: pymupdf.Page) -> str:
+    """The page's PageLabels entry, or ``""`` where the catalogue has none.
+
+    A catalogue whose first rule starts after the first page leaves the pages
+    in front of it without a rule, and PyMuPDF raises on them instead of
+    answering empty. Such a page declares no label; the rest of the volume
+    keeps the ones it does declare.
+    """
+    try:
+        return page.get_label()
+    except (IndexError, ValueError, RuntimeError):
+        return ""
+
+
 def _links(page: pymupdf.Page) -> list[Link]:
     """The links that point somewhere inside this document.
 
@@ -318,7 +332,7 @@ def read_page(page: pymupdf.Page, index: int, *, glyphs: bool = False,
             )
     # The catalogue's printed label for this page (PDF PageLabels). An empty
     # string means the PDF declares none — omitted then, never invented.
-    label = page.get_label()
+    label = _catalogue_label(page)
     return SourcePage(
         index=index,
         lines=lines,
