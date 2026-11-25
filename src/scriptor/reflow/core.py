@@ -725,12 +725,19 @@ def assign_modes(pages: list[Page]) -> None:
     minister's "Inhoud", a title its own outline confirms, matched nothing,
     and the volume lost its contents entirely.
     """
+    from scriptor.reflow.cover import distributor_cover
     from scriptor.reflow.regions import region_of_heading
     from scriptor.reflow.toc import is_toc_page
     width = estimate_body_width(pages)
     front_limit = max(1, int(len(pages) * FRONT_MATTER_FRACTION))
     mode = "frontmatter"
     for position, p in enumerate(pages):
+        # A distributor's cover sheet is set as running text, and read as such
+        # it ended the front matter on the first page (reflow/cover).
+        if position == 0 and (who := distributor_cover(p.body_lines)):
+            print(f"Page 1 is {who}'s cover sheet: front matter", file=sys.stderr)
+            p.mode = "frontmatter"
+            continue
         if any(region_of_heading(line) == "contents" for line in _opening_lines(p)):
             mode = "toc"
         # Read structurally — nearly every line ending in a page number — and
