@@ -99,6 +99,17 @@ def test_the_left_column_is_read_out_before_the_right():
     ]
 
 
+def test_a_page_carrying_only_a_sideways_line_has_nothing_for_the_columns():
+    """A plate whose only text runs down the margin: once that line is set
+    aside, the columns have no line to order, and the page is not an error."""
+    stamp = "Downloaded from a repository on a day in the year"
+    box = Box(580.0, 100.0, 592.0, 700.0)
+    sideways = Line(spans=[Span(stamp, box=box, size=9.0)], box=box, baseline=700.0)
+    page = SourcePage(index=7, width=612.0, height=792.0, lines=[sideways])
+
+    assert reconstruct(page, gutter=Gutter(296.0, 320.0)).lines == [stamp]
+
+
 def test_without_a_gutter_the_two_columns_still_interleave():
     """The failure this module exists to fix, kept visible: same page, no gutter."""
     page = _two_column_page(1, rows=2)

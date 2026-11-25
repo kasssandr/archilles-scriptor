@@ -368,7 +368,12 @@ def reading_order(page: SourcePage, gutter: Gutter) -> list[list[Line]]:
     A line the columns do not own closes the band above it and opens one of its
     own, so a full-width table between two blocks of prose is read where the page
     put it: left column, table, right column -- not left, right, table.
+
+    A page without a line -- a leaf with no text layer -- is one empty block,
+    as it is without a gutter.
     """
+    if not page.lines:
+        return [[]]
     ordered = sorted(page.lines, key=lambda line: (line.baseline, line.box.x0))
 
     # A full-measure table is invisible cell by cell: "Model" sits left of the
