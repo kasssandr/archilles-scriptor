@@ -644,8 +644,10 @@ class Bundle:
 
     # the section a position stands in ------------------------------------
 
-    def _depths(self) -> list[int]:
-        """The true depth of every '#' line of the master.
+    def heading_depths(self) -> list[int]:
+        """The true depth of every '#' line of the master, in the order of
+        ``headings`` -- what a reader builds the outline tree from
+        (``Tree.from_headings``).
 
         The structure sidecar lists exactly these headings, in this order (spec
         §6.5), and knows the depths past the sixth that Markdown cannot spell;
@@ -672,7 +674,7 @@ class Bundle:
                   if h.page == page and fold(h.text) == want), None)
         if i is None:
             return None
-        depths = self._depths()
+        depths = self.heading_depths()
         for j in range(i + 1, len(heads)):
             if depths[j] <= depths[i]:
                 return (heads[i].start, heads[j].start)
