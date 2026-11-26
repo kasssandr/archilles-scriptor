@@ -115,6 +115,8 @@ class Placement:
     placed: list[Placed] = field(default_factory=list)
     unplaced: list[Want] = field(default_factory=list)
     rejected: list[tuple[Want, str]] = field(default_factory=list)
+    # Entries whose named page already carries them as its heading.
+    standing: list[Want] = field(default_factory=list)
 
     def by_position(self) -> dict[int, list[Placed]]:
         out: dict[int, list[Placed]] = {}
@@ -235,6 +237,7 @@ def place(
     *,
     head_region: int = HEAD_REGION,
     skip: Iterable[int] = (),
+    headed: dict[int, str] | None = None,
 ) -> Placement:
     """Place every entry, by the rules of §5.2.
 
@@ -242,7 +245,18 @@ def place(
     page before the strippers, keyed by position. ``labels_by_pos`` is what
     the pagination verdict decided, ``(label, source)`` per position.
     ``skip`` are the contents' own pages, where every title stands.
+
+    ``headed`` are the headings the chapter search lifted off their pages,
+    by position: the chapter openings the outline confirmed. Such a title is no longer in the raw channel where its page is,
+    only at the head of the pages after it, and rule 4 took the first of those
+    -- every chapter of Zuckerman, *A Jewish Princedom*, came out with its
+    running head as a second heading on its second page, cutting a paragraph
+    in mid-sentence. An entry whose named page had it lifted off, and still
+    spells it nowhere, is in place already; it goes to ``standing``, and the
+    search goes on past it. Where the page still prints the title, rules 2 and
+    3 place it as before.
     """
+    headed = headed or {}
     skipped = set(skip)
     positions = sorted(p for p in raw_by_pos if p not in skipped)
     folded = {p: [fold(line) for line in raw_by_pos[p]] for p in positions}
@@ -270,6 +284,12 @@ def place(
         else:
             expected = set()                # the list names no page at all
         on_page = [f for f in found if f.pos in expected]
+        standing = [p for p in sorted(expected)
+                    if p in headed and similar(fold(headed[p]), fold(want.title))]
+        if standing and not on_page:
+            result.standing.append(want)
+            cursor = max(cursor, (standing[0], -1))
+            continue
         below = [f for f in on_page if not f.in_head]
         after = [f for f in found if (f.pos, f.line) > cursor]
         outside = [f for f in after if not f.in_head]
@@ -378,7 +398,10 @@ def apply(pages, placement: Placement, heads: HeadCandidates | None = None,
     # A wording that was never placed at all has no first occurrence to be
     # further than, and removing it would take a line the volume prints out of
     # the volume on no evidence but a guess about where its heading is.
-    placed_titles = {fold(p.want.title) for p in placement.placed}
+    # An entry already standing as its page's heading was placed there, by the
+    # chapter search, and its further occurrences are as much furniture.
+    placed_titles = ({fold(p.want.title) for p in placement.placed}
+                     | {fold(w.title) for w in placement.standing})
     skipped = set(skip)
     for page in pages:
         body = page.body_lines
